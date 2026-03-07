@@ -7,6 +7,7 @@
 
   // ─── Constants ───────────────────────────────────────────
   const STORAGE_KEY = "habitTracker_v1";
+  const SIDEBAR_COLLAPSE_KEY = "habitTracker_sidebarCollapsed_v1";
   const MONTH_NAMES = [
     "January",
     "February",
@@ -21,23 +22,39 @@
     "November",
     "December",
   ];
+  const WEEKDAY_OPTIONS = [
+    { value: 0, label: "Sunday", shortLabel: "Sun" },
+    { value: 1, label: "Monday", shortLabel: "Mon" },
+    { value: 2, label: "Tuesday", shortLabel: "Tue" },
+    { value: 3, label: "Wednesday", shortLabel: "Wed" },
+    { value: 4, label: "Thursday", shortLabel: "Thu" },
+    { value: 5, label: "Friday", shortLabel: "Fri" },
+    { value: 6, label: "Saturday", shortLabel: "Sat" },
+  ];
 
   const DEFAULT_CATEGORIES = [
-    { id: "cat_health", name: "Health", emoji: "❤️", color: "#EF4444" },
+    { id: "cat_health", name: "Health", emoji: "❤️", color: "#3E85B5" },
     {
       id: "cat_productivity",
       name: "Productivity",
       emoji: "🧠",
-      color: "#3B82F6",
+      color: "#4F6BD8",
     },
-    { id: "cat_fitness", name: "Fitness", emoji: "💪", color: "#22C55E" },
-    { id: "cat_family", name: "Family", emoji: "👨‍👩‍👧‍👦", color: "#F97316" },
-    { id: "cat_sleep", name: "Sleep", emoji: "😴", color: "#6366F1" },
-    { id: "cat_study", name: "Study", emoji: "📚", color: "#8B5CF6" },
-    { id: "cat_diet", name: "Diet", emoji: "🥗", color: "#14B8A6" },
-    { id: "cat_career", name: "Career", emoji: "💼", color: "#EAB308" },
-    { id: "cat_music", name: "Music", emoji: "🎵", color: "#EC4899" },
+    { id: "cat_fitness", name: "Fitness", emoji: "💪", color: "#2F9E7A" },
+    { id: "cat_family", name: "Family", emoji: "👨‍👩‍👧‍👦", color: "#D97706" },
+    { id: "cat_sleep", name: "Sleep", emoji: "😴", color: "#7C8CFF" },
+    { id: "cat_study", name: "Study", emoji: "📚", color: "#B56BE3" },
+    { id: "cat_diet", name: "Diet", emoji: "🥗", color: "#22C55E" },
+    { id: "cat_career", name: "Career", emoji: "💼", color: "#F59E0B" },
+    { id: "cat_music", name: "Music", emoji: "🎵", color: "#F97316" },
   ];
+
+  const LEGACY_CATEGORY_COLOR_MAP = {
+    "#0f1042": "#3E85B5",
+    "#0e1d3e": "#4F6BD8",
+    "#0a0d36": "#2F9E7A",
+    "#05081c": "#7C8CFF",
+  };
 
   const DEFAULT_DAILY_HABITS = [
     {
@@ -158,6 +175,7 @@
   let state = null;
   let chartInstances = {};
   let dragState = null;
+  let sidebarCollapsed = false;
 
   // ─── Utility ─────────────────────────────────────────────
   function uid() {
@@ -217,7 +235,20 @@
   }
 
   function isDayExcluded(habit, day) {
-    return habit.type === "dynamic" && Array.isArray(habit.excludedDays)
+    if (habit.type !== "dynamic") return false;
+    if (
+      Array.isArray(habit.excludedWeekdays) &&
+      habit.excludedWeekdays.length
+    ) {
+      const weekday = new Date(
+        state.currentYear,
+        state.currentMonth,
+        day,
+      ).getDay();
+      return habit.excludedWeekdays.includes(weekday);
+    }
+    // Legacy fallback for pre-weekday data shape.
+    return Array.isArray(habit.excludedDays)
       ? habit.excludedDays.includes(day)
       : false;
   }
@@ -258,6 +289,7 @@
         monthGoal: habit.monthGoal,
         type: "fixed",
         excludedDays: [],
+        excludedWeekdays: [],
         emoji: habit.emoji,
         order: state.habits.daily.length,
       });
@@ -285,6 +317,14 @@
     if (!state.categories || !Array.isArray(state.categories)) {
       state.categories = JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
     }
+
+    state.categories.forEach((category) => {
+      const normalizedColor = String(category.color || "").toLowerCase();
+      if (LEGACY_CATEGORY_COLOR_MAP[normalizedColor]) {
+        category.color = LEGACY_CATEGORY_COLOR_MAP[normalizedColor];
+      }
+    });
+
     if (!state.habits || typeof state.habits !== "object") {
       state.habits = { daily: [], weekly: [] };
     }
@@ -312,6 +352,23 @@
           h.excludedDays
             .map((d) => parseInt(d, 10))
             .filter((d) => Number.isInteger(d) && d >= 1 && d <= 31),
+        ),
+      ].sort((a, b) => a - b);
+      if (!Array.isArray(h.excludedWeekdays)) h.excludedWeekdays = [];
+      if (h.excludedWeekdays.length === 0 && h.excludedDays.length > 0) {
+        h.excludedWeekdays = [
+          ...new Set(
+            h.excludedDays.map((d) =>
+              new Date(state.currentYear, state.currentMonth, d).getDay(),
+            ),
+          ),
+        ];
+      }
+      h.excludedWeekdays = [
+        ...new Set(
+          h.excludedWeekdays
+            .map((d) => parseInt(d, 10))
+            .filter((d) => Number.isInteger(d) && d >= 0 && d <= 6),
         ),
       ].sort((a, b) => a - b);
       if (!h.emoji) {
@@ -435,6 +492,38 @@
     document.querySelector(".sidebar").classList.remove("open");
   }
 
+  function isDesktopViewport() {
+    return window.innerWidth > 768;
+  }
+
+  function applySidebarCollapseState() {
+    const sidebar = document.querySelector(".sidebar");
+    const toggle = document.getElementById("sidebarCollapseToggle");
+    if (!sidebar || !toggle) return;
+
+    const effectiveCollapsed = sidebarCollapsed && isDesktopViewport();
+    sidebar.classList.toggle("collapsed", effectiveCollapsed);
+    toggle.setAttribute("aria-expanded", String(!effectiveCollapsed));
+    toggle.setAttribute(
+      "aria-label",
+      effectiveCollapsed ? "Expand sidebar" : "Collapse sidebar",
+    );
+    toggle.title = effectiveCollapsed ? "Expand sidebar" : "Collapse sidebar";
+  }
+
+  function setSidebarCollapsed(collapsed, persist = true) {
+    sidebarCollapsed = !!collapsed;
+    applySidebarCollapseState();
+    if (persist) {
+      localStorage.setItem(SIDEBAR_COLLAPSE_KEY, sidebarCollapsed ? "1" : "0");
+    }
+  }
+
+  function initSidebarCollapse() {
+    sidebarCollapsed = localStorage.getItem(SIDEBAR_COLLAPSE_KEY) === "1";
+    applySidebarCollapseState();
+  }
+
   // ─── Rendering: Dashboard ────────────────────────────────
   function renderAll() {
     renderMonthHeader();
@@ -496,7 +585,7 @@
         datasets: [
           {
             data: [pct, 100 - pct],
-            backgroundColor: ["#7C3AED", "#EDE9FE"],
+            backgroundColor: ["#58a5d1", "#1a2840"],
             borderWidth: 0,
             borderRadius: 6,
           },
@@ -518,7 +607,7 @@
             const { ctx, width, height } = chart;
             ctx.save();
             ctx.font = "bold 20px Inter, sans-serif";
-            ctx.fillStyle = "#4C1D95";
+            ctx.fillStyle = "#d5e2f5";
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             ctx.fillText(pct + "%", width / 2, height / 2);
@@ -545,7 +634,7 @@
         datasets: [
           {
             data: [pct, 100 - pct],
-            backgroundColor: ["#7C3AED", "#EDE9FE"],
+            backgroundColor: ["#58a5d1", "#1a2840"],
             borderWidth: 0,
             borderRadius: 4,
           },
@@ -567,7 +656,7 @@
             const { ctx, width, height } = chart;
             ctx.save();
             ctx.font = "bold 13px Inter, sans-serif";
-            ctx.fillStyle = "#4C1D95";
+            ctx.fillStyle = "#d5e2f5";
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             ctx.fillText(pct + "%", width / 2, height / 2);
@@ -672,7 +761,7 @@
         plugins: {
           legend: { display: false },
           tooltip: {
-            backgroundColor: "#4C1D95",
+            backgroundColor: "#101b30",
             titleFont: { family: "Inter" },
             bodyFont: { family: "Inter" },
             callbacks: {
@@ -684,15 +773,15 @@
         scales: {
           x: {
             grid: { display: false },
-            ticks: { font: { size: 10, family: "Inter" }, color: "#6B7280" },
+            ticks: { font: { size: 10, family: "Inter" }, color: "#8ea3c3" },
           },
           y: {
             beginAtZero: true,
-            grid: { color: "#F3F4F6" },
+            grid: { color: "#24344f" },
             ticks: {
               stepSize: 1,
               font: { size: 10, family: "Inter" },
-              color: "#6B7280",
+              color: "#8ea3c3",
             },
           },
         },
@@ -704,9 +793,9 @@
     const colors = [];
     for (let i = 0; i < count; i++) {
       const ratio = i / count;
-      const r = Math.round(139 + (75 - 139) * ratio);
-      const g = Math.round(92 + 21 * ratio);
-      const b = Math.round(246 - (246 - 168) * ratio);
+      const r = Math.round(88 + (31 - 88) * ratio);
+      const g = Math.round(165 + (74 - 165) * ratio);
+      const b = Math.round(209 + (119 - 209) * ratio);
       colors.push(`rgb(${r}, ${g}, ${b})`);
     }
     return colors;
@@ -763,14 +852,14 @@
           {
             label: "Completed",
             data: completedData,
-            backgroundColor: "#7C3AED",
+            backgroundColor: "#3e85b5",
             borderRadius: 4,
             borderSkipped: false,
           },
           {
             label: "Not Completed",
             data: notCompletedData,
-            backgroundColor: "#EDE9FE",
+            backgroundColor: "#1a2840",
             borderRadius: 4,
             borderSkipped: false,
           },
@@ -789,10 +878,11 @@
               boxHeight: 12,
               borderRadius: 3,
               useBorderRadius: true,
+              color: "#b2c4de",
             },
           },
           tooltip: {
-            backgroundColor: "#4C1D95",
+            backgroundColor: "#101b30",
             titleFont: { family: "Inter" },
             bodyFont: { family: "Inter" },
           },
@@ -800,13 +890,13 @@
         scales: {
           x: {
             stacked: true,
-            grid: { color: "#F3F4F6" },
-            ticks: { font: { size: 10, family: "Inter" }, color: "#6B7280" },
+            grid: { color: "#24344f" },
+            ticks: { font: { size: 10, family: "Inter" }, color: "#8ea3c3" },
           },
           y: {
             stacked: true,
             grid: { display: false },
-            ticks: { font: { size: 11, family: "Inter" }, color: "#374151" },
+            ticks: { font: { size: 11, family: "Inter" }, color: "#d5e2f5" },
           },
         },
       },
@@ -837,20 +927,20 @@
       const isWeekStart =
         d === 1 || getWeekNumber(d - 1, totalDays) !== weekNum;
       const todayClass = d === todayDay ? " today" : "";
-      headerHtml += `<th class="day-col${todayClass}" ${isWeekStart ? 'style="border-left: 2px solid #C4B5FD;"' : ""}>${d}</th>`;
+      headerHtml += `<th class="day-col${todayClass}" ${isWeekStart ? 'style="border-left: 2px solid #24344f;"' : ""}>${d}</th>`;
     }
     headerHtml += "</tr></thead>";
 
     // Week header row (spanning)
     let weekHeaderHtml =
-      '<thead><tr><th colspan="3" class="habit-name-col" style="border-bottom:none;"></th>';
+      '<thead><tr><th class="week-spacer-col" style="border-bottom:none;"></th><th class="week-meta-spacer" style="border-bottom:none;"></th><th class="week-meta-spacer" style="border-bottom:none;"></th>';
     let currentWeek = 0;
     for (let d = 1; d <= totalDays; d++) {
       const weekNum = getWeekNumber(d, totalDays);
       if (weekNum !== currentWeek) {
         const range = getWeekRange(weekNum, totalDays);
         const span = range.end - range.start + 1;
-        weekHeaderHtml += `<th colspan="${span}" style="text-align:center; background: linear-gradient(135deg, #7C3AED, #6B21A8); color: white; border-radius: 6px 6px 0 0; font-size: 0.7rem; letter-spacing: 1px; padding: 5px 0;">Week ${weekNum}</th>`;
+        weekHeaderHtml += `<th colspan="${span}" style="text-align:center; background: linear-gradient(135deg, #1f4a77, #2c6a96); color: #f5f8ff; border-radius: 6px 6px 0 0; font-size: 0.7rem; letter-spacing: 1px; padding: 5px 0;">Week ${weekNum}</th>`;
         currentWeek = weekNum;
         // Skip directly to the current week end because we already rendered the span.
         d = range.end; // skip to end of week
@@ -863,8 +953,8 @@
     habits.forEach((h) => {
       const cat = getCategoryById(h.categoryId);
       const catName = cat ? cat.emoji + " " + sanitize(cat.name) : "—";
-      const catColor = cat ? cat.color : "#7C3AED";
-      const catBg = catColor + "18";
+      const catColor = cat ? cat.color : "#3e85b5";
+      const catBg = catColor + "66";
       const habitTypeLabel = h.type === "dynamic" ? "Dynamic" : "Fixed";
       const habitEmoji = getHabitEmoji(h);
 
@@ -884,7 +974,7 @@
                     </span>
                 </td>
                 <td class="category-cell">
-                    <span class="category-badge" style="background:${catBg}; color:${catColor}">${catName}</span>
+                    <span class="category-badge" style="background:${catBg}; color:#f5f8ff; border:1px solid ${catColor}">${catName}</span>
                 </td>
                 <td class="goal-cell">${h.monthGoal || "—"}</td>`;
 
@@ -899,11 +989,11 @@
             : "";
         const todayClass = d === todayDay ? " today-col" : "";
         if (isExcluded) {
-          bodyHtml += `<td class="day-cell day-cell-off${todayClass}" ${isWeekStart ? 'style="border-left: 2px solid #EDE9FE;"' : ""}>
+          bodyHtml += `<td class="day-cell day-cell-off${todayClass}" ${isWeekStart ? 'style="border-left: 2px solid #24344f;"' : ""}>
                     <span class="off-day-mark" title="Not tracked this day">OFF</span>
                 </td>`;
         } else {
-          bodyHtml += `<td class="day-cell${todayClass}" ${isWeekStart ? 'style="border-left: 2px solid #EDE9FE;"' : ""}>
+          bodyHtml += `<td class="day-cell${todayClass}" ${isWeekStart ? 'style="border-left: 2px solid #24344f;"' : ""}>
                     <input type="checkbox" class="habit-check" data-habit="${h.id}" data-day="${d}" ${checked}>
                 </td>`;
         }
@@ -929,7 +1019,7 @@
         d === 1 ||
         getWeekNumber(d - 1, totalDays) !== getWeekNumber(d, totalDays);
       const todayClass = d === todayDay ? " today-col" : "";
-      bodyHtml += `<td class="day-cell${todayClass}" ${isWeekStart ? 'style="border-left: 2px solid #EDE9FE;"' : ""}>${pct}%</td>`;
+      bodyHtml += `<td class="day-cell${todayClass}" ${isWeekStart ? 'style="border-left: 2px solid #24344f;"' : ""}>${pct}%</td>`;
     }
     bodyHtml += "</tr>";
 
@@ -940,7 +1030,7 @@
       const isWeekStart =
         d === 1 ||
         getWeekNumber(d - 1, totalDays) !== getWeekNumber(d, totalDays);
-      bodyHtml += `<td ${isWeekStart ? 'style="border-left: 2px solid #EDE9FE;"' : ""}></td>`;
+      bodyHtml += `<td ${isWeekStart ? 'style="border-left: 2px solid #24344f;"' : ""}></td>`;
     }
     bodyHtml += "</tr>";
 
@@ -1032,8 +1122,8 @@
     const overallPct =
       overallGoal > 0 ? Math.round((overallCompleted / overallGoal) * 100) : 0;
     html += `
-            <div class="weekly-progress-card" style="border-color: #7C3AED;">
-                <span class="wp-title" style="background: linear-gradient(135deg, #4C1D95, #6B21A8);">Overall</span>
+            <div class="weekly-progress-card" style="border-color: #24344f;">
+              <span class="wp-title" style="background: linear-gradient(135deg, #1f4a77, #2c6a96);">Overall</span>
                 <div class="wp-stats">
                     <div><span class="wp-num">${overallCompleted}</span><br><span class="wp-label">Completed</span></div>
                     <div><span class="wp-num">${overallGoal}</span><br><span class="wp-label">Goal</span></div>
@@ -1167,7 +1257,7 @@
             <div class="manage-item" draggable="true" data-habit-type="daily" data-habit-id="${h.id}" data-dnd-surface="manage-daily">
                 <div class="manage-item-info">
                     <span class="drag-handle" title="Drag to reorder">⋮⋮</span>
-                    <span class="manage-item-emoji" style="background:${cat ? cat.color + "18" : "#EDE9FE"}">${sanitize(habitEmoji)}</span>
+                    <span class="manage-item-emoji" style="background:${cat ? cat.color + "18" : "#121f34"}">${sanitize(habitEmoji)}</span>
                     <div>
                         <div class="manage-item-name">${sanitize(h.name)}</div>
                         <div class="manage-item-meta">${cat ? sanitize(cat.name) : "No category"} · ${h.type === "dynamic" ? "Dynamic" : "Fixed"} · Goal: ${h.monthGoal}</div>
@@ -1200,7 +1290,7 @@
             <div class="manage-item" draggable="true" data-habit-type="weekly" data-habit-id="${h.id}" data-dnd-surface="manage-weekly">
                 <div class="manage-item-info">
                     <span class="drag-handle" title="Drag to reorder">⋮⋮</span>
-                    <span class="manage-item-emoji" style="background:#EDE9FE">📋</span>
+                    <span class="manage-item-emoji" style="background:#121f34">📋</span>
                     <div>
                         <div class="manage-item-name">${sanitize(h.name)}</div>
                         <div class="manage-item-meta">Weekly habit</div>
@@ -1232,15 +1322,13 @@
   let editingHabitId = null;
   let editingHabitType = null;
 
-  function renderExcludedDaysPicker(selectedDays) {
+  function renderExcludedDaysPicker(selectedWeekdays) {
     const container = document.getElementById("habitExcludedDays");
-    const totalDays = daysInMonth(state.currentYear, state.currentMonth);
-    const selected = new Set(selectedDays || []);
-    let html = "";
-    for (let d = 1; d <= totalDays; d++) {
-      html += `<label class="excluded-day-option"><input type="checkbox" value="${d}" ${selected.has(d) ? "checked" : ""}><span>${d}</span></label>`;
-    }
-    container.innerHTML = html;
+    const selected = new Set(selectedWeekdays || []);
+    container.innerHTML = WEEKDAY_OPTIONS.map(
+      (option) =>
+        `<label class="excluded-day-option" title="${option.label}"><input type="checkbox" value="${option.value}" ${selected.has(option.value) ? "checked" : ""}><span>${option.shortLabel}</span></label>`,
+    ).join("");
   }
 
   function updateHabitModalDailyFields(type) {
@@ -1301,7 +1389,7 @@
           goalEl.value = habit.monthGoal || 20;
           emojiEl.value = getHabitEmoji(habit);
           scheduleTypeEl.value = habit.type || "fixed";
-          renderExcludedDaysPicker(habit.excludedDays || []);
+          renderExcludedDaysPicker(habit.excludedWeekdays || []);
         }
       }
       typeGroup.style.display = "none";
@@ -1339,11 +1427,12 @@
     );
     const emoji = document.getElementById("habitEmoji").value || "📌";
     const scheduleType = document.getElementById("habitScheduleType").value;
-    const excludedDays = Array.from(
+    const excludedWeekdays = Array.from(
       document.querySelectorAll("#habitExcludedDays input:checked"),
     )
       .map((el) => parseInt(el.value, 10))
-      .filter((day) => Number.isInteger(day) && day >= 1 && day <= totalDays)
+      .filter((day) => Number.isInteger(day) && day >= 0 && day <= 6)
+      .filter((day, idx, arr) => arr.indexOf(day) === idx)
       .sort((a, b) => a - b);
 
     if (editingHabitId) {
@@ -1356,7 +1445,8 @@
           habit.monthGoal = goal;
           habit.emoji = emoji;
           habit.type = scheduleType;
-          habit.excludedDays = scheduleType === "dynamic" ? excludedDays : [];
+          habit.excludedWeekdays =
+            scheduleType === "dynamic" ? excludedWeekdays : [];
         }
       }
     } else {
@@ -1367,7 +1457,8 @@
           categoryId: catId,
           monthGoal: goal,
           type: scheduleType,
-          excludedDays: scheduleType === "dynamic" ? excludedDays : [],
+          excludedDays: [],
+          excludedWeekdays: scheduleType === "dynamic" ? excludedWeekdays : [],
           emoji,
           order: state.habits.daily.length,
         });
@@ -1408,7 +1499,7 @@
       titleEl.textContent = "Add Category";
       nameEl.value = "";
       emojiEl.value = "⭐";
-      colorEl.value = "#7C3AED";
+      colorEl.value = "#3e85b5";
     }
 
     openModal("categoryModal");
@@ -1420,7 +1511,7 @@
     if (!name) return;
 
     const emoji = document.getElementById("categoryEmoji").value || "⭐";
-    const color = document.getElementById("categoryColor").value || "#7C3AED";
+    const color = document.getElementById("categoryColor").value || "#3e85b5";
 
     if (editingCategoryId) {
       const cat = state.categories.find((c) => c.id === editingCategoryId);
@@ -1704,6 +1795,16 @@
         document.querySelector(".sidebar").classList.toggle("open");
       });
 
+    document
+      .getElementById("sidebarCollapseToggle")
+      .addEventListener("click", () => {
+        setSidebarCollapsed(!sidebarCollapsed);
+      });
+
+    window.addEventListener("resize", () => {
+      applySidebarCollapseState();
+    });
+
     // Close sidebar on outside click (mobile)
     document.addEventListener("click", (e) => {
       const sidebar = document.querySelector(".sidebar");
@@ -1814,6 +1915,7 @@
   function init() {
     loadState();
     bindEvents();
+    initSidebarCollapse();
     renderAll();
   }
 

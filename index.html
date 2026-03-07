@@ -12,7 +12,7 @@
       content="habit tracker, productivity, routine, goals, local-first, javascript"
     />
     <meta name="author" content="Semyon" />
-    <meta name="theme-color" content="#5b21b6" />
+    <meta name="theme-color" content="#050914" />
     <meta property="og:title" content="Habit Maker" />
     <meta
       property="og:description"
@@ -38,11 +38,21 @@
       <!-- Sidebar Navigation -->
       <nav class="sidebar">
         <div class="sidebar-logo">
+          <button
+            class="sidebar-collapse-toggle"
+            id="sidebarCollapseToggle"
+            type="button"
+            aria-label="Collapse sidebar"
+            aria-expanded="true"
+            title="Collapse sidebar"
+          >
+            <span aria-hidden="true">&laquo;</span>
+          </button>
           <span class="logo-icon">✦</span>
           <h1>Habit<br />Tracker</h1>
         </div>
         <ul class="nav-tabs">
-          <li class="nav-tab active" data-view="dashboard">
+          <li class="nav-tab active" data-view="dashboard" title="Dashboard">
             <svg
               width="20"
               height="20"
@@ -58,7 +68,7 @@
             </svg>
             <span>Dashboard</span>
           </li>
-          <li class="nav-tab" data-view="weekly">
+          <li class="nav-tab" data-view="weekly" title="Weekly Habits">
             <svg
               width="20"
               height="20"
@@ -74,7 +84,7 @@
             </svg>
             <span>Weekly Habits</span>
           </li>
-          <li class="nav-tab" data-view="manage">
+          <li class="nav-tab" data-view="manage" title="Manage">
             <svg
               width="20"
               height="20"
@@ -535,7 +545,9 @@
             <label for="habitScheduleType">Daily Task Type</label>
             <select id="habitScheduleType">
               <option value="fixed">Fixed (track every day)</option>
-              <option value="dynamic">Dynamic (turn off specific days)</option>
+              <option value="dynamic">
+                Dynamic (turn off specific weekdays)
+              </option>
             </select>
           </div>
           <div
@@ -543,7 +555,7 @@
             id="habitExcludedDaysGroup"
             style="display: none"
           >
-            <label>Turn Off For These Days</label>
+            <label>Turn Off On These Weekdays</label>
             <div id="habitExcludedDays" class="excluded-days-grid"></div>
           </div>
           <div class="form-group" id="habitGoalGroup">
@@ -700,57 +712,32 @@
           <div class="form-group">
             <label for="categoryColor">Color</label>
             <div class="color-picker">
-              <input type="color" id="categoryColor" value="#7C3AED" />
+              <input type="color" id="categoryColor" value="#0F1042" />
               <div class="color-presets">
                 <span
                   class="color-option"
-                  data-color="#EF4444"
-                  style="background: #ef4444"
+                  data-color="#05081C"
+                  style="background: #05081c"
                 ></span>
                 <span
                   class="color-option"
-                  data-color="#F97316"
-                  style="background: #f97316"
+                  data-color="#0A0D36"
+                  style="background: #0a0d36"
                 ></span>
                 <span
                   class="color-option"
-                  data-color="#EAB308"
-                  style="background: #eab308"
+                  data-color="#0F1042"
+                  style="background: #0f1042"
                 ></span>
                 <span
                   class="color-option"
-                  data-color="#22C55E"
-                  style="background: #22c55e"
+                  data-color="#0E1D3E"
+                  style="background: #0e1d3e"
                 ></span>
                 <span
                   class="color-option"
-                  data-color="#06B6D4"
-                  style="background: #06b6d4"
-                ></span>
-                <span
-                  class="color-option"
-                  data-color="#3B82F6"
-                  style="background: #3b82f6"
-                ></span>
-                <span
-                  class="color-option"
-                  data-color="#7C3AED"
-                  style="background: #7c3aed"
-                ></span>
-                <span
-                  class="color-option"
-                  data-color="#EC4899"
-                  style="background: #ec4899"
-                ></span>
-                <span
-                  class="color-option"
-                  data-color="#6B21A8"
-                  style="background: #6b21a8"
-                ></span>
-                <span
-                  class="color-option"
-                  data-color="#14B8A6"
-                  style="background: #14b8a6"
+                  data-color="#000000"
+                  style="background: #000000"
                 ></span>
               </div>
             </div>
