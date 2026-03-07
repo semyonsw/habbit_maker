@@ -1,0 +1,785 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Habit Tracker</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700;900&family=Inter:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="styles.css" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✅</text></svg>"
+    />
+  </head>
+  <body>
+    <div id="app">
+      <!-- Sidebar Navigation -->
+      <nav class="sidebar">
+        <div class="sidebar-logo">
+          <span class="logo-icon">✦</span>
+          <h1>Habit<br />Tracker</h1>
+        </div>
+        <ul class="nav-tabs">
+          <li class="nav-tab active" data-view="dashboard">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect x="3" y="3" width="7" height="7" rx="1" />
+              <rect x="14" y="3" width="7" height="7" rx="1" />
+              <rect x="3" y="14" width="7" height="7" rx="1" />
+              <rect x="14" y="14" width="7" height="7" rx="1" />
+            </svg>
+            <span>Dashboard</span>
+          </li>
+          <li class="nav-tab" data-view="weekly">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect x="3" y="4" width="18" height="18" rx="2" />
+              <line x1="16" y1="2" x2="16" y2="6" />
+              <line x1="8" y1="2" x2="8" y2="6" />
+              <line x1="3" y1="10" x2="21" y2="10" />
+            </svg>
+            <span>Weekly Habits</span>
+          </li>
+          <li class="nav-tab" data-view="manage">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="3" />
+              <path
+                d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
+              />
+            </svg>
+            <span>Manage</span>
+          </li>
+        </ul>
+        <div class="sidebar-footer">
+          <button class="btn-export" id="btnExport" title="Export Data">
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+            <span>Export</span>
+          </button>
+          <button class="btn-import" id="btnImport" title="Import Data">
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="17 8 12 3 7 8" />
+              <line x1="12" y1="3" x2="12" y2="15" />
+            </svg>
+            <span>Import</span>
+          </button>
+          <input
+            type="file"
+            id="importFile"
+            accept=".json"
+            style="display: none"
+          />
+        </div>
+      </nav>
+
+      <!-- Main Content -->
+      <main class="main-content">
+        <!-- ======================== DASHBOARD VIEW ======================== -->
+        <section class="view active" id="view-dashboard">
+          <!-- Month Header -->
+          <div class="month-header">
+            <button class="month-nav" id="prevMonth">
+              <svg
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <polyline points="15 18 9 12 15 6" />
+              </svg>
+            </button>
+            <div class="month-title">
+              <h2 id="monthName">March</h2>
+              <p class="month-subtitle">— HABIT TRACKER —</p>
+            </div>
+            <button class="month-nav" id="nextMonth">
+              <svg
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
+            </button>
+          </div>
+
+          <!-- Summary Row -->
+          <div class="summary-row">
+            <div class="summary-card summary-main">
+              <h3>Summary</h3>
+              <div class="summary-main-content">
+                <canvas id="summaryDonut" width="120" height="120"></canvas>
+                <div class="summary-numbers">
+                  <div class="summary-stat">
+                    <span class="stat-value" id="totalCompleted">0</span>
+                    <span class="stat-label">COMPLETED</span>
+                  </div>
+                  <div class="summary-stat">
+                    <span class="stat-value" id="totalGoal">0</span>
+                    <span class="stat-label">GOAL</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="weekly-summary-cards" id="weeklySummaryCards">
+              <!-- Generated by JS: Week 1-5 mini cards -->
+            </div>
+          </div>
+
+          <!-- Charts Row -->
+          <div class="charts-row">
+            <div class="chart-card">
+              <h3>Daily Habit Count</h3>
+              <canvas id="dailyBarChart"></canvas>
+            </div>
+            <div class="chart-card">
+              <h3>Habit Count by Category</h3>
+              <canvas id="categoryBarChart"></canvas>
+            </div>
+          </div>
+
+          <!-- Daily Habits Grid -->
+          <div class="habits-section">
+            <div class="habits-header">
+              <h3>Daily Habits</h3>
+              <button class="btn-add" id="btnAddDailyHabit">
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                Add Habit
+              </button>
+            </div>
+            <div class="habits-grid-wrapper">
+              <table class="habits-grid" id="dailyHabitsGrid">
+                <!-- Generated by JS -->
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ======================== WEEKLY VIEW ======================== -->
+        <section class="view" id="view-weekly">
+          <div class="month-header">
+            <button class="month-nav" id="prevMonthW">
+              <svg
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <polyline points="15 18 9 12 15 6" />
+              </svg>
+            </button>
+            <div class="month-title">
+              <h2 id="monthNameW">March</h2>
+              <p class="month-subtitle">— WEEKLY HABITS —</p>
+            </div>
+            <button class="month-nav" id="nextMonthW">
+              <svg
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
+            </button>
+          </div>
+
+          <!-- Weekly Progress Cards -->
+          <div class="weekly-progress-row" id="weeklyProgressRow">
+            <!-- Generated by JS -->
+          </div>
+
+          <!-- Weekly Habits Table -->
+          <div class="habits-section">
+            <div class="habits-header">
+              <h3>Weekly Habits</h3>
+              <button class="btn-add" id="btnAddWeeklyHabit">
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                Add Habit
+              </button>
+            </div>
+            <div class="habits-grid-wrapper">
+              <table class="habits-grid weekly-grid" id="weeklyHabitsGrid">
+                <!-- Generated by JS -->
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ======================== MANAGE VIEW ======================== -->
+        <section class="view" id="view-manage">
+          <div class="manage-header">
+            <h2>Manage Habits & Categories</h2>
+          </div>
+
+          <!-- Categories Section -->
+          <div class="manage-section">
+            <div class="manage-section-header">
+              <h3>Categories</h3>
+              <button class="btn-add" id="btnAddCategory">
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                Add Category
+              </button>
+            </div>
+            <div class="manage-list" id="categoriesList">
+              <!-- Generated by JS -->
+            </div>
+          </div>
+
+          <!-- Daily Habits Section -->
+          <div class="manage-section">
+            <div class="manage-section-header">
+              <h3>Daily Habits</h3>
+              <button class="btn-add" id="btnAddDailyManage">
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                Add Daily Habit
+              </button>
+            </div>
+            <div class="manage-list" id="dailyHabitsList">
+              <!-- Generated by JS -->
+            </div>
+          </div>
+
+          <!-- Weekly Habits Section -->
+          <div class="manage-section">
+            <div class="manage-section-header">
+              <h3>Weekly Habits</h3>
+              <button class="btn-add" id="btnAddWeeklyManage">
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                Add Weekly Habit
+              </button>
+            </div>
+            <div class="manage-list" id="weeklyHabitsList">
+              <!-- Generated by JS -->
+            </div>
+          </div>
+
+          <!-- Data Management -->
+          <div class="manage-section">
+            <div class="manage-section-header">
+              <h3>Data Management</h3>
+            </div>
+            <div class="data-actions">
+              <button class="btn-secondary" id="btnResetMonth">
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <polyline points="1 4 1 10 7 10" />
+                  <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+                </svg>
+                Reset Current Month
+              </button>
+              <button class="btn-danger" id="btnClearAll">
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <polyline points="3 6 5 6 21 6" />
+                  <path
+                    d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"
+                  />
+                </svg>
+                Clear All Data
+              </button>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <!-- ======================== MODALS ======================== -->
+    <!-- Add/Edit Habit Modal -->
+    <div class="modal-overlay" id="habitModal">
+      <div class="modal">
+        <div class="modal-header">
+          <h3 id="habitModalTitle">Add Habit</h3>
+          <button class="modal-close" id="habitModalClose">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="habitName">Habit Name</label>
+            <input
+              type="text"
+              id="habitName"
+              placeholder="e.g., Drink 8 glasses of water"
+              maxlength="50"
+            />
+          </div>
+          <div class="form-group">
+            <label for="habitCategory">Category</label>
+            <select id="habitCategory">
+              <!-- Generated by JS -->
+            </select>
+          </div>
+          <div class="form-group" id="habitEmojiGroup">
+            <label for="habitEmoji">Habit Emoji</label>
+            <div class="emoji-picker">
+              <input
+                type="text"
+                id="habitEmoji"
+                maxlength="2"
+                value="📌"
+                class="emoji-input"
+              />
+              <div class="emoji-suggestions">
+                <span
+                  class="emoji-option"
+                  data-target="habitEmoji"
+                  data-emoji="✅"
+                  >✅</span
+                >
+                <span
+                  class="emoji-option"
+                  data-target="habitEmoji"
+                  data-emoji="💧"
+                  >💧</span
+                >
+                <span
+                  class="emoji-option"
+                  data-target="habitEmoji"
+                  data-emoji="🏃"
+                  >🏃</span
+                >
+                <span
+                  class="emoji-option"
+                  data-target="habitEmoji"
+                  data-emoji="🏋️"
+                  >🏋️</span
+                >
+                <span
+                  class="emoji-option"
+                  data-target="habitEmoji"
+                  data-emoji="📚"
+                  >📚</span
+                >
+                <span
+                  class="emoji-option"
+                  data-target="habitEmoji"
+                  data-emoji="🧘"
+                  >🧘</span
+                >
+                <span
+                  class="emoji-option"
+                  data-target="habitEmoji"
+                  data-emoji="🥗"
+                  >🥗</span
+                >
+                <span
+                  class="emoji-option"
+                  data-target="habitEmoji"
+                  data-emoji="😴"
+                  >😴</span
+                >
+                <span
+                  class="emoji-option"
+                  data-target="habitEmoji"
+                  data-emoji="📝"
+                  >📝</span
+                >
+                <span
+                  class="emoji-option"
+                  data-target="habitEmoji"
+                  data-emoji="🎯"
+                  >🎯</span
+                >
+                <span
+                  class="emoji-option"
+                  data-target="habitEmoji"
+                  data-emoji="🔥"
+                  >🔥</span
+                >
+                <span
+                  class="emoji-option"
+                  data-target="habitEmoji"
+                  data-emoji="⭐"
+                  >⭐</span
+                >
+              </div>
+            </div>
+          </div>
+          <div class="form-group" id="habitTypeGroup">
+            <label for="habitType">Type</label>
+            <select id="habitType">
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+            </select>
+          </div>
+          <div class="form-group" id="habitScheduleTypeGroup">
+            <label for="habitScheduleType">Daily Task Type</label>
+            <select id="habitScheduleType">
+              <option value="fixed">Fixed (track every day)</option>
+              <option value="dynamic">Dynamic (turn off specific days)</option>
+            </select>
+          </div>
+          <div
+            class="form-group"
+            id="habitExcludedDaysGroup"
+            style="display: none"
+          >
+            <label>Turn Off For These Days</label>
+            <div id="habitExcludedDays" class="excluded-days-grid"></div>
+          </div>
+          <div class="form-group" id="habitGoalGroup">
+            <label for="habitGoal">Monthly Goal (days)</label>
+            <input type="number" id="habitGoal" min="1" max="31" value="20" />
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" id="habitModalCancel">Cancel</button>
+          <button class="btn-primary" id="habitModalSave">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Add/Edit Category Modal -->
+    <div class="modal-overlay" id="categoryModal">
+      <div class="modal">
+        <div class="modal-header">
+          <h3 id="categoryModalTitle">Add Category</h3>
+          <button class="modal-close" id="categoryModalClose">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="categoryName">Category Name</label>
+            <input
+              type="text"
+              id="categoryName"
+              placeholder="e.g., Health"
+              maxlength="20"
+            />
+          </div>
+          <div class="form-group">
+            <label for="categoryEmoji">Emoji</label>
+            <div class="emoji-picker">
+              <input
+                type="text"
+                id="categoryEmoji"
+                maxlength="2"
+                value="⭐"
+                class="emoji-input"
+              />
+              <div class="emoji-suggestions">
+                <span
+                  class="emoji-option"
+                  data-target="categoryEmoji"
+                  data-emoji="❤️"
+                  >❤️</span
+                >
+                <span
+                  class="emoji-option"
+                  data-target="categoryEmoji"
+                  data-emoji="💪"
+                  >💪</span
+                >
+                <span
+                  class="emoji-option"
+                  data-target="categoryEmoji"
+                  data-emoji="🧠"
+                  >🧠</span
+                >
+                <span
+                  class="emoji-option"
+                  data-target="categoryEmoji"
+                  data-emoji="👨‍👩‍👧‍👦"
+                  >👨‍👩‍👧‍👦</span
+                >
+                <span
+                  class="emoji-option"
+                  data-target="categoryEmoji"
+                  data-emoji="😴"
+                  >😴</span
+                >
+                <span
+                  class="emoji-option"
+                  data-target="categoryEmoji"
+                  data-emoji="📚"
+                  >📚</span
+                >
+                <span
+                  class="emoji-option"
+                  data-target="categoryEmoji"
+                  data-emoji="🥗"
+                  >🥗</span
+                >
+                <span
+                  class="emoji-option"
+                  data-target="categoryEmoji"
+                  data-emoji="💼"
+                  >💼</span
+                >
+                <span
+                  class="emoji-option"
+                  data-target="categoryEmoji"
+                  data-emoji="🎵"
+                  >🎵</span
+                >
+                <span
+                  class="emoji-option"
+                  data-target="categoryEmoji"
+                  data-emoji="🏃"
+                  >🏃</span
+                >
+                <span
+                  class="emoji-option"
+                  data-target="categoryEmoji"
+                  data-emoji="🧘"
+                  >🧘</span
+                >
+                <span
+                  class="emoji-option"
+                  data-target="categoryEmoji"
+                  data-emoji="💰"
+                  >💰</span
+                >
+                <span
+                  class="emoji-option"
+                  data-target="categoryEmoji"
+                  data-emoji="🎨"
+                  >🎨</span
+                >
+                <span
+                  class="emoji-option"
+                  data-target="categoryEmoji"
+                  data-emoji="🌱"
+                  >🌱</span
+                >
+                <span
+                  class="emoji-option"
+                  data-target="categoryEmoji"
+                  data-emoji="📝"
+                  >📝</span
+                >
+                <span
+                  class="emoji-option"
+                  data-target="categoryEmoji"
+                  data-emoji="🎯"
+                  >🎯</span
+                >
+                <span
+                  class="emoji-option"
+                  data-target="categoryEmoji"
+                  data-emoji="⭐"
+                  >⭐</span
+                >
+                <span
+                  class="emoji-option"
+                  data-target="categoryEmoji"
+                  data-emoji="🔥"
+                  >🔥</span
+                >
+              </div>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="categoryColor">Color</label>
+            <div class="color-picker">
+              <input type="color" id="categoryColor" value="#7C3AED" />
+              <div class="color-presets">
+                <span
+                  class="color-option"
+                  data-color="#EF4444"
+                  style="background: #ef4444"
+                ></span>
+                <span
+                  class="color-option"
+                  data-color="#F97316"
+                  style="background: #f97316"
+                ></span>
+                <span
+                  class="color-option"
+                  data-color="#EAB308"
+                  style="background: #eab308"
+                ></span>
+                <span
+                  class="color-option"
+                  data-color="#22C55E"
+                  style="background: #22c55e"
+                ></span>
+                <span
+                  class="color-option"
+                  data-color="#06B6D4"
+                  style="background: #06b6d4"
+                ></span>
+                <span
+                  class="color-option"
+                  data-color="#3B82F6"
+                  style="background: #3b82f6"
+                ></span>
+                <span
+                  class="color-option"
+                  data-color="#7C3AED"
+                  style="background: #7c3aed"
+                ></span>
+                <span
+                  class="color-option"
+                  data-color="#EC4899"
+                  style="background: #ec4899"
+                ></span>
+                <span
+                  class="color-option"
+                  data-color="#6B21A8"
+                  style="background: #6b21a8"
+                ></span>
+                <span
+                  class="color-option"
+                  data-color="#14B8A6"
+                  style="background: #14b8a6"
+                ></span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" id="categoryModalCancel">Cancel</button>
+          <button class="btn-primary" id="categoryModalSave">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Confirm Modal -->
+    <div class="modal-overlay" id="confirmModal">
+      <div class="modal modal-sm">
+        <div class="modal-header">
+          <h3 id="confirmTitle">Confirm</h3>
+          <button class="modal-close" id="confirmModalClose">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p id="confirmMessage">Are you sure?</p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" id="confirmCancel">Cancel</button>
+          <button class="btn-danger" id="confirmOk">Delete</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mobile Menu Toggle -->
+    <button class="mobile-menu-toggle" id="mobileMenuToggle">
+      <svg
+        width="24"
+        height="24"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+      >
+        <line x1="3" y1="12" x2="21" y2="12" />
+        <line x1="3" y1="6" x2="21" y2="6" />
+        <line x1="3" y1="18" x2="21" y2="18" />
+      </svg>
+    </button>
+
+    <script src="app.js"></script>
+  </body>
+</html>
