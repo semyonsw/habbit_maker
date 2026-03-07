@@ -50,8 +50,23 @@ habbit_maker/
 |- index.html
 |- styles.css
 |- app.js
+|- auto-sync.sh
 `- README.md
 ```
+
+## GitHub Auto Sync
+
+This repository is connected to GitHub and includes `auto-sync.sh` to automatically commit and push changes.
+
+Run it from the project root:
+
+```bash
+./auto-sync.sh 15
+```
+
+The `15` means it checks for changes every 15 seconds (you can change this value).
+
+To stop it, press `Ctrl+C` in the terminal where it is running.
 
 ## Data Storage
 
