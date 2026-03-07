@@ -154,6 +154,7 @@
   ];
 
   // ─── State ───────────────────────────────────────────────
+  // Single source of truth for UI rendering and persistence.
   let state = null;
   let chartInstances = {};
   let dragState = null;
@@ -851,6 +852,7 @@
         const span = range.end - range.start + 1;
         weekHeaderHtml += `<th colspan="${span}" style="text-align:center; background: linear-gradient(135deg, #7C3AED, #6B21A8); color: white; border-radius: 6px 6px 0 0; font-size: 0.7rem; letter-spacing: 1px; padding: 5px 0;">Week ${weekNum}</th>`;
         currentWeek = weekNum;
+        // Skip directly to the current week end because we already rendered the span.
         d = range.end; // skip to end of week
       }
     }

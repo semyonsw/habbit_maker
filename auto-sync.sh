@@ -7,6 +7,12 @@ set -euo pipefail
 INTERVAL="${1:-20}"
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+if ! [[ "$INTERVAL" =~ ^[0-9]+$ ]] || [[ "$INTERVAL" -lt 1 ]]; then
+  echo "Error: interval must be a positive integer (seconds)"
+  echo "Usage: ./auto-sync.sh [interval_seconds]"
+  exit 1
+fi
+
 cd "$REPO_DIR"
 
 if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then

@@ -1,41 +1,44 @@
 # Habit Maker
 
-A modern, local-first habit tracking web app built with plain HTML, CSS, and JavaScript.
+Habit Maker is a local-first web app for tracking daily and weekly habits. It is built with plain HTML, CSS, and JavaScript, and runs directly in the browser with no backend required.
 
-It helps you track daily and weekly habits, view progress with charts, and manage your routines month by month without any backend setup.
+## Project Information
 
-## Features
+- Name: `Habit Maker`
+- Type: Client-side web application
+- Status: Active
+- License: MIT
+- Author: Semyon
+- Repository language: JavaScript, HTML, CSS
 
-- Dashboard with monthly overview and progress summary
-- Daily habit grid with per-day checkboxes
+## Core Features
+
+- Monthly dashboard with completion summary and progress visuals
+- Daily habit tracking grid (day-by-day checkboxes)
 - Weekly habit tracking view
-- Category-based habit organization
-- Visual analytics with Chart.js
-  - Daily completion bar chart
-  - Category completion bar chart
-  - Summary donut chart
-- Drag-and-drop habit reordering
-- Import and export your data as JSON
+- Category management with emoji and color support
+- Drag-and-drop reordering for habits
+- JSON import/export for backup and restore
 - Local persistence via browser `localStorage`
-- Responsive layout with mobile sidebar support
+- Responsive layout optimized for desktop and mobile
+- Visual analytics via Chart.js:
+- Daily completion bar chart
+- Category completion stacked bar chart
+- Summary donut chart
 
 ## Tech Stack
 
-- `index.html` for structure
-- `styles.css` for styling and responsive layout
-- `app.js` for all app logic and state management
-- `Chart.js` (CDN) for charts
+- `index.html`: app structure and semantic layout
+- `styles.css`: component styling, layout, and responsive behavior
+- `app.js`: state management, rendering, and interactions
+- `Chart.js` (CDN): dashboard data visualization
 
-## Getting Started
+## Quick Start
 
-No build tools or package manager are required.
+1. Clone this repository.
+2. Open `index.html` in your browser.
 
-1. Clone or download this repository.
-2. Open `index.html` directly in your browser.
-
-Optional (recommended): run a local static server for a smoother dev workflow.
-
-Example with Python:
+Recommended for local development:
 
 ```bash
 python3 -m http.server 8080
@@ -47,47 +50,50 @@ Then open `http://localhost:8080`.
 
 ```text
 habbit_maker/
+|- .editorconfig
+|- .gitignore
+|- CODE_OF_CONDUCT.md
+|- CONTRIBUTING.md
+|- LICENSE
+|- SECURITY.md
+|- README.md
 |- index.html
 |- styles.css
 |- app.js
-|- auto-sync.sh
-`- README.md
+`- auto-sync.sh
 ```
 
-## GitHub Auto Sync
+## Data and Privacy
 
-This repository is connected to GitHub and includes `auto-sync.sh` to automatically commit and push changes.
+- Data is stored locally in your browser under key `habitTracker_v1`.
+- No server-side storage is used by default.
+- Clearing browser data will remove local progress unless exported.
 
-Run it from the project root:
+## Automation Script
+
+The repository includes `auto-sync.sh` for optional periodic commit and push.
 
 ```bash
 ./auto-sync.sh 15
 ```
 
-The `15` means it checks for changes every 15 seconds (you can change this value).
+- The argument (`15`) is the sync interval in seconds.
+- Stop the script with `Ctrl+C`.
 
-To stop it, press `Ctrl+C` in the terminal where it is running.
+## Open Source Guidelines
 
-## Data Storage
+- Contributing guide: `CONTRIBUTING.md`
+- Code of conduct: `CODE_OF_CONDUCT.md`
+- Security policy: `SECURITY.md`
+- License: `LICENSE` (MIT)
 
-App data is stored in your browser under the key:
+## Roadmap
 
-- `habitTracker_v1`
+- Streak tracking and milestone badges
+- Optional reminders and notification support
+- PWA install/offline enhancements
+- Optional account-based cloud sync
 
-Use the in-app **Export** button to back up your progress and **Import** to restore it.
+## Acknowledgements
 
-## Notes
-
-- This is a client-side app; data stays in your browser unless you export it.
-- Clearing browser storage will remove local progress unless you have exported backups.
-
-## Future Ideas
-
-- Add streak tracking
-- Add habit reminders
-- Add PWA support for install/offline behavior
-- Add optional cloud sync
-
-## License
-
-You can add your preferred license here (for example, MIT).
+- Charts powered by [Chart.js](https://www.chartjs.org/)
