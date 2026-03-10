@@ -1,108 +1,137 @@
 # Habit Maker
 
-Habit Maker is a local-first web app for tracking daily habits and managing personal PDF books with bookmark history. It is built with plain HTML, CSS, and JavaScript, and runs directly in the browser with no backend required.
+Habit Maker is a local-first web app for tracking daily habits and managing personal PDF books with bookmark workflows. It is built with plain HTML, CSS, and JavaScript, and runs fully in the browser without a backend.
 
-## Project Information
+## Project Snapshot
 
 - Name: `Habit Maker`
-- Type: Client-side web application
+- Type: Browser-only client app
 - Status: Active
 - License: MIT
 - Author: Semyon
-- Repository language: JavaScript, HTML, CSS
+- Main languages: JavaScript, HTML, CSS
 
-## Core Features
+## What It Does
 
-- Monthly dashboard with completion summary and progress visuals
-- Daily habit tracking grid (day-by-day checkboxes)
-- Category management with emoji and color support
-- JSON import/export for backup and restore
-- Local persistence via browser `localStorage` for app metadata
-- IndexedDB persistence for PDF binaries
-- Books module:
-- Upload PDF (max 40MB)
-- Track per-book metadata (`title`, `author`, file metadata)
-- Create/edit/delete bookmarks (`label`, `pdfPage`, `realPage`, `note`)
-- Automatic immutable bookmark history events with ISO timestamps
-- Open bookmark in a new tab reader at exact page
-- Reader mode with previous/next page and direct page jump
-- Responsive layout optimized for desktop and mobile
-- Visual analytics via Chart.js:
-- Daily completion bar chart
-- Category completion stacked bar chart
-- Summary donut chart
+### Habit Tracking
+
+- Monthly habit dashboard with summary cards and progress charts.
+- Daily grid with per-day completion toggles.
+- Categories with custom emoji and color.
+- Monthly review notes (`wins`, `blockers`, `focus`).
+- Local data persistence and import/export for backup.
+
+### Books + PDF Module
+
+- Upload and store PDF books locally (max file size: `40MB` each).
+- Track book metadata (`title`, `author`, filename, size).
+- Create, edit, and delete bookmarks:
+  - `label`
+  - `pdfPage`
+  - `realPage` (optional)
+  - `note`
+- Open any bookmark in Reader Mode in a new tab.
+- Reader Mode includes:
+  - previous/next navigation
+  - direct page jump
+  - add bookmark on current page
+  - dark reading mode toggle (`full` and `text` styles)
+
+### Bookmark History (Current Behavior)
+
+- Every bookmark stores history events with timestamp metadata.
+- History is capped at `200` events per bookmark in stored state.
+- Books panel displays the latest `8` events per bookmark for readability.
+- History events can be:
+  - appended from reader actions
+  - edited (event title/type and note)
+  - deleted
+- Reader actions now update the bookmark's active `pdfPage`, so "Open at Bookmark" tracks the latest reader-fixed page.
+
+## Data Model and Storage
+
+- App metadata key in `localStorage`: `habitTracker_v1`
+- Sidebar state key: `habitTracker_sidebarCollapsed_v1`
+- Reader dark-mode keys:
+  - `habitTracker_readerDarkEnabled_v1`
+  - `habitTracker_readerDarkMode_v1`
+- PDF binaries in IndexedDB:
+  - DB: `habitTracker_books_pdf_v1`
+  - Store: `pdfFiles`
+
+### Important Nuance
+
+- JSON export/import includes habits and books metadata only.
+- PDF binary files are not embedded in exported JSON.
+- After import on another browser/device, books may show metadata but require re-uploading PDFs.
+
+## Validation and Limits
+
+- PDF upload accepts only valid `.pdf` files with MIME `application/pdf`.
+- Maximum PDF size is enforced in code as `40 * 1024 * 1024` bytes.
+- Bookmark and import payloads are shape-validated before state migration.
 
 ## Tech Stack
 
-- `index.html`: app structure and semantic layout
-- `styles.css`: component styling, layout, and responsive behavior
-- `app.js`: state management, rendering, and interactions
-- `Chart.js` (CDN): dashboard data visualization
+- `index.html`: structure, views, and modal markup
+- `styles.css`: visual system, responsive layout, components
+- `app.js`: state, rendering, reader logic, data persistence
+- `Chart.js` (CDN): dashboard charts
+- `pdf.js` (CDN fallback chain): in-browser PDF rendering
 
-## Quick Start
+## Run Locally
 
 1. Clone this repository.
-2. Open `index.html` in your browser.
-
-Recommended for local development:
+2. Start a local server (recommended):
 
 ```bash
 python3 -m http.server 8080
 ```
 
-Then open `http://localhost:8080`.
+3. Open `http://localhost:8080`.
 
-## Project Structure
+You can also open `index.html` directly, but a local server is more reliable for browser features.
+
+## Repository Structure
 
 ```text
 habbit_maker/
-|- .editorconfig
-|- .gitignore
-|- CODE_OF_CONDUCT.md
-|- CONTRIBUTING.md
-|- LICENSE
-|- SECURITY.md
-|- README.md
+|- app.js
+|- auto-sync.sh
 |- index.html
 |- styles.css
-|- app.js
-`- auto-sync.sh
+|- README.md
+|- CONTRIBUTING.md
+|- CODE_OF_CONDUCT.md
+|- SECURITY.md
+`- LICENSE
 ```
-
-## Data and Privacy
-
-- Metadata is stored locally in your browser under key `habitTracker_v1`.
-- PDF binaries are stored separately in IndexedDB (`habitTracker_books_pdf_v1`).
-- No server-side storage is used by default.
-- JSON export/import includes habits and books metadata only.
-- JSON export/import does not include PDF binaries; after restore, books may require PDF re-upload.
-- Clearing browser data removes both metadata and PDF binaries.
 
 ## Automation Script
 
-The repository includes `auto-sync.sh` for optional periodic commit and push.
+`auto-sync.sh` can run periodic git add/commit/push cycles.
 
 ```bash
 ./auto-sync.sh 15
 ```
 
-- The argument (`15`) is the sync interval in seconds.
-- Stop the script with `Ctrl+C`.
+- Argument `15` means 15 seconds between sync attempts.
+- Stop with `Ctrl+C`.
 
-## Open Source Guidelines
+## Open Source Docs
 
-- Contributing guide: `CONTRIBUTING.md`
+- Contribution guide: `CONTRIBUTING.md`
 - Code of conduct: `CODE_OF_CONDUCT.md`
 - Security policy: `SECURITY.md`
-- License: `LICENSE` (MIT)
+- License text: `LICENSE`
 
-## Roadmap
+## Roadmap Ideas
 
 - Streak tracking and milestone badges
-- Optional reminders and notification support
-- PWA install/offline enhancements
-- Optional account-based cloud sync
+- Notifications/reminders
+- PWA install and offline polish
+- Optional cloud sync profile
 
 ## Acknowledgements
 
-- Charts powered by [Chart.js](https://www.chartjs.org/)
+- Charts by [Chart.js](https://www.chartjs.org/)
