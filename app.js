@@ -83,6 +83,11 @@
   let noteModalState = { habitId: null, day: null };
   let bookModalState = { editingBookId: null };
   let bookmarkModalState = { editingBookId: null, editingBookmarkId: null };
+  let historyEventModalState = {
+    editingBookId: null,
+    editingBookmarkId: null,
+    editingEventId: null,
+  };
   let confirmCallback = null;
   let editingHabitId = null;
   let editingCategoryId = null;
@@ -100,7 +105,14 @@
     resizeTimer: null,
     darkEnabled: false,
     darkMode: "full",
+    sourceBookmarkId: null,
+    sourcePage: null,
   };
+
+  function formatRealBookPage(value) {
+    const page = parseInt(value, 10);
+    return Number.isFinite(page) && page > 0 ? String(page) : "-";
+  }
 
   function loadReaderThemePreferences() {
     readerState.darkEnabled =
@@ -299,7 +311,10 @@
               bookmarkId: String(bm.bookmarkId),
               label: String(bm.label || "Bookmark").trim() || "Bookmark",
               pdfPage: Math.max(1, parseInt(bm.pdfPage, 10) || 1),
-              realPage: Math.max(1, parseInt(bm.realPage, 10) || 1),
+              realPage: (() => {
+                const parsed = parseInt(bm.realPage, 10);
+                return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+              })(),
               note: String(bm.note || ""),
               createdAt: bmCreatedAt,
               updatedAt: bmUpdatedAt,
@@ -1436,7 +1451,7 @@
     return event;
   }
 
-  function openBookmarkModal(bookId, bookmarkId) {
+  function openBookmarkModal(bookId, bookmarkId, options = {}) {
     const book = getBookById(bookId);
     if (!book) {
       alert("Please select a book first.");
@@ -1460,17 +1475,47 @@
       title.textContent = "Edit Bookmark";
       labelInput.value = bm.label;
       pdfPageInput.value = String(bm.pdfPage);
-      realPageInput.value = String(bm.realPage);
+      realPageInput.value =
+        bm.realPage === null || bm.realPage === undefined
+          ? ""
+          : String(bm.realPage);
       noteInput.value = bm.note || "";
     } else {
       title.textContent = "Add Bookmark";
-      labelInput.value = "";
-      pdfPageInput.value = "1";
-      realPageInput.value = "1";
-      noteInput.value = "";
+      const prefillPdfPage = parseInt(options.prefillPdfPage, 10);
+      const safePrefillPdfPage =
+        Number.isFinite(prefillPdfPage) && prefillPdfPage >= 1
+          ? prefillPdfPage
+          : 1;
+      labelInput.value = String(options.label || "");
+      // Assign both numeric and string defaults so number inputs keep the value
+      // after modal open across different browsers.
+      pdfPageInput.value = "";
+      pdfPageInput.valueAsNumber = safePrefillPdfPage;
+      pdfPageInput.defaultValue = String(safePrefillPdfPage);
+      pdfPageInput.setAttribute("value", String(safePrefillPdfPage));
+      realPageInput.value =
+        options.prefillRealPage === null ||
+        options.prefillRealPage === undefined ||
+        options.prefillRealPage === ""
+          ? ""
+          : String(options.prefillRealPage);
+      noteInput.value = String(options.note || "");
     }
 
     openModal("bookmarkModal");
+
+    if (!bookmarkId) {
+      const prefillPdfPage = parseInt(options.prefillPdfPage, 10);
+      const safePrefillPdfPage =
+        Number.isFinite(prefillPdfPage) && prefillPdfPage >= 1
+          ? prefillPdfPage
+          : 1;
+      // Re-apply once after opening in case the browser/UI resets number values.
+      requestAnimationFrame(() => {
+        pdfPageInput.valueAsNumber = safePrefillPdfPage;
+      });
+    }
   }
 
   function saveBookmark() {
@@ -1479,14 +1524,24 @@
 
     const label =
       document.getElementById("bookmarkLabel").value.trim() || "Bookmark";
-    const pdfPage = Math.max(
-      1,
-      parseInt(document.getElementById("bookmarkPdfPage").value, 10) || 1,
-    );
-    const realPage = Math.max(
-      1,
-      parseInt(document.getElementById("bookmarkRealPage").value, 10) || 1,
-    );
+    const pdfPageRaw = document.getElementById("bookmarkPdfPage").value.trim();
+    const pdfPage = parseInt(pdfPageRaw, 10);
+    if (!Number.isFinite(pdfPage) || pdfPage < 1) {
+      alert("PDF page is required and must be 1 or greater.");
+      return;
+    }
+    const realPageRaw = document
+      .getElementById("bookmarkRealPage")
+      .value.trim();
+    let realPage = null;
+    if (realPageRaw) {
+      const parsedRealPage = parseInt(realPageRaw, 10);
+      if (!Number.isFinite(parsedRealPage) || parsedRealPage < 1) {
+        alert("Real book page must be empty or 1 or greater.");
+        return;
+      }
+      realPage = parsedRealPage;
+    }
     const note = document.getElementById("bookmarkNote").value.trim();
 
     if (bookmarkModalState.editingBookmarkId) {
@@ -1539,8 +1594,175 @@
     });
   }
 
-  function openBookmarkInNewTab(bookId, page) {
-    const url = `${window.location.pathname}?reader=1&book=${encodeURIComponent(bookId)}&page=${encodeURIComponent(page)}`;
+  function openHistoryEventModal(bookId, bookmarkId, eventId) {
+    const book = getBookById(bookId);
+    if (!book) return;
+    const bookmark = Array.isArray(book.bookmarks)
+      ? book.bookmarks.find((b) => b.bookmarkId === bookmarkId)
+      : null;
+    if (!bookmark) return;
+    const event = Array.isArray(bookmark.history)
+      ? bookmark.history.find((h) => h.eventId === eventId)
+      : null;
+    if (!event) return;
+
+    historyEventModalState = {
+      editingBookId: bookId,
+      editingBookmarkId: bookmarkId,
+      editingEventId: eventId,
+    };
+
+    document.getElementById("historyEventType").value = String(
+      event.type || "updated",
+    );
+    document.getElementById("historyEventNote").value = String(
+      event.note || "",
+    );
+    openModal("historyEventModal");
+  }
+
+  function saveHistoryEventModal() {
+    const { editingBookId, editingBookmarkId, editingEventId } =
+      historyEventModalState;
+    if (!editingBookId || !editingBookmarkId || !editingEventId) return;
+
+    const book = getBookById(editingBookId);
+    if (!book) return;
+    const bookmark = Array.isArray(book.bookmarks)
+      ? book.bookmarks.find((b) => b.bookmarkId === editingBookmarkId)
+      : null;
+    if (!bookmark) return;
+    const event = Array.isArray(bookmark.history)
+      ? bookmark.history.find((h) => h.eventId === editingEventId)
+      : null;
+    if (!event) return;
+
+    const nextType = document.getElementById("historyEventType").value.trim();
+    if (!nextType) {
+      alert("History title is required.");
+      return;
+    }
+
+    event.type = nextType;
+    event.note = document.getElementById("historyEventNote").value.trim();
+    bookmark.updatedAt = nowIso();
+    book.updatedAt = bookmark.updatedAt;
+    book.bookmarks.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+    saveState();
+    closeModal("historyEventModal");
+    renderBooksView();
+  }
+
+  function deleteHistoryEvent(bookId, bookmarkId, eventId) {
+    const book = getBookById(bookId);
+    if (!book) return;
+    const bookmark = Array.isArray(book.bookmarks)
+      ? book.bookmarks.find((b) => b.bookmarkId === bookmarkId)
+      : null;
+    if (!bookmark || !Array.isArray(bookmark.history)) return;
+    const event = bookmark.history.find((h) => h.eventId === eventId);
+    if (!event) return;
+
+    openConfirm(
+      "Delete History Event",
+      `Delete history event \"${event.type}\"?`,
+      () => {
+        bookmark.history = bookmark.history.filter(
+          (h) => h.eventId !== eventId,
+        );
+        bookmark.updatedAt = nowIso();
+        book.updatedAt = bookmark.updatedAt;
+        book.bookmarks.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+        saveState();
+        renderBooksView();
+      },
+    );
+  }
+
+  function addReaderHistoryToBookmark(book, bookmark, page) {
+    if (!book || !bookmark) return;
+    const safePage = Math.max(1, parseInt(page, 10) || 1);
+    // Keep the bookmark's main target in sync with the latest reader action.
+    bookmark.pdfPage = safePage;
+    bookmark.updatedAt = nowIso();
+    addBookmarkHistoryEvent(
+      bookmark,
+      "reader-note",
+      `Reader action on PDF page ${safePage}`,
+    );
+    book.bookmarks.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+    book.updatedAt = nowIso();
+    saveState();
+  }
+
+  function addBookmarkOnCurrentReaderPage() {
+    const book = readerState.book;
+    if (!book) return;
+
+    const page = Math.max(1, parseInt(readerState.currentPage, 10) || 1);
+    const sourceBookmark = readerState.sourceBookmarkId
+      ? book.bookmarks.find(
+          (b) => b.bookmarkId === readerState.sourceBookmarkId,
+        )
+      : null;
+    const openedFromSameBookmarkPage =
+      !!sourceBookmark && page === readerState.sourcePage;
+
+    if (openedFromSameBookmarkPage) {
+      addReaderHistoryToBookmark(book, sourceBookmark, page);
+      document.getElementById("readerStatusText").textContent =
+        `History added to \"${sourceBookmark.label}\".`;
+      return;
+    }
+
+    if (!Array.isArray(book.bookmarks) || book.bookmarks.length === 0) {
+      openBookmarkModal(book.bookId, null, { prefillPdfPage: page });
+      return;
+    }
+
+    const useExisting = window.confirm(
+      "Add to an existing bookmark history?\n\nOK: Existing bookmark\nCancel: Create new bookmark on this page",
+    );
+
+    if (!useExisting) {
+      openBookmarkModal(book.bookId, null, { prefillPdfPage: page });
+      return;
+    }
+
+    const options = book.bookmarks
+      .map(
+        (bm, idx) =>
+          `${idx + 1}. ${bm.label} (PDF ${bm.pdfPage}, Real ${formatRealBookPage(bm.realPage)})`,
+      )
+      .join("\n");
+    const picked = window.prompt(
+      `Pick bookmark number to append history:\n${options}`,
+      "1",
+    );
+    if (picked === null) {
+      return;
+    }
+    const index = parseInt(picked, 10) - 1;
+    if (
+      !Number.isInteger(index) ||
+      index < 0 ||
+      index >= book.bookmarks.length
+    ) {
+      alert("Invalid bookmark selection.");
+      return;
+    }
+
+    const selected = book.bookmarks[index];
+    addReaderHistoryToBookmark(book, selected, page);
+    document.getElementById("readerStatusText").textContent =
+      `History added to \"${selected.label}\".`;
+  }
+
+  function openBookmarkInNewTab(bookId, page, bookmarkId) {
+    const bookmarkPart = bookmarkId
+      ? `&bookmark=${encodeURIComponent(bookmarkId)}`
+      : "";
+    const url = `${window.location.pathname}?reader=1&book=${encodeURIComponent(bookId)}&page=${encodeURIComponent(page)}${bookmarkPart}`;
     window.open(url, "_blank", "noopener");
   }
 
@@ -1586,11 +1808,11 @@
           .slice(0, 8)
           .map(
             (h) =>
-              `<li><strong>${sanitize(h.type)}</strong> · ${sanitize(formatIsoForDisplay(h.at))}${h.note ? ` · ${sanitize(h.note)}` : ""}</li>`,
+              `<li><div class='bookmark-history-row'><span><strong>${sanitize(h.type)}</strong> · ${sanitize(formatIsoForDisplay(h.at))}${h.note ? ` · ${sanitize(h.note)}` : ""}</span><span class='bookmark-history-actions'><button class='bookmark-history-btn' type='button' onclick="HabitApp.editHistoryEvent('${book.bookId}', '${bm.bookmarkId}', '${h.eventId}')">Edit</button><button class='bookmark-history-btn danger' type='button' onclick="HabitApp.deleteHistoryEvent('${book.bookId}', '${bm.bookmarkId}', '${h.eventId}')">Delete</button></span></div></li>`,
           )
           .join("");
 
-        return `<article class='bookmark-item'><div class='bookmark-main'><h4>${sanitize(bm.label)}</h4><p>PDF page ${bm.pdfPage} · Real page ${bm.realPage}</p><p>${sanitize(bm.note || "No note")}</p><p class='bookmark-updated'>Updated ${sanitize(formatIsoForDisplay(bm.updatedAt))}</p></div><div class='bookmark-actions'><button class='btn-primary' type='button' onclick="HabitApp.openBookmark('${book.bookId}', ${bm.pdfPage})">Open at Bookmark</button><button class='btn-secondary' type='button' onclick="HabitApp.editBookmark('${book.bookId}', '${bm.bookmarkId}')">Edit</button><button class='btn-danger' type='button' onclick="HabitApp.deleteBookmark('${book.bookId}', '${bm.bookmarkId}')">Delete</button></div><ul class='bookmark-history'>${historyHtml || "<li>No history yet.</li>"}</ul></article>`;
+        return `<article class='bookmark-item'><div class='bookmark-main'><h4>${sanitize(bm.label)}</h4><p>PDF page ${bm.pdfPage} · Real page ${formatRealBookPage(bm.realPage)}</p><p>${sanitize(bm.note || "No note")}</p><p class='bookmark-updated'>Updated ${sanitize(formatIsoForDisplay(bm.updatedAt))}</p></div><div class='bookmark-actions'><button class='btn-primary' type='button' onclick="HabitApp.openBookmark('${book.bookId}', ${bm.pdfPage}, '${bm.bookmarkId}')">Open at Bookmark</button><button class='btn-secondary' type='button' onclick="HabitApp.editBookmark('${book.bookId}', '${bm.bookmarkId}')">Edit</button><button class='btn-danger' type='button' onclick="HabitApp.deleteBookmark('${book.bookId}', '${bm.bookmarkId}')">Delete</button></div><ul class='bookmark-history'>${historyHtml || "<li>No history yet.</li>"}</ul></article>`;
       })
       .join("");
   }
@@ -1694,9 +1916,13 @@
                     `books.items[${i}].bookmarks[${j}].pdfPage must be numeric.`,
                   );
                 }
-                if (!Number.isFinite(Number(bm.realPage))) {
+                const hasRealPageValue =
+                  bm.realPage !== undefined &&
+                  bm.realPage !== null &&
+                  String(bm.realPage).trim() !== "";
+                if (hasRealPageValue && !Number.isFinite(Number(bm.realPage))) {
                   errors.push(
-                    `books.items[${i}].bookmarks[${j}].realPage must be numeric.`,
+                    `books.items[${i}].bookmarks[${j}].realPage must be numeric when provided.`,
                   );
                 }
                 if (bm.history !== undefined && !Array.isArray(bm.history)) {
@@ -1853,6 +2079,7 @@
 
     const bookId = params.get("book") || "";
     const targetPage = Math.max(1, parseInt(params.get("page"), 10) || 1);
+    const sourceBookmarkId = params.get("bookmark") || "";
     const book = getBookById(bookId);
     if (!book) {
       document.getElementById("readerStatusText").textContent =
@@ -1861,6 +2088,8 @@
     }
 
     readerState.book = book;
+    readerState.sourceBookmarkId = sourceBookmarkId || null;
+    readerState.sourcePage = targetPage;
     document.getElementById("readerBookTitle").textContent = book.title;
 
     let blob = null;
@@ -1957,6 +2186,9 @@
     const next = document.getElementById("readerNextPage");
     const go = document.getElementById("readerGoPage");
     const jump = document.getElementById("readerJumpPage");
+    const addBookmarkOnPage = document.getElementById(
+      "readerAddBookmarkOnPage",
+    );
     const darkToggle = document.getElementById("readerDarkToggle");
     const darkMode = document.getElementById("readerDarkMode");
 
@@ -1981,6 +2213,10 @@
 
     darkMode.addEventListener("change", (e) => {
       setReaderDarkMode(e.target.value);
+    });
+
+    addBookmarkOnPage.addEventListener("click", () => {
+      addBookmarkOnCurrentReaderPage();
     });
 
     if (!readerState.resizeHandlerBound) {
@@ -2068,6 +2304,16 @@
     document
       .getElementById("bookmarkModalSave")
       .addEventListener("click", saveBookmark);
+
+    document
+      .getElementById("historyEventModalClose")
+      .addEventListener("click", () => closeModal("historyEventModal"));
+    document
+      .getElementById("historyEventModalCancel")
+      .addEventListener("click", () => closeModal("historyEventModal"));
+    document
+      .getElementById("historyEventModalSave")
+      .addEventListener("click", saveHistoryEventModal);
 
     document
       .getElementById("confirmModalClose")
@@ -2205,8 +2451,12 @@
       openBookmarkModal(bookId, bookmarkId);
     },
     deleteBookmark,
-    openBookmark(bookId, page) {
-      openBookmarkInNewTab(bookId, page);
+    editHistoryEvent(bookId, bookmarkId, eventId) {
+      openHistoryEventModal(bookId, bookmarkId, eventId);
+    },
+    deleteHistoryEvent,
+    openBookmark(bookId, page, bookmarkId) {
+      openBookmarkInNewTab(bookId, page, bookmarkId);
     },
   };
 

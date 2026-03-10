@@ -1082,6 +1082,47 @@ body {
   margin-bottom: 3px;
 }
 
+.bookmark-history-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.bookmark-history-actions {
+  display: inline-flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.bookmark-history-btn {
+  border: 1px solid var(--gray-300);
+  background: var(--purple-100);
+  color: var(--gray-700);
+  font-size: 0.72rem;
+  line-height: 1;
+  padding: 5px 7px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.bookmark-history-btn:hover {
+  color: var(--gray-900);
+  border-color: var(--purple-300);
+}
+
+.bookmark-history-btn.danger {
+  border-color: rgba(239, 68, 68, 0.35);
+  color: #fca5a5;
+}
+
+.bookmark-history-btn.danger:hover {
+  background: var(--danger-light);
+  border-color: rgba(239, 68, 68, 0.55);
+  color: #fecaca;
+}
+
 .reader-mode {
   min-height: 100vh;
   padding: 16px;

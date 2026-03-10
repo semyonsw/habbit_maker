@@ -854,7 +854,7 @@
             />
           </div>
           <div class="form-group">
-            <label for="bookmarkPdfPage">PDF Page</label>
+            <label for="bookmarkPdfPage">PDF Page (required)</label>
             <input
               id="bookmarkPdfPage"
               type="number"
@@ -864,13 +864,13 @@
             />
           </div>
           <div class="form-group">
-            <label for="bookmarkRealPage">Real Page</label>
+            <label for="bookmarkRealPage">Real book page (optional)</label>
             <input
               id="bookmarkRealPage"
               type="number"
               min="1"
               max="99999"
-              value="1"
+              placeholder="N/A"
             />
           </div>
           <div class="form-group">
@@ -885,6 +885,43 @@
         <div class="modal-footer">
           <button class="btn-secondary" id="bookmarkModalCancel">Cancel</button>
           <button class="btn-primary" id="bookmarkModalSave">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- History Event Modal -->
+    <div class="modal-overlay" id="historyEventModal">
+      <div class="modal modal-sm">
+        <div class="modal-header">
+          <h3>Edit History Event</h3>
+          <button class="modal-close" id="historyEventModalClose">
+            &times;
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="historyEventType">History title</label>
+            <input
+              id="historyEventType"
+              type="text"
+              maxlength="40"
+              placeholder="reader-note"
+            />
+          </div>
+          <div class="form-group">
+            <label for="historyEventNote">Note</label>
+            <textarea
+              id="historyEventNote"
+              rows="4"
+              placeholder="Optional details"
+            ></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" id="historyEventModalCancel">
+            Cancel
+          </button>
+          <button class="btn-primary" id="historyEventModalSave">Save</button>
         </div>
       </div>
     </div>
@@ -906,6 +943,13 @@
           <input id="readerJumpPage" type="number" min="1" value="1" />
           <button id="readerGoPage" class="btn-primary" type="button">
             Go
+          </button>
+          <button
+            id="readerAddBookmarkOnPage"
+            class="btn-primary"
+            type="button"
+          >
+            Add bookmark on this page
           </button>
           <button
             id="readerDarkToggle"
