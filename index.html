@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="Habit Maker is a local-first habit tracker for daily and weekly routines with visual progress analytics."
+      content="Habit Maker is a local-first tracker for daily routines and a personal books + PDF bookmark workspace."
     />
     <meta
       name="keywords"
@@ -16,7 +16,7 @@
     <meta property="og:title" content="Habit Maker" />
     <meta
       property="og:description"
-      content="Track daily and weekly habits in a clean, local-first web app."
+      content="Track daily habits and manage books with PDF bookmarks in a clean, local-first web app."
     />
     <meta property="og:type" content="website" />
     <title>Habit Maker | Local-First Habit Tracker</title>
@@ -68,7 +68,7 @@
             </svg>
             <span>Dashboard</span>
           </li>
-          <li class="nav-tab" data-view="weekly" title="Weekly Habits">
+          <li class="nav-tab" data-view="books" title="Books">
             <svg
               width="20"
               height="20"
@@ -77,12 +77,12 @@
               stroke="currentColor"
               stroke-width="2"
             >
-              <rect x="3" y="4" width="18" height="18" rx="2" />
-              <line x1="16" y1="2" x2="16" y2="6" />
-              <line x1="8" y1="2" x2="8" y2="6" />
-              <line x1="3" y1="10" x2="21" y2="10" />
+              <path d="M4 4h13a3 3 0 0 1 3 3v13H7a3 3 0 0 1-3-3z" />
+              <path d="M7 4v13" />
+              <path d="M10 9h7" />
+              <path d="M10 13h7" />
             </svg>
-            <span>Weekly Habits</span>
+            <span>Books</span>
           </li>
           <li class="nav-tab" data-view="manage" title="Manage">
             <svg
@@ -143,6 +143,13 @@
 
       <!-- Main Content -->
       <main class="main-content">
+        <section class="top-clock-wrap" aria-label="Current date and time">
+          <div class="top-clock-card">
+            <p class="top-clock-label">Now</p>
+            <h2 id="topDateTime">March 10, 13:00</h2>
+          </div>
+        </section>
+
         <!-- ======================== DASHBOARD VIEW ======================== -->
         <section class="view active" id="view-dashboard">
           <!-- Month Header -->
@@ -212,6 +219,42 @@
             </div>
           </div>
 
+          <!-- Monthly Review -->
+          <div class="monthly-review-card">
+            <div class="monthly-review-header">
+              <h3>Monthly Review</h3>
+              <button class="btn-primary" id="monthlyReviewSave" type="button">
+                Save Review
+              </button>
+            </div>
+            <div class="monthly-review-grid">
+              <div class="form-group">
+                <label for="monthlyWins">Wins</label>
+                <textarea
+                  id="monthlyWins"
+                  rows="3"
+                  placeholder="What went well this month?"
+                ></textarea>
+              </div>
+              <div class="form-group">
+                <label for="monthlyBlockers">Blockers</label>
+                <textarea
+                  id="monthlyBlockers"
+                  rows="3"
+                  placeholder="What got in your way?"
+                ></textarea>
+              </div>
+              <div class="form-group">
+                <label for="monthlyFocus">Focus for next month</label>
+                <textarea
+                  id="monthlyFocus"
+                  rows="3"
+                  placeholder="Where will you focus next?"
+                ></textarea>
+              </div>
+            </div>
+          </div>
+
           <!-- Daily Habits Grid -->
           <div class="habits-section">
             <div class="habits-header">
@@ -239,68 +282,71 @@
           </div>
         </section>
 
-        <!-- ======================== WEEKLY VIEW ======================== -->
-        <section class="view" id="view-weekly">
-          <div class="month-header">
-            <button class="month-nav" id="prevMonthW">
-              <svg
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-              >
-                <polyline points="15 18 9 12 15 6" />
-              </svg>
-            </button>
-            <div class="month-title">
-              <h2 id="monthNameW">March</h2>
-              <p class="month-subtitle">— WEEKLY HABITS —</p>
-            </div>
-            <button class="month-nav" id="nextMonthW">
-              <svg
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-              >
-                <polyline points="9 18 15 12 9 6" />
-              </svg>
-            </button>
+        <!-- ======================== BOOKS VIEW ======================== -->
+        <section class="view" id="view-books">
+          <div class="books-header">
+            <h2>Books & PDF Bookmarks</h2>
+            <p>Upload PDFs, create bookmarks, and jump directly to pages.</p>
           </div>
 
-          <!-- Weekly Progress Cards -->
-          <div class="weekly-progress-row" id="weeklyProgressRow">
-            <!-- Generated by JS -->
-          </div>
+          <div class="books-layout">
+            <section class="books-card">
+              <div class="books-card-header">
+                <h3>Add PDF Book</h3>
+                <button class="btn-primary" id="btnBookCreate" type="button">
+                  Add Metadata
+                </button>
+              </div>
+              <div class="books-upload-form">
+                <div class="form-group">
+                  <label for="bookTitleInput">Title</label>
+                  <input
+                    id="bookTitleInput"
+                    type="text"
+                    maxlength="120"
+                    placeholder="Book title"
+                  />
+                </div>
+                <div class="form-group">
+                  <label for="bookAuthorInput">Author (optional)</label>
+                  <input
+                    id="bookAuthorInput"
+                    type="text"
+                    maxlength="120"
+                    placeholder="Author"
+                  />
+                </div>
+                <div class="form-group">
+                  <label for="bookPdfInput">PDF File</label>
+                  <input
+                    id="bookPdfInput"
+                    type="file"
+                    accept="application/pdf,.pdf"
+                  />
+                </div>
+                <button class="btn-add" id="btnUploadBook" type="button">
+                  Upload PDF Book
+                </button>
+                <p class="books-help-text">Maximum PDF size: 40MB.</p>
+              </div>
+            </section>
 
-          <!-- Weekly Habits Table -->
-          <div class="habits-section">
-            <div class="habits-header">
-              <h3>Weekly Habits</h3>
-              <button class="btn-add" id="btnAddWeeklyHabit">
-                <svg
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
-                  <line x1="12" y1="5" x2="12" y2="19" />
-                  <line x1="5" y1="12" x2="19" y2="12" />
-                </svg>
-                Add Habit
-              </button>
-            </div>
-            <div class="habits-grid-wrapper">
-              <table class="habits-grid weekly-grid" id="weeklyHabitsGrid">
-                <!-- Generated by JS -->
-              </table>
-            </div>
+            <section class="books-card">
+              <div class="books-card-header">
+                <h3>My Books</h3>
+              </div>
+              <div class="books-list" id="booksList"></div>
+            </section>
+
+            <section class="books-card books-bookmarks">
+              <div class="books-card-header">
+                <h3>Bookmarks</h3>
+                <button class="btn-primary" id="btnAddBookmark" type="button">
+                  Add Bookmark
+                </button>
+              </div>
+              <div id="bookmarksPanel"></div>
+            </section>
           </div>
         </section>
 
@@ -354,30 +400,6 @@
               </button>
             </div>
             <div class="manage-list" id="dailyHabitsList">
-              <!-- Generated by JS -->
-            </div>
-          </div>
-
-          <!-- Weekly Habits Section -->
-          <div class="manage-section">
-            <div class="manage-section-header">
-              <h3>Weekly Habits</h3>
-              <button class="btn-add" id="btnAddWeeklyManage">
-                <svg
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
-                  <line x1="12" y1="5" x2="12" y2="19" />
-                  <line x1="5" y1="12" x2="19" y2="12" />
-                </svg>
-                Add Weekly Habit
-              </button>
-            </div>
-            <div class="manage-list" id="weeklyHabitsList">
               <!-- Generated by JS -->
             </div>
           </div>
@@ -538,7 +560,6 @@
             <label for="habitType">Type</label>
             <select id="habitType">
               <option value="daily">Daily</option>
-              <option value="weekly">Weekly</option>
             </select>
           </div>
           <div class="form-group" id="habitScheduleTypeGroup">
@@ -767,6 +788,149 @@
       </div>
     </div>
 
+    <!-- Note Modal -->
+    <div class="modal-overlay" id="noteModal">
+      <div class="modal modal-sm">
+        <div class="modal-header">
+          <h3 id="noteModalTitle">Daily Note</h3>
+          <button class="modal-close" id="noteModalClose">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="noteText">Note</label>
+            <textarea
+              id="noteText"
+              rows="6"
+              placeholder="Write a quick note for this day..."
+            ></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" id="noteModalCancel">Cancel</button>
+          <button class="btn-primary" id="noteModalSave">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Book Metadata Modal -->
+    <div class="modal-overlay" id="bookModal">
+      <div class="modal modal-sm">
+        <div class="modal-header">
+          <h3 id="bookModalTitle">Add Book Metadata</h3>
+          <button class="modal-close" id="bookModalClose">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="bookModalTitleInput">Title</label>
+            <input id="bookModalTitleInput" type="text" maxlength="120" />
+          </div>
+          <div class="form-group">
+            <label for="bookModalAuthorInput">Author (optional)</label>
+            <input id="bookModalAuthorInput" type="text" maxlength="120" />
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" id="bookModalCancel">Cancel</button>
+          <button class="btn-primary" id="bookModalSave">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bookmark Modal -->
+    <div class="modal-overlay" id="bookmarkModal">
+      <div class="modal">
+        <div class="modal-header">
+          <h3 id="bookmarkModalTitle">Add Bookmark</h3>
+          <button class="modal-close" id="bookmarkModalClose">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="bookmarkLabel">Label</label>
+            <input
+              id="bookmarkLabel"
+              type="text"
+              maxlength="80"
+              placeholder="Chapter 1 intro"
+            />
+          </div>
+          <div class="form-group">
+            <label for="bookmarkPdfPage">PDF Page</label>
+            <input
+              id="bookmarkPdfPage"
+              type="number"
+              min="1"
+              max="99999"
+              value="1"
+            />
+          </div>
+          <div class="form-group">
+            <label for="bookmarkRealPage">Real Page</label>
+            <input
+              id="bookmarkRealPage"
+              type="number"
+              min="1"
+              max="99999"
+              value="1"
+            />
+          </div>
+          <div class="form-group">
+            <label for="bookmarkNote">Note</label>
+            <textarea
+              id="bookmarkNote"
+              rows="4"
+              placeholder="Optional context"
+            ></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" id="bookmarkModalCancel">Cancel</button>
+          <button class="btn-primary" id="bookmarkModalSave">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <section id="readerMode" class="reader-mode" style="display: none">
+      <header class="reader-topbar">
+        <div>
+          <h2 id="readerBookTitle">Reader</h2>
+          <p id="readerStatusText">Loading PDF...</p>
+        </div>
+        <div class="reader-controls">
+          <button id="readerPrevPage" class="btn-secondary" type="button">
+            Prev
+          </button>
+          <span id="readerPageIndicator">0 / 0</span>
+          <button id="readerNextPage" class="btn-secondary" type="button">
+            Next
+          </button>
+          <input id="readerJumpPage" type="number" min="1" value="1" />
+          <button id="readerGoPage" class="btn-primary" type="button">
+            Go
+          </button>
+          <button
+            id="readerDarkToggle"
+            class="btn-secondary"
+            type="button"
+            aria-pressed="false"
+          >
+            Read in dark theme: OFF
+          </button>
+          <select
+            id="readerDarkMode"
+            class="reader-dark-mode"
+            aria-label="Dark reading mode"
+            disabled
+          >
+            <option value="full">Full invert</option>
+            <option value="text">Text-focused</option>
+          </select>
+        </div>
+      </header>
+      <div class="reader-canvas-wrap">
+        <canvas id="readerCanvas"></canvas>
+      </div>
+    </section>
+
     <!-- Mobile Menu Toggle -->
     <button class="mobile-menu-toggle" id="mobileMenuToggle">
       <svg
@@ -783,6 +947,24 @@
       </svg>
     </button>
 
+    <div class="undo-toast" id="undoToast" role="status" aria-live="polite">
+      <span id="undoToastMessage">Action completed.</span>
+      <div class="undo-toast-actions">
+        <button type="button" class="undo-toast-btn" id="undoToastButton">
+          Undo
+        </button>
+        <button
+          type="button"
+          class="undo-toast-close"
+          id="undoToastClose"
+          aria-label="Close"
+        >
+          &times;
+        </button>
+      </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

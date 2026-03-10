@@ -1,13 +1,13 @@
 /* ============================================================
-   HABIT TRACKER — Application Logic
+   HABIT TRACKER + BOOKS MODULE — Application Logic
    ============================================================ */
 
 (function () {
   "use strict";
 
-  // ─── Constants ───────────────────────────────────────────
   const STORAGE_KEY = "habitTracker_v1";
   const SIDEBAR_COLLAPSE_KEY = "habitTracker_sidebarCollapsed_v1";
+  const SCHEMA_VERSION = 3;
   const MONTH_NAMES = [
     "January",
     "February",
@@ -22,15 +22,20 @@
     "November",
     "December",
   ];
-  const WEEKDAY_OPTIONS = [
-    { value: 0, label: "Sunday", shortLabel: "Sun" },
-    { value: 1, label: "Monday", shortLabel: "Mon" },
-    { value: 2, label: "Tuesday", shortLabel: "Tue" },
-    { value: 3, label: "Wednesday", shortLabel: "Wed" },
-    { value: 4, label: "Thursday", shortLabel: "Thu" },
-    { value: 5, label: "Friday", shortLabel: "Fri" },
-    { value: 6, label: "Saturday", shortLabel: "Sat" },
+
+  const MAX_PDF_FILE_SIZE_BYTES = 40 * 1024 * 1024;
+  const MAX_BOOKMARK_HISTORY = 200;
+  const PDF_DB_NAME = "habitTracker_books_pdf_v1";
+  const PDF_DB_VERSION = 1;
+  const PDF_STORE_NAME = "pdfFiles";
+  const PDFJS_SCRIPT_URLS = [
+    "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js",
+    "https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.min.js",
   ];
+  const PDFJS_WORKER_URL =
+    "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  const READER_DARK_ENABLED_KEY = "habitTracker_readerDarkEnabled_v1";
+  const READER_DARK_MODE_KEY = "habitTracker_readerDarkMode_v1";
 
   const DEFAULT_CATEGORIES = [
     { id: "cat_health", name: "Health", emoji: "❤️", color: "#3E85B5" },
@@ -49,13 +54,6 @@
     { id: "cat_music", name: "Music", emoji: "🎵", color: "#F97316" },
   ];
 
-  const LEGACY_CATEGORY_COLOR_MAP = {
-    "#0f1042": "#3E85B5",
-    "#0e1d3e": "#4F6BD8",
-    "#0a0d36": "#2F9E7A",
-    "#05081c": "#7C8CFF",
-  };
-
   const DEFAULT_DAILY_HABITS = [
     {
       id: "dh_1",
@@ -63,8 +61,9 @@
       categoryId: "cat_health",
       monthGoal: 30,
       type: "fixed",
-      excludedDays: [],
+      excludedWeekdays: [],
       emoji: "📖",
+      order: 0,
     },
     {
       id: "dh_2",
@@ -72,141 +71,387 @@
       categoryId: "cat_productivity",
       monthGoal: 28,
       type: "fixed",
-      excludedDays: [],
+      excludedWeekdays: [],
       emoji: "💼",
-    },
-    {
-      id: "dh_3",
-      name: "Afternoon Bible reflection",
-      categoryId: "cat_health",
-      monthGoal: 24,
-      type: "fixed",
-      excludedDays: [],
-      emoji: "🙏",
-    },
-    {
-      id: "dh_4",
-      name: "Plan and write tomorrow tasks",
-      categoryId: "cat_productivity",
-      monthGoal: 24,
-      type: "fixed",
-      excludedDays: [],
-      emoji: "📝",
-    },
-    {
-      id: "dh_5",
-      name: "Drink 2L+ water",
-      categoryId: "cat_health",
-      monthGoal: 24,
-      type: "fixed",
-      excludedDays: [],
-      emoji: "💧",
-    },
-    {
-      id: "dh_6",
-      name: "Evening spiritual reading",
-      categoryId: "cat_study",
-      monthGoal: 24,
-      type: "fixed",
-      excludedDays: [],
-      emoji: "📕",
-    },
-    {
-      id: "dh_7",
-      name: "Gym workout",
-      categoryId: "cat_fitness",
-      monthGoal: 16,
-      type: "fixed",
-      excludedDays: [],
-      emoji: "💪",
-    },
-    {
-      id: "dh_8",
-      name: "Read or study book",
-      categoryId: "cat_study",
-      monthGoal: 14,
-      type: "fixed",
-      excludedDays: [],
-      emoji: "📚",
-    },
-    {
-      id: "dh_9",
-      name: "Morning sunlight walk",
-      categoryId: "cat_health",
-      monthGoal: 18,
-      type: "fixed",
-      excludedDays: [],
-      emoji: "☀️",
+      order: 1,
     },
   ];
 
-  const HISTORICAL_DAILY_HABITS = DEFAULT_DAILY_HABITS.map((h) => ({ ...h }));
-
-  const HISTORICAL_WEEKLY_HABITS = [
-    {
-      id: "wh_church",
-      name: "Go to church",
-      order: 0,
-    },
-  ];
-
-  const DEFAULT_WEEKLY_HABITS = [
-    { id: "wh_1", name: "Eat healthy breakfast", order: 0 },
-    { id: "wh_2", name: "Walk with a friend", order: 1 },
-    { id: "wh_3", name: "Eat 100g protein", order: 2 },
-    { id: "wh_4", name: "Make bed", order: 3 },
-    { id: "wh_5", name: "Plan tomorrow's meals", order: 4 },
-    { id: "wh_6", name: "Compliment someone", order: 5 },
-    { id: "wh_7", name: "Organize workspace", order: 6 },
-    { id: "wh_8", name: "Prep healthy lunches", order: 7 },
-    { id: "wh_9", name: "Go for a 30 minute run", order: 8 },
-    { id: "wh_10", name: "Make quick lunches", order: 9 },
-    { id: "wh_11", name: "Do yoga in the morning", order: 10 },
-    { id: "wh_12", name: "Track daily meals (LI friend)", order: 11 },
-    { id: "wh_13", name: "Take a multivitamin", order: 12 },
-    { id: "wh_14", name: "Weigh-in", order: 13 },
-    { id: "wh_15", name: "Read one chapter of a book", order: 14 },
-    { id: "wh_16", name: "Journal wins and reflections", order: 15 },
-    { id: "wh_17", name: "Go to church", order: 16 },
-  ];
-
-  // ─── State ───────────────────────────────────────────────
-  // Single source of truth for UI rendering and persistence.
   let state = null;
   let chartInstances = {};
-  let dragState = null;
   let sidebarCollapsed = false;
+  let noteModalState = { habitId: null, day: null };
+  let bookModalState = { editingBookId: null };
+  let bookmarkModalState = { editingBookId: null, editingBookmarkId: null };
+  let confirmCallback = null;
+  let editingHabitId = null;
+  let editingCategoryId = null;
+  let idbPromise = null;
+  let booksBlobStatus = {};
+  let topClockTimer = null;
 
-  // ─── Utility ─────────────────────────────────────────────
-  function uid() {
-    return (
-      Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8)
+  const readerState = {
+    pdfDoc: null,
+    book: null,
+    currentPage: 1,
+    totalPages: 0,
+    renderTask: null,
+    resizeHandlerBound: false,
+    resizeTimer: null,
+    darkEnabled: false,
+    darkMode: "full",
+  };
+
+  function loadReaderThemePreferences() {
+    readerState.darkEnabled =
+      localStorage.getItem(READER_DARK_ENABLED_KEY) === "1";
+    const savedMode = localStorage.getItem(READER_DARK_MODE_KEY);
+    readerState.darkMode = savedMode === "text" ? "text" : "full";
+  }
+
+  function persistReaderThemePreferences() {
+    localStorage.setItem(
+      READER_DARK_ENABLED_KEY,
+      readerState.darkEnabled ? "1" : "0",
     );
+    localStorage.setItem(READER_DARK_MODE_KEY, readerState.darkMode);
+  }
+
+  function applyReaderThemeClasses() {
+    const root = document.getElementById("readerMode");
+    const canvas = document.getElementById("readerCanvas");
+    if (!root || !canvas) return;
+
+    root.classList.toggle("reader-dark-enabled", readerState.darkEnabled);
+    canvas.classList.toggle("reader-dark-full", false);
+    canvas.classList.toggle("reader-dark-text", false);
+
+    if (readerState.darkEnabled) {
+      canvas.classList.add(
+        readerState.darkMode === "text"
+          ? "reader-dark-text"
+          : "reader-dark-full",
+      );
+    }
+  }
+
+  function updateReaderThemeControls() {
+    const toggle = document.getElementById("readerDarkToggle");
+    const mode = document.getElementById("readerDarkMode");
+    if (!toggle || !mode) return;
+
+    toggle.setAttribute("aria-pressed", String(readerState.darkEnabled));
+    toggle.textContent = readerState.darkEnabled
+      ? "Read in dark theme: ON"
+      : "Read in dark theme: OFF";
+
+    mode.value = readerState.darkMode;
+    mode.disabled = !readerState.darkEnabled;
+  }
+
+  function toggleReaderDarkTheme() {
+    readerState.darkEnabled = !readerState.darkEnabled;
+    persistReaderThemePreferences();
+    applyReaderThemeClasses();
+    updateReaderThemeControls();
+  }
+
+  function setReaderDarkMode(mode) {
+    readerState.darkMode = mode === "text" ? "text" : "full";
+    persistReaderThemePreferences();
+    applyReaderThemeClasses();
+    updateReaderThemeControls();
+  }
+
+  function uid(prefix) {
+    return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
   }
 
   function monthKey(year, month) {
     return `${year}-${String(month + 1).padStart(2, "0")}`;
   }
 
-  function daysInMonth(year, month) {
-    return new Date(year, month + 1, 0).getDate();
-  }
-
-  function getWeekNumber(day, totalDays) {
-    // Week 1 = days 1-7, Week 2 = 8-14, etc.
-    return Math.min(Math.ceil(day / 7), 5);
-  }
-
-  function getWeekRange(weekNum, totalDays) {
-    const start = (weekNum - 1) * 7 + 1;
-    const end = Math.min(weekNum * 7, totalDays);
-    return { start, end };
+  function formatDateKey(year, month, day) {
+    return `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
   }
 
   function sanitize(str) {
     const div = document.createElement("div");
-    div.textContent = str;
+    div.textContent = String(str || "");
     return div.innerHTML;
+  }
+
+  function isPlainObject(value) {
+    return !!value && typeof value === "object" && !Array.isArray(value);
+  }
+
+  function nowIso() {
+    return new Date().toISOString();
+  }
+
+  function formatIsoForDisplay(iso) {
+    if (!iso) return "-";
+    const dt = new Date(iso);
+    if (Number.isNaN(dt.getTime())) return String(iso);
+    return dt.toLocaleString();
+  }
+
+  function formatTopClockDateTime(date) {
+    return date.toLocaleString(undefined, {
+      month: "long",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+  }
+
+  function updateTopClock() {
+    const topDateTime = document.getElementById("topDateTime");
+    if (!topDateTime) return;
+    topDateTime.textContent = formatTopClockDateTime(new Date());
+  }
+
+  function initTopClock() {
+    updateTopClock();
+    if (topClockTimer) {
+      clearInterval(topClockTimer);
+    }
+    topClockTimer = setInterval(updateTopClock, 1000);
+  }
+
+  function daysInMonth(year, month) {
+    return new Date(year, month + 1, 0).getDate();
+  }
+
+  function getDefaultMonthData() {
+    return {
+      dailyCompletions: {},
+      dailyNotes: {},
+      monthlyReview: { wins: "", blockers: "", focus: "" },
+    };
+  }
+
+  function ensureMonthDataShape(monthData) {
+    if (!isPlainObject(monthData.dailyCompletions)) {
+      monthData.dailyCompletions = {};
+    }
+    if (!isPlainObject(monthData.dailyNotes)) {
+      monthData.dailyNotes = {};
+    }
+    if (!isPlainObject(monthData.monthlyReview)) {
+      monthData.monthlyReview = {};
+    }
+    monthData.monthlyReview.wins = String(monthData.monthlyReview.wins || "");
+    monthData.monthlyReview.blockers = String(
+      monthData.monthlyReview.blockers || "",
+    );
+    monthData.monthlyReview.focus = String(monthData.monthlyReview.focus || "");
+    return monthData;
+  }
+
+  function ensureBooksShape(input) {
+    if (!isPlainObject(input.books)) {
+      input.books = { items: [], activeBookId: null };
+    }
+    if (!Array.isArray(input.books.items)) {
+      input.books.items = [];
+    }
+    if (typeof input.books.activeBookId !== "string") {
+      input.books.activeBookId = null;
+    }
+
+    input.books.items = input.books.items
+      .filter((book) => isPlainObject(book) && typeof book.bookId === "string")
+      .map((book) => {
+        const createdAt = String(book.createdAt || nowIso());
+        const updatedAt = String(book.updatedAt || createdAt);
+        const cleanBook = {
+          bookId: String(book.bookId),
+          title:
+            String(book.title || "Untitled Book").trim() || "Untitled Book",
+          author: book.author ? String(book.author) : "",
+          fileId: String(book.fileId || uid("file")),
+          fileName: String(book.fileName || "unknown.pdf"),
+          fileSize: Number.isFinite(book.fileSize)
+            ? Math.max(0, book.fileSize)
+            : 0,
+          createdAt,
+          updatedAt,
+          bookmarks: [],
+        };
+
+        const rawBookmarks = Array.isArray(book.bookmarks)
+          ? book.bookmarks
+          : [];
+        cleanBook.bookmarks = rawBookmarks
+          .filter(
+            (bm) =>
+              isPlainObject(bm) &&
+              typeof bm.bookmarkId === "string" &&
+              Number.isFinite(Number(bm.pdfPage)),
+          )
+          .map((bm) => {
+            const bmCreatedAt = String(bm.createdAt || nowIso());
+            const bmUpdatedAt = String(bm.updatedAt || bmCreatedAt);
+            const history = Array.isArray(bm.history) ? bm.history : [];
+            return {
+              bookmarkId: String(bm.bookmarkId),
+              label: String(bm.label || "Bookmark").trim() || "Bookmark",
+              pdfPage: Math.max(1, parseInt(bm.pdfPage, 10) || 1),
+              realPage: Math.max(1, parseInt(bm.realPage, 10) || 1),
+              note: String(bm.note || ""),
+              createdAt: bmCreatedAt,
+              updatedAt: bmUpdatedAt,
+              history: history
+                .filter((h) => isPlainObject(h))
+                .map((h) => ({
+                  eventId: String(h.eventId || uid("hist")),
+                  type: String(h.type || "updated"),
+                  at: String(h.at || bmUpdatedAt),
+                  note: String(h.note || ""),
+                }))
+                .sort((a, b) => (a.at < b.at ? 1 : -1))
+                .slice(0, MAX_BOOKMARK_HISTORY),
+            };
+          })
+          .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+
+        return cleanBook;
+      });
+  }
+
+  function getDefaultState() {
+    const now = new Date();
+    const key = monthKey(now.getFullYear(), now.getMonth());
+    return {
+      currentYear: now.getFullYear(),
+      currentMonth: now.getMonth(),
+      categories: JSON.parse(JSON.stringify(DEFAULT_CATEGORIES)),
+      habits: {
+        daily: DEFAULT_DAILY_HABITS.map((h, idx) => ({ ...h, order: idx })),
+      },
+      months: {
+        [key]: getDefaultMonthData(),
+      },
+      books: {
+        items: [],
+        activeBookId: null,
+      },
+      meta: {
+        schemaVersion: SCHEMA_VERSION,
+      },
+    };
+  }
+
+  function migrateState() {
+    if (!isPlainObject(state)) {
+      state = getDefaultState();
+      return;
+    }
+
+    if (!Array.isArray(state.categories)) {
+      state.categories = JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
+    }
+
+    if (!isPlainObject(state.habits)) {
+      state.habits = { daily: [] };
+    }
+    if (!Array.isArray(state.habits.daily)) {
+      state.habits.daily = [];
+    }
+    // Purge removed weekly schema and persisted fields.
+    delete state.habits.weekly;
+
+    if (!isPlainObject(state.months)) {
+      state.months = {};
+    }
+    Object.keys(state.months).forEach((key) => {
+      if (!isPlainObject(state.months[key])) {
+        state.months[key] = getDefaultMonthData();
+      }
+      delete state.months[key].weeklyCompletions;
+      ensureMonthDataShape(state.months[key]);
+    });
+
+    state.habits.daily.forEach((habit, idx) => {
+      habit.id = String(habit.id || uid("dh"));
+      habit.name = String(habit.name || "Habit");
+      habit.categoryId = String(habit.categoryId || "");
+      habit.monthGoal = Math.max(1, parseInt(habit.monthGoal, 10) || 20);
+      habit.type = habit.type === "dynamic" ? "dynamic" : "fixed";
+      if (!Array.isArray(habit.excludedWeekdays)) {
+        const legacy = Array.isArray(habit.excludedDays)
+          ? habit.excludedDays
+          : [];
+        habit.excludedWeekdays = legacy
+          .map((d) => parseInt(d, 10))
+          .filter((d) => Number.isInteger(d) && d >= 0 && d <= 6);
+      }
+      habit.excludedWeekdays = [...new Set(habit.excludedWeekdays)]
+        .filter((d) => Number.isInteger(d) && d >= 0 && d <= 6)
+        .sort((a, b) => a - b);
+      delete habit.excludedDays;
+      habit.emoji = String(habit.emoji || "📌");
+      habit.order = Number.isInteger(habit.order) ? habit.order : idx;
+    });
+    state.habits.daily.sort((a, b) => a.order - b.order);
+    state.habits.daily.forEach((h, idx) => {
+      h.order = idx;
+    });
+
+    ensureBooksShape(state);
+
+    if (!isPlainObject(state.meta)) {
+      state.meta = {};
+    }
+    state.meta.schemaVersion = SCHEMA_VERSION;
+
+    if (!Number.isInteger(state.currentYear)) {
+      state.currentYear = new Date().getFullYear();
+    }
+    if (
+      !Number.isInteger(state.currentMonth) ||
+      state.currentMonth < 0 ||
+      state.currentMonth > 11
+    ) {
+      state.currentMonth = new Date().getMonth();
+    }
+  }
+
+  function ensureMonthData() {
+    const key = monthKey(state.currentYear, state.currentMonth);
+    if (!state.months[key]) {
+      state.months[key] = getDefaultMonthData();
+    }
+    ensureMonthDataShape(state.months[key]);
+  }
+
+  function getCurrentMonthData() {
+    ensureMonthData();
+    return state.months[monthKey(state.currentYear, state.currentMonth)];
+  }
+
+  function loadState() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        state = JSON.parse(raw);
+        migrateState();
+        ensureMonthData();
+        saveState();
+        return;
+      }
+    } catch (error) {
+      console.warn("Failed to load state, using defaults", error);
+    }
+
+    state = getDefaultState();
+    saveState();
+  }
+
+  function saveState() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   }
 
   function getCategoryById(categoryId) {
@@ -219,258 +464,33 @@
     return cat ? cat.emoji : "📌";
   }
 
-  function getSortedHabits(type) {
-    return [...state.habits[type]].sort(
-      (a, b) =>
-        (a.order ?? Number.MAX_SAFE_INTEGER) -
-        (b.order ?? Number.MAX_SAFE_INTEGER),
+  function isHabitTrackedOnDate(habit, year, month, day) {
+    if (!habit || habit.type !== "dynamic") return true;
+    const weekday = new Date(year, month, day).getDay();
+    return !habit.excludedWeekdays.includes(weekday);
+  }
+
+  function getSortedDailyHabits() {
+    return [...state.habits.daily].sort(
+      (a, b) => (a.order || 0) - (b.order || 0),
     );
   }
 
-  function resequenceHabitOrder(type) {
-    const sorted = getSortedHabits(type);
-    sorted.forEach((h, idx) => {
-      h.order = idx;
-    });
-  }
-
-  function isDayExcluded(habit, day) {
-    if (habit.type !== "dynamic") return false;
-    if (
-      Array.isArray(habit.excludedWeekdays) &&
-      habit.excludedWeekdays.length
-    ) {
-      const weekday = new Date(
-        state.currentYear,
-        state.currentMonth,
-        day,
-      ).getDay();
-      return habit.excludedWeekdays.includes(weekday);
-    }
-    // Legacy fallback for pre-weekday data shape.
-    return Array.isArray(habit.excludedDays)
-      ? habit.excludedDays.includes(day)
-      : false;
-  }
-
-  function getDailyHabitActiveDays(habit, totalDays) {
-    let activeDays = 0;
-    for (let d = 1; d <= totalDays; d++) {
-      if (!isDayExcluded(habit, d)) activeDays++;
-    }
-    return activeDays;
-  }
-
-  function normalizeHabitName(name) {
-    return String(name || "")
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, " ")
-      .trim();
-  }
-
-  function seedHistoricalHabitsIfNeeded() {
-    if (!state.meta || typeof state.meta !== "object") {
-      state.meta = {};
-    }
-    if (state.meta.seededFromOldTasksV1) {
-      return;
-    }
-
-    const dailyNames = new Set(
-      state.habits.daily.map((h) => normalizeHabitName(h.name)),
-    );
-    HISTORICAL_DAILY_HABITS.forEach((habit) => {
-      const normalized = normalizeHabitName(habit.name);
-      if (dailyNames.has(normalized)) return;
-      state.habits.daily.push({
-        id: "dh_" + uid(),
-        name: habit.name,
-        categoryId: habit.categoryId,
-        monthGoal: habit.monthGoal,
-        type: "fixed",
-        excludedDays: [],
-        excludedWeekdays: [],
-        emoji: habit.emoji,
-        order: state.habits.daily.length,
-      });
-      dailyNames.add(normalized);
-    });
-
-    const weeklyNames = new Set(
-      state.habits.weekly.map((h) => normalizeHabitName(h.name)),
-    );
-    HISTORICAL_WEEKLY_HABITS.forEach((habit) => {
-      const normalized = normalizeHabitName(habit.name);
-      if (weeklyNames.has(normalized)) return;
-      state.habits.weekly.push({
-        id: "wh_" + uid(),
-        name: habit.name,
-        order: state.habits.weekly.length,
-      });
-      weeklyNames.add(normalized);
-    });
-
-    state.meta.seededFromOldTasksV1 = true;
-  }
-
-  function migrateState() {
-    if (!state.categories || !Array.isArray(state.categories)) {
-      state.categories = JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
-    }
-
-    state.categories.forEach((category) => {
-      const normalizedColor = String(category.color || "").toLowerCase();
-      if (LEGACY_CATEGORY_COLOR_MAP[normalizedColor]) {
-        category.color = LEGACY_CATEGORY_COLOR_MAP[normalizedColor];
-      }
-    });
-
-    if (!state.habits || typeof state.habits !== "object") {
-      state.habits = { daily: [], weekly: [] };
-    }
-    if (!Array.isArray(state.habits.daily)) {
-      state.habits.daily = [];
-    }
-    if (!Array.isArray(state.habits.weekly)) {
-      state.habits.weekly = [];
-    }
-    if (!state.months || typeof state.months !== "object") {
-      state.months = {};
-    }
-    if (!state.meta || typeof state.meta !== "object") {
-      state.meta = {};
-    }
-
-    seedHistoricalHabitsIfNeeded();
-
+  function updateHabitOrder() {
+    state.habits.daily = getSortedDailyHabits();
     state.habits.daily.forEach((h, idx) => {
-      if (h.order === undefined) h.order = idx;
-      if (h.type !== "dynamic" && h.type !== "fixed") h.type = "fixed";
-      if (!Array.isArray(h.excludedDays)) h.excludedDays = [];
-      h.excludedDays = [
-        ...new Set(
-          h.excludedDays
-            .map((d) => parseInt(d, 10))
-            .filter((d) => Number.isInteger(d) && d >= 1 && d <= 31),
-        ),
-      ].sort((a, b) => a - b);
-      if (!Array.isArray(h.excludedWeekdays)) h.excludedWeekdays = [];
-      if (h.excludedWeekdays.length === 0 && h.excludedDays.length > 0) {
-        h.excludedWeekdays = [
-          ...new Set(
-            h.excludedDays.map((d) =>
-              new Date(state.currentYear, state.currentMonth, d).getDay(),
-            ),
-          ),
-        ];
-      }
-      h.excludedWeekdays = [
-        ...new Set(
-          h.excludedWeekdays
-            .map((d) => parseInt(d, 10))
-            .filter((d) => Number.isInteger(d) && d >= 0 && d <= 6),
-        ),
-      ].sort((a, b) => a - b);
-      if (!h.emoji) {
-        const cat = state.categories.find((c) => c.id === h.categoryId);
-        h.emoji = cat ? cat.emoji : "📌";
-      }
-    });
-
-    state.habits.weekly.forEach((h, idx) => {
-      if (h.order === undefined) h.order = idx;
-    });
-
-    resequenceHabitOrder("daily");
-    resequenceHabitOrder("weekly");
-  }
-
-  function moveHabit(type, draggedId, targetId) {
-    if (!draggedId || !targetId || draggedId === targetId) return;
-    const sorted = getSortedHabits(type);
-    const from = sorted.findIndex((h) => h.id === draggedId);
-    const to = sorted.findIndex((h) => h.id === targetId);
-    if (from < 0 || to < 0) return;
-    const [moved] = sorted.splice(from, 1);
-    sorted.splice(to, 0, moved);
-    sorted.forEach((h, idx) => {
       h.order = idx;
     });
-    saveState();
-    renderAll();
   }
 
-  // ─── State Persistence ───────────────────────────────────
-  function getDefaultState() {
-    const now = new Date();
-    const key = monthKey(now.getFullYear(), now.getMonth());
-    return {
-      currentYear: now.getFullYear(),
-      currentMonth: now.getMonth(), // 0-indexed
-      categories: JSON.parse(JSON.stringify(DEFAULT_CATEGORIES)),
-      habits: {
-        daily: DEFAULT_DAILY_HABITS.map((h, idx) => ({ ...h, order: idx })),
-        weekly: DEFAULT_WEEKLY_HABITS.map((h) => ({ ...h })),
-      },
-      months: {
-        [key]: { dailyCompletions: {}, weeklyCompletions: {} },
-      },
-    };
-  }
-
-  function loadState() {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        state = JSON.parse(raw);
-        migrateState();
-        // Ensure current month data exists
-        ensureMonthData();
-        saveState();
-        return;
-      }
-    } catch (e) {
-      console.warn("Failed to load state, using defaults", e);
-    }
-    state = getDefaultState();
-    saveState();
-  }
-
-  function saveState() {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch (e) {
-      console.error("Failed to save state", e);
-    }
-  }
-
-  function ensureMonthData() {
-    const key = monthKey(state.currentYear, state.currentMonth);
-    if (!state.months[key]) {
-      state.months[key] = { dailyCompletions: {}, weeklyCompletions: {} };
-    }
-    if (!state.months[key].dailyCompletions) {
-      state.months[key].dailyCompletions = {};
-    }
-    if (!state.months[key].weeklyCompletions) {
-      state.months[key].weeklyCompletions = {};
-    }
-  }
-
-  function getCurrentMonthData() {
-    const key = monthKey(state.currentYear, state.currentMonth);
-    return state.months[key];
-  }
-
-  // ─── Navigation ──────────────────────────────────────────
   function navigateMonth(delta) {
     state.currentMonth += delta;
     if (state.currentMonth > 11) {
       state.currentMonth = 0;
-      state.currentYear++;
+      state.currentYear += 1;
     } else if (state.currentMonth < 0) {
       state.currentMonth = 11;
-      state.currentYear--;
+      state.currentYear -= 1;
     }
     ensureMonthData();
     saveState();
@@ -480,97 +500,68 @@
   function switchView(viewId) {
     document
       .querySelectorAll(".view")
-      .forEach((v) => v.classList.remove("active"));
+      .forEach((view) => view.classList.remove("active"));
     document
       .querySelectorAll(".nav-tab")
-      .forEach((t) => t.classList.remove("active"));
-    document.getElementById("view-" + viewId).classList.add("active");
-    document
-      .querySelector(`.nav-tab[data-view="${viewId}"]`)
-      .classList.add("active");
-    // Close mobile sidebar
+      .forEach((tab) => tab.classList.remove("active"));
+
+    const viewEl = document.getElementById(`view-${viewId}`);
+    if (viewEl) viewEl.classList.add("active");
+
+    const tabEl = document.querySelector(`.nav-tab[data-view="${viewId}"]`);
+    if (tabEl) tabEl.classList.add("active");
+
     document.querySelector(".sidebar").classList.remove("open");
-  }
 
-  function isDesktopViewport() {
-    return window.innerWidth > 768;
-  }
-
-  function applySidebarCollapseState() {
-    const sidebar = document.querySelector(".sidebar");
-    const toggle = document.getElementById("sidebarCollapseToggle");
-    if (!sidebar || !toggle) return;
-
-    const effectiveCollapsed = sidebarCollapsed && isDesktopViewport();
-    sidebar.classList.toggle("collapsed", effectiveCollapsed);
-    toggle.setAttribute("aria-expanded", String(!effectiveCollapsed));
-    toggle.setAttribute(
-      "aria-label",
-      effectiveCollapsed ? "Expand sidebar" : "Collapse sidebar",
-    );
-    toggle.title = effectiveCollapsed ? "Expand sidebar" : "Collapse sidebar";
-  }
-
-  function setSidebarCollapsed(collapsed, persist = true) {
-    sidebarCollapsed = !!collapsed;
-    applySidebarCollapseState();
-    if (persist) {
-      localStorage.setItem(SIDEBAR_COLLAPSE_KEY, sidebarCollapsed ? "1" : "0");
+    if (viewId === "books") {
+      renderBooksView();
     }
   }
 
-  function initSidebarCollapse() {
-    sidebarCollapsed = localStorage.getItem(SIDEBAR_COLLAPSE_KEY) === "1";
-    applySidebarCollapseState();
-  }
-
-  // ─── Rendering: Dashboard ────────────────────────────────
-  function renderAll() {
-    renderMonthHeader();
-    renderSummary();
-    renderWeeklySummaryCards();
-    renderDailyBarChart();
-    renderCategoryBarChart();
-    renderDailyHabitsGrid();
-    renderWeeklyView();
-    renderManageView();
-  }
-
   function renderMonthHeader() {
-    const name = `${MONTH_NAMES[state.currentMonth]}`;
-    document.getElementById("monthName").textContent = name;
-    const wEl = document.getElementById("monthNameW");
-    if (wEl) wEl.textContent = name;
+    const name = `${MONTH_NAMES[state.currentMonth]} ${state.currentYear}`;
+    const monthName = document.getElementById("monthName");
+    if (monthName) monthName.textContent = name;
   }
 
   function renderSummary() {
-    const data = getCurrentMonthData();
+    const monthData = getCurrentMonthData();
+    const habits = getSortedDailyHabits();
     const totalDays = daysInMonth(state.currentYear, state.currentMonth);
-    const habits = getSortedHabits("daily");
 
     let completed = 0;
     let goal = 0;
 
-    habits.forEach((h) => {
-      const activeDays = getDailyHabitActiveDays(h, totalDays);
-      const effectiveGoal = Math.min(h.monthGoal || totalDays, activeDays);
-      goal += effectiveGoal;
+    habits.forEach((habit) => {
+      let activeDays = 0;
       for (let d = 1; d <= totalDays; d++) {
-        if (isDayExcluded(h, d)) continue;
-        if (data.dailyCompletions[h.id] && data.dailyCompletions[h.id][d]) {
-          completed++;
+        if (
+          !isHabitTrackedOnDate(habit, state.currentYear, state.currentMonth, d)
+        ) {
+          continue;
+        }
+        activeDays += 1;
+        if (
+          monthData.dailyCompletions[habit.id] &&
+          monthData.dailyCompletions[habit.id][d]
+        ) {
+          completed += 1;
         }
       }
+      goal += Math.min(habit.monthGoal || totalDays, activeDays);
     });
 
-    document.getElementById("totalCompleted").textContent = completed;
-    document.getElementById("totalGoal").textContent = goal;
+    const totalCompleted = document.getElementById("totalCompleted");
+    const totalGoal = document.getElementById("totalGoal");
+    if (totalCompleted) totalCompleted.textContent = String(completed);
+    if (totalGoal) totalGoal.textContent = String(goal);
 
     const pct = goal > 0 ? Math.round((completed / goal) * 100) : 0;
-    renderDonut("summaryDonut", pct, 120, 120);
+    renderDonut("summaryDonut", pct);
   }
 
-  function renderDonut(canvasId, pct, w, h) {
+  function renderDonut(canvasId, pct) {
+    if (typeof Chart === "undefined") return;
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
 
@@ -587,7 +578,6 @@
             data: [pct, 100 - pct],
             backgroundColor: ["#58a5d1", "#1a2840"],
             borderWidth: 0,
-            borderRadius: 6,
           },
         ],
       },
@@ -595,72 +585,20 @@
         cutout: "72%",
         responsive: false,
         maintainAspectRatio: false,
-        plugins: {
-          legend: { display: false },
-          tooltip: { enabled: false },
-        },
+        plugins: { legend: { display: false }, tooltip: { enabled: false } },
       },
       plugins: [
         {
           id: "centerText",
           afterDraw(chart) {
-            const { ctx, width, height } = chart;
-            ctx.save();
-            ctx.font = "bold 20px Inter, sans-serif";
-            ctx.fillStyle = "#d5e2f5";
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            ctx.fillText(pct + "%", width / 2, height / 2);
-            ctx.restore();
-          },
-        },
-      ],
-    });
-  }
-
-  function renderMiniDonut(canvas, pct) {
-    if (!canvas) return;
-    const id = canvas.id || "mc_" + uid();
-    canvas.id = id;
-
-    if (chartInstances[id]) {
-      chartInstances[id].destroy();
-    }
-
-    const ctx = canvas.getContext("2d");
-    chartInstances[id] = new Chart(ctx, {
-      type: "doughnut",
-      data: {
-        datasets: [
-          {
-            data: [pct, 100 - pct],
-            backgroundColor: ["#58a5d1", "#1a2840"],
-            borderWidth: 0,
-            borderRadius: 4,
-          },
-        ],
-      },
-      options: {
-        cutout: "68%",
-        responsive: false,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { display: false },
-          tooltip: { enabled: false },
-        },
-      },
-      plugins: [
-        {
-          id: "centerText",
-          afterDraw(chart) {
-            const { ctx, width, height } = chart;
-            ctx.save();
-            ctx.font = "bold 13px Inter, sans-serif";
-            ctx.fillStyle = "#d5e2f5";
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            ctx.fillText(pct + "%", width / 2, height / 2);
-            ctx.restore();
+            const { ctx: c, width, height } = chart;
+            c.save();
+            c.font = "bold 20px Inter, sans-serif";
+            c.fillStyle = "#d5e2f5";
+            c.textAlign = "center";
+            c.textBaseline = "middle";
+            c.fillText(`${pct}%`, width / 2, height / 2);
+            c.restore();
           },
         },
       ],
@@ -669,199 +607,165 @@
 
   function renderWeeklySummaryCards() {
     const container = document.getElementById("weeklySummaryCards");
-    const data = getCurrentMonthData();
+    if (!container) return;
+
+    const monthData = getCurrentMonthData();
+    const habits = getSortedDailyHabits();
     const totalDays = daysInMonth(state.currentYear, state.currentMonth);
-    const habits = getSortedHabits("daily");
-    const numWeeks = Math.ceil(totalDays / 7);
+    const maxWeek = Math.min(5, Math.ceil(totalDays / 7));
 
     let html = "";
-    for (let w = 1; w <= Math.min(numWeeks, 5); w++) {
-      const range = getWeekRange(w, totalDays);
-      let completed = 0;
-      let total = 0;
+    for (let week = 1; week <= maxWeek; week++) {
+      const start = (week - 1) * 7 + 1;
+      const end = Math.min(week * 7, totalDays);
+      let done = 0;
+      let possible = 0;
 
-      habits.forEach((h) => {
-        for (let d = range.start; d <= range.end; d++) {
-          if (isDayExcluded(h, d)) continue;
-          total++;
-          if (data.dailyCompletions[h.id] && data.dailyCompletions[h.id][d]) {
-            completed++;
+      habits.forEach((habit) => {
+        for (let day = start; day <= end; day++) {
+          if (
+            !isHabitTrackedOnDate(
+              habit,
+              state.currentYear,
+              state.currentMonth,
+              day,
+            )
+          ) {
+            continue;
+          }
+          possible += 1;
+          if (
+            monthData.dailyCompletions[habit.id] &&
+            monthData.dailyCompletions[habit.id][day]
+          ) {
+            done += 1;
           }
         }
       });
 
-      const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
-      const canvasId = `weekDonut_${w}`;
-      html += `
-                <div class="week-card">
-                    <span class="week-card-title">Week ${w}</span>
-                    <canvas id="${canvasId}" width="70" height="70"></canvas>
-                </div>`;
+      const pct = possible > 0 ? Math.round((done / possible) * 100) : 0;
+      html += `<div class="week-card"><span class="week-card-title">Week ${week}</span><div class="week-pct">${pct}%</div></div>`;
     }
-    container.innerHTML = html;
 
-    // Render mini donuts after DOM update
-    for (let w = 1; w <= Math.min(numWeeks, 5); w++) {
-      const range = getWeekRange(w, totalDays);
-      let completed = 0,
-        total = 0;
-      habits.forEach((h) => {
-        for (let d = range.start; d <= range.end; d++) {
-          if (isDayExcluded(h, d)) continue;
-          total++;
-          if (data.dailyCompletions[h.id] && data.dailyCompletions[h.id][d])
-            completed++;
-        }
-      });
-      const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
-      renderMiniDonut(document.getElementById(`weekDonut_${w}`), pct);
-    }
+    container.innerHTML = html;
   }
 
-  // ─── Charts ──────────────────────────────────────────────
   function renderDailyBarChart() {
-    const data = getCurrentMonthData();
+    if (typeof Chart === "undefined") return;
+    const canvas = document.getElementById("dailyBarChart");
+    if (!canvas) return;
+
+    const monthData = getCurrentMonthData();
+    const habits = getSortedDailyHabits();
     const totalDays = daysInMonth(state.currentYear, state.currentMonth);
-    const habits = getSortedHabits("daily");
 
     const labels = [];
     const values = [];
-    for (let d = 1; d <= totalDays; d++) {
-      labels.push(d);
+    for (let day = 1; day <= totalDays; day++) {
+      labels.push(day);
       let count = 0;
-      habits.forEach((h) => {
-        if (isDayExcluded(h, d)) return;
-        if (data.dailyCompletions[h.id] && data.dailyCompletions[h.id][d])
-          count++;
+      habits.forEach((habit) => {
+        if (
+          !isHabitTrackedOnDate(
+            habit,
+            state.currentYear,
+            state.currentMonth,
+            day,
+          )
+        ) {
+          return;
+        }
+        if (
+          monthData.dailyCompletions[habit.id] &&
+          monthData.dailyCompletions[habit.id][day]
+        ) {
+          count += 1;
+        }
       });
       values.push(count);
     }
 
-    if (chartInstances["dailyBarChart"]) {
-      chartInstances["dailyBarChart"].destroy();
+    if (chartInstances.dailyBarChart) {
+      chartInstances.dailyBarChart.destroy();
     }
 
-    const ctx = document.getElementById("dailyBarChart").getContext("2d");
-    chartInstances["dailyBarChart"] = new Chart(ctx, {
+    chartInstances.dailyBarChart = new Chart(canvas.getContext("2d"), {
       type: "bar",
       data: {
         labels,
         datasets: [
           {
             data: values,
-            backgroundColor: createBarGradient(ctx, totalDays),
+            backgroundColor: "#3e85b5",
             borderRadius: 4,
-            borderSkipped: false,
           },
         ],
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            backgroundColor: "#101b30",
-            titleFont: { family: "Inter" },
-            bodyFont: { family: "Inter" },
-            callbacks: {
-              title: (items) => `Day ${items[0].label}`,
-              label: (item) => `${item.raw} habits completed`,
-            },
-          },
-        },
-        scales: {
-          x: {
-            grid: { display: false },
-            ticks: { font: { size: 10, family: "Inter" }, color: "#8ea3c3" },
-          },
-          y: {
-            beginAtZero: true,
-            grid: { color: "#24344f" },
-            ticks: {
-              stepSize: 1,
-              font: { size: 10, family: "Inter" },
-              color: "#8ea3c3",
-            },
-          },
-        },
+        plugins: { legend: { display: false } },
       },
     });
   }
 
-  function createBarGradient(ctx, count) {
-    const colors = [];
-    for (let i = 0; i < count; i++) {
-      const ratio = i / count;
-      const r = Math.round(88 + (31 - 88) * ratio);
-      const g = Math.round(165 + (74 - 165) * ratio);
-      const b = Math.round(209 + (119 - 209) * ratio);
-      colors.push(`rgb(${r}, ${g}, ${b})`);
-    }
-    return colors;
-  }
-
   function renderCategoryBarChart() {
-    const data = getCurrentMonthData();
-    const totalDays = daysInMonth(state.currentYear, state.currentMonth);
-    const habits = getSortedHabits("daily");
+    if (typeof Chart === "undefined") return;
+    const canvas = document.getElementById("categoryBarChart");
+    if (!canvas) return;
 
-    const catMap = {};
+    const monthData = getCurrentMonthData();
+    const totalDays = daysInMonth(state.currentYear, state.currentMonth);
+    const habits = getSortedDailyHabits();
+
+    const map = {};
     state.categories.forEach((c) => {
-      catMap[c.id] = {
-        name: c.name,
-        emoji: c.emoji,
-        color: c.color,
-        completed: 0,
-        notCompleted: 0,
-      };
+      map[c.id] = { name: c.name, emoji: c.emoji, completed: 0 };
     });
 
-    habits.forEach((h) => {
-      const cat = catMap[h.categoryId];
-      if (!cat) return;
-      for (let d = 1; d <= totalDays; d++) {
-        if (isDayExcluded(h, d)) continue;
-        if (data.dailyCompletions[h.id] && data.dailyCompletions[h.id][d]) {
-          cat.completed++;
-        } else {
-          cat.notCompleted++;
+    habits.forEach((habit) => {
+      const bucket = map[habit.categoryId];
+      if (!bucket) return;
+      for (let day = 1; day <= totalDays; day++) {
+        if (
+          !isHabitTrackedOnDate(
+            habit,
+            state.currentYear,
+            state.currentMonth,
+            day,
+          )
+        ) {
+          continue;
+        }
+        if (
+          monthData.dailyCompletions[habit.id] &&
+          monthData.dailyCompletions[habit.id][day]
+        ) {
+          bucket.completed += 1;
         }
       }
     });
 
-    const cats = Object.values(catMap).filter(
-      (c) => c.completed > 0 || c.notCompleted > 0,
-    );
-    cats.sort((a, b) => b.completed - a.completed);
-
-    const labels = cats.map((c) => c.emoji + " " + c.name);
-    const completedData = cats.map((c) => c.completed);
-    const notCompletedData = cats.map((c) => c.notCompleted);
-
-    if (chartInstances["categoryBarChart"]) {
-      chartInstances["categoryBarChart"].destroy();
+    const entries = Object.values(map).filter((x) => x.completed > 0);
+    if (entries.length === 0) {
+      if (chartInstances.categoryBarChart) {
+        chartInstances.categoryBarChart.destroy();
+      }
+      return;
     }
 
-    const ctx = document.getElementById("categoryBarChart").getContext("2d");
-    chartInstances["categoryBarChart"] = new Chart(ctx, {
+    if (chartInstances.categoryBarChart) {
+      chartInstances.categoryBarChart.destroy();
+    }
+
+    chartInstances.categoryBarChart = new Chart(canvas.getContext("2d"), {
       type: "bar",
       data: {
-        labels,
+        labels: entries.map((e) => `${e.emoji} ${e.name}`),
         datasets: [
           {
-            label: "Completed",
-            data: completedData,
-            backgroundColor: "#3e85b5",
-            borderRadius: 4,
-            borderSkipped: false,
-          },
-          {
-            label: "Not Completed",
-            data: notCompletedData,
-            backgroundColor: "#1a2840",
-            borderRadius: 4,
-            borderSkipped: false,
+            data: entries.map((e) => e.completed),
+            backgroundColor: "#58a5d1",
           },
         ],
       },
@@ -869,317 +773,120 @@
         indexAxis: "y",
         responsive: true,
         maintainAspectRatio: false,
-        plugins: {
-          legend: {
-            position: "top",
-            labels: {
-              font: { size: 11, family: "Inter" },
-              boxWidth: 12,
-              boxHeight: 12,
-              borderRadius: 3,
-              useBorderRadius: true,
-              color: "#b2c4de",
-            },
-          },
-          tooltip: {
-            backgroundColor: "#101b30",
-            titleFont: { family: "Inter" },
-            bodyFont: { family: "Inter" },
-          },
-        },
-        scales: {
-          x: {
-            stacked: true,
-            grid: { color: "#24344f" },
-            ticks: { font: { size: 10, family: "Inter" }, color: "#8ea3c3" },
-          },
-          y: {
-            stacked: true,
-            grid: { display: false },
-            ticks: { font: { size: 11, family: "Inter" }, color: "#d5e2f5" },
-          },
-        },
+        plugins: { legend: { display: false } },
       },
     });
   }
 
-  // ─── Daily Habits Grid ───────────────────────────────────
+  function updateHabitStreak(habitId) {
+    const badge = document.querySelector(
+      `.streak-badge[data-streak-habit="${habitId}"]`,
+    );
+    if (!badge) return;
+
+    const months = Object.keys(state.months).sort();
+    let current = 0;
+    let best = 0;
+    let chain = 0;
+
+    months.forEach((mKey) => {
+      const parts = mKey.split("-");
+      const year = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10) - 1;
+      const totalDays = daysInMonth(year, month);
+      const habit = state.habits.daily.find((h) => h.id === habitId);
+      if (!habit) return;
+      for (let day = 1; day <= totalDays; day++) {
+        if (!isHabitTrackedOnDate(habit, year, month, day)) continue;
+        const md = state.months[mKey];
+        const done = !!(
+          md.dailyCompletions[habitId] && md.dailyCompletions[habitId][day]
+        );
+        if (done) {
+          chain += 1;
+          best = Math.max(best, chain);
+        } else {
+          chain = 0;
+        }
+      }
+    });
+
+    const habit = state.habits.daily.find((h) => h.id === habitId);
+    if (habit) {
+      const totalDays = daysInMonth(state.currentYear, state.currentMonth);
+      const md = getCurrentMonthData();
+      for (let day = totalDays; day >= 1; day--) {
+        if (
+          !isHabitTrackedOnDate(
+            habit,
+            state.currentYear,
+            state.currentMonth,
+            day,
+          )
+        ) {
+          continue;
+        }
+        const done = !!(
+          md.dailyCompletions[habitId] && md.dailyCompletions[habitId][day]
+        );
+        if (!done) break;
+        current += 1;
+      }
+    }
+
+    badge.textContent = `Current ${current}d | Best ${best}d`;
+  }
+
   function renderDailyHabitsGrid() {
     const grid = document.getElementById("dailyHabitsGrid");
-    const data = getCurrentMonthData();
+    if (!grid) return;
+
+    const monthData = getCurrentMonthData();
+    const habits = getSortedDailyHabits();
     const totalDays = daysInMonth(state.currentYear, state.currentMonth);
-    const habits = getSortedHabits("daily");
     const today = new Date();
-    const isCurrentMonth =
+    const isCurrentMonthView =
       today.getFullYear() === state.currentYear &&
       today.getMonth() === state.currentMonth;
-    const todayDay = isCurrentMonth ? today.getDate() : -1;
-
-    // Header row
-    let headerHtml = `<thead><tr>
-            <th class="habit-name-col">Habits</th>
-            <th class="category-col">Category</th>
-            <th class="goal-col">Month Goal</th>`;
-
-    // Week separators
-    for (let d = 1; d <= totalDays; d++) {
-      const weekNum = getWeekNumber(d, totalDays);
-      const isWeekStart =
-        d === 1 || getWeekNumber(d - 1, totalDays) !== weekNum;
-      const todayClass = d === todayDay ? " today" : "";
-      headerHtml += `<th class="day-col${todayClass}" ${isWeekStart ? 'style="border-left: 2px solid #24344f;"' : ""}>${d}</th>`;
-    }
-    headerHtml += "</tr></thead>";
-
-    // Week header row (spanning)
-    let weekHeaderHtml =
-      '<thead><tr><th class="week-spacer-col" style="border-bottom:none;"></th><th class="week-meta-spacer" style="border-bottom:none;"></th><th class="week-meta-spacer" style="border-bottom:none;"></th>';
-    let currentWeek = 0;
-    for (let d = 1; d <= totalDays; d++) {
-      const weekNum = getWeekNumber(d, totalDays);
-      if (weekNum !== currentWeek) {
-        const range = getWeekRange(weekNum, totalDays);
-        const span = range.end - range.start + 1;
-        weekHeaderHtml += `<th colspan="${span}" style="text-align:center; background: linear-gradient(135deg, #1f4a77, #2c6a96); color: #f5f8ff; border-radius: 6px 6px 0 0; font-size: 0.7rem; letter-spacing: 1px; padding: 5px 0;">Week ${weekNum}</th>`;
-        currentWeek = weekNum;
-        // Skip directly to the current week end because we already rendered the span.
-        d = range.end; // skip to end of week
-      }
-    }
-    weekHeaderHtml += "</tr></thead>";
-
-    // Body rows
-    let bodyHtml = "<tbody>";
-    habits.forEach((h) => {
-      const cat = getCategoryById(h.categoryId);
-      const catName = cat ? cat.emoji + " " + sanitize(cat.name) : "—";
-      const catColor = cat ? cat.color : "#3e85b5";
-      const catBg = catColor + "66";
-      const habitTypeLabel = h.type === "dynamic" ? "Dynamic" : "Fixed";
-      const habitEmoji = getHabitEmoji(h);
-
-      bodyHtml += `<tr draggable="true" class="draggable-row" data-habit-type="daily" data-habit-id="${h.id}" data-dnd-surface="daily-grid">
-                <td class="habit-name-cell">
-            <span class="drag-handle" title="Drag to reorder">⋮⋮</span>
-            <span class="habit-leading-emoji">${sanitize(habitEmoji)}</span>
-            ${sanitize(h.name)}
-            <span class="habit-kind ${h.type === "dynamic" ? "dynamic" : "fixed"}">${habitTypeLabel}</span>
-                    <span class="habit-actions">
-                        <button class="habit-action-btn" onclick="HabitApp.editHabit('daily','${h.id}')" title="Edit">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                        </button>
-                        <button class="habit-action-btn delete" onclick="HabitApp.deleteHabit('daily','${h.id}')" title="Delete">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                        </button>
-                    </span>
-                </td>
-                <td class="category-cell">
-                    <span class="category-badge" style="background:${catBg}; color:#f5f8ff; border:1px solid ${catColor}">${catName}</span>
-                </td>
-                <td class="goal-cell">${h.monthGoal || "—"}</td>`;
-
-      for (let d = 1; d <= totalDays; d++) {
-        const weekNum = getWeekNumber(d, totalDays);
-        const isWeekStart =
-          d === 1 || getWeekNumber(d - 1, totalDays) !== weekNum;
-        const isExcluded = isDayExcluded(h, d);
-        const checked =
-          data.dailyCompletions[h.id] && data.dailyCompletions[h.id][d]
-            ? "checked"
-            : "";
-        const todayClass = d === todayDay ? " today-col" : "";
-        if (isExcluded) {
-          bodyHtml += `<td class="day-cell day-cell-off${todayClass}" ${isWeekStart ? 'style="border-left: 2px solid #24344f;"' : ""}>
-                    <span class="off-day-mark" title="Not tracked this day">OFF</span>
-                </td>`;
-        } else {
-          bodyHtml += `<td class="day-cell${todayClass}" ${isWeekStart ? 'style="border-left: 2px solid #24344f;"' : ""}>
-                    <input type="checkbox" class="habit-check" data-habit="${h.id}" data-day="${d}" ${checked}>
-                </td>`;
-        }
-      }
-      bodyHtml += "</tr>";
-    });
-
-    // Completion % row
-    bodyHtml +=
-      '<tr class="completion-row"><td class="habit-name-cell">Daily Completion</td><td></td><td></td>';
-    for (let d = 1; d <= totalDays; d++) {
-      let dayCompleted = 0;
-      let dayEligible = 0;
-      habits.forEach((h) => {
-        if (isDayExcluded(h, d)) return;
-        dayEligible++;
-        if (data.dailyCompletions[h.id] && data.dailyCompletions[h.id][d])
-          dayCompleted++;
-      });
-      const pct =
-        dayEligible > 0 ? Math.round((dayCompleted / dayEligible) * 100) : 0;
-      const isWeekStart =
-        d === 1 ||
-        getWeekNumber(d - 1, totalDays) !== getWeekNumber(d, totalDays);
-      const todayClass = d === todayDay ? " today-col" : "";
-      bodyHtml += `<td class="day-cell${todayClass}" ${isWeekStart ? 'style="border-left: 2px solid #24344f;"' : ""}>${pct}%</td>`;
-    }
-    bodyHtml += "</tr>";
-
-    // Daily % label row
-    bodyHtml +=
-      '<tr class="completion-row"><td class="habit-name-cell">Daily % Completed</td><td></td><td></td>';
-    for (let d = 1; d <= totalDays; d++) {
-      const isWeekStart =
-        d === 1 ||
-        getWeekNumber(d - 1, totalDays) !== getWeekNumber(d, totalDays);
-      bodyHtml += `<td ${isWeekStart ? 'style="border-left: 2px solid #24344f;"' : ""}></td>`;
-    }
-    bodyHtml += "</tr>";
-
-    bodyHtml += "</tbody>";
-
-    grid.innerHTML = weekHeaderHtml + headerHtml + bodyHtml;
-
-    // Attach checkbox event listeners
-    grid.querySelectorAll(".habit-check").forEach((cb) => {
-      cb.addEventListener("change", function () {
-        const habitId = this.dataset.habit;
-        const day = parseInt(this.dataset.day);
-        if (!data.dailyCompletions[habitId]) {
-          data.dailyCompletions[habitId] = {};
-        }
-        data.dailyCompletions[habitId][day] = this.checked;
-        saveState();
-        // Update charts and summary without re-rendering grid
-        renderSummary();
-        renderWeeklySummaryCards();
-        renderDailyBarChart();
-        renderCategoryBarChart();
-        // Update completion row
-        updateCompletionRow(totalDays, habits, data, todayDay);
-      });
-    });
-  }
-
-  function updateCompletionRow(totalDays, habits, data, todayDay) {
-    const rows = document.querySelectorAll("#dailyHabitsGrid .completion-row");
-    if (!rows[0]) return;
-    const cells = rows[0].querySelectorAll("td.day-cell");
-    cells.forEach((cell, idx) => {
-      const d = idx + 1;
-      let dayCompleted = 0;
-      let dayEligible = 0;
-      habits.forEach((h) => {
-        if (isDayExcluded(h, d)) return;
-        dayEligible++;
-        if (data.dailyCompletions[h.id] && data.dailyCompletions[h.id][d])
-          dayCompleted++;
-      });
-      const pct =
-        dayEligible > 0 ? Math.round((dayCompleted / dayEligible) * 100) : 0;
-      cell.textContent = pct + "%";
-    });
-  }
-
-  // ─── Weekly View ─────────────────────────────────────────
-  function renderWeeklyView() {
-    renderWeeklyProgressCards();
-    renderWeeklyHabitsGrid();
-  }
-
-  function renderWeeklyProgressCards() {
-    const container = document.getElementById("weeklyProgressRow");
-    const data = getCurrentMonthData();
-    const totalDays = daysInMonth(state.currentYear, state.currentMonth);
-    const numWeeks = Math.ceil(totalDays / 7);
-    const habits = getSortedHabits("weekly");
-
-    let html = "";
-    let overallCompleted = 0;
-    let overallGoal = habits.length * Math.min(numWeeks, 5);
-
-    for (let w = 1; w <= Math.min(numWeeks, 5); w++) {
-      let completed = 0;
-      habits.forEach((h) => {
-        if (data.weeklyCompletions[h.id] && data.weeklyCompletions[h.id][w])
-          completed++;
-      });
-      overallCompleted += completed;
-      const pct =
-        habits.length > 0 ? Math.round((completed / habits.length) * 100) : 0;
-      const canvasId = `wpDonut_${w}`;
-
-      html += `
-                <div class="weekly-progress-card">
-                    <span class="wp-title">Week ${w}</span>
-                    <div class="wp-stats">
-                        <div><span class="wp-num">${completed}</span><br><span class="wp-label">Completed</span></div>
-                        <div><span class="wp-num">${habits.length}</span><br><span class="wp-label">Goal</span></div>
-                    </div>
-                    <canvas id="${canvasId}" width="70" height="70"></canvas>
-                </div>`;
-    }
-
-    // Overall card
-    const overallPct =
-      overallGoal > 0 ? Math.round((overallCompleted / overallGoal) * 100) : 0;
-    html += `
-            <div class="weekly-progress-card" style="border-color: #24344f;">
-              <span class="wp-title" style="background: linear-gradient(135deg, #1f4a77, #2c6a96);">Overall</span>
-                <div class="wp-stats">
-                    <div><span class="wp-num">${overallCompleted}</span><br><span class="wp-label">Completed</span></div>
-                    <div><span class="wp-num">${overallGoal}</span><br><span class="wp-label">Goal</span></div>
-                </div>
-                <canvas id="wpDonut_overall" width="70" height="70"></canvas>
-            </div>`;
-
-    container.innerHTML = html;
-
-    // Render mini donuts
-    for (let w = 1; w <= Math.min(numWeeks, 5); w++) {
-      let completed = 0;
-      habits.forEach((h) => {
-        if (data.weeklyCompletions[h.id] && data.weeklyCompletions[h.id][w])
-          completed++;
-      });
-      const pct =
-        habits.length > 0 ? Math.round((completed / habits.length) * 100) : 0;
-      renderMiniDonut(document.getElementById(`wpDonut_${w}`), pct);
-    }
-    renderMiniDonut(document.getElementById("wpDonut_overall"), overallPct);
-  }
-
-  function renderWeeklyHabitsGrid() {
-    const grid = document.getElementById("weeklyHabitsGrid");
-    const data = getCurrentMonthData();
-    const totalDays = daysInMonth(state.currentYear, state.currentMonth);
-    const numWeeks = Math.ceil(totalDays / 7);
-    const habits = getSortedHabits("weekly");
+    const todayDay = isCurrentMonthView ? today.getDate() : -1;
 
     let html =
-      '<thead><tr><th class="habit-name-col" style="min-width:200px;">Habits</th>';
-    for (let w = 1; w <= Math.min(numWeeks, 5); w++) {
-      html += `<th class="week-col"><span class="week-col-header">Week ${w}</span></th>`;
+      "<thead><tr><th class='habit-name-col'>Habits</th><th class='category-col'>Category</th><th class='goal-col'>Goal</th>";
+    for (let day = 1; day <= totalDays; day++) {
+      const isToday = day === todayDay;
+      html += `<th class='day-col ${isToday ? "today" : ""}'>${day}</th>`;
     }
     html += "</tr></thead><tbody>";
 
-    habits.forEach((h) => {
-      html += `<tr draggable="true" class="draggable-row" data-habit-type="weekly" data-habit-id="${h.id}" data-dnd-surface="weekly-grid"><td class="habit-name-cell">
-                <span class="drag-handle" title="Drag to reorder">⋮⋮</span>
-                ${sanitize(h.name)}
-                <span class="habit-actions">
-                    <button class="habit-action-btn" onclick="HabitApp.editHabit('weekly','${h.id}')" title="Edit">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                    </button>
-                    <button class="habit-action-btn delete" onclick="HabitApp.deleteHabit('weekly','${h.id}')" title="Delete">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                    </button>
-                </span>
-            </td>`;
-      for (let w = 1; w <= Math.min(numWeeks, 5); w++) {
+    habits.forEach((habit) => {
+      const cat = getCategoryById(habit.categoryId);
+      const catName = cat ? `${cat.emoji} ${sanitize(cat.name)}` : "-";
+      const emoji = sanitize(getHabitEmoji(habit));
+      html += `<tr><td class='habit-name-cell'>${emoji} ${sanitize(habit.name)} <span class='streak-badge' data-streak-habit='${habit.id}'>Current 0d | Best 0d</span><span class='habit-actions'><button class='habit-action-btn' onclick="HabitApp.editHabit('${habit.id}')">Edit</button><button class='habit-action-btn delete' onclick="HabitApp.deleteHabit('${habit.id}')">Delete</button></span></td><td class='category-cell'>${catName}</td><td class='goal-cell'>${habit.monthGoal}</td>`;
+      for (let day = 1; day <= totalDays; day++) {
+        const isToday = day === todayDay;
+        if (
+          !isHabitTrackedOnDate(
+            habit,
+            state.currentYear,
+            state.currentMonth,
+            day,
+          )
+        ) {
+          html += `<td class='day-cell day-cell-off ${isToday ? "today-col" : ""}'><span class='off-day-mark'>OFF</span></td>`;
+          continue;
+        }
         const checked =
-          data.weeklyCompletions[h.id] && data.weeklyCompletions[h.id][w]
+          monthData.dailyCompletions[habit.id] &&
+          monthData.dailyCompletions[habit.id][day]
             ? "checked"
             : "";
-        html += `<td class="day-cell"><input type="checkbox" class="habit-check weekly-check" data-habit="${h.id}" data-week="${w}" ${checked}></td>`;
+        const hasNote = !!(
+          monthData.dailyNotes[habit.id] &&
+          typeof monthData.dailyNotes[habit.id][day] === "string" &&
+          monthData.dailyNotes[habit.id][day].trim().length
+        );
+        html += `<td class='day-cell ${isToday ? "today-col" : ""}'><div class='day-cell-content'><input type='checkbox' class='habit-check ${isToday ? "today-check" : ""}' data-habit='${habit.id}' data-day='${day}' ${checked}><button type='button' class='note-btn ${hasNote ? "has-note" : ""}' data-habit='${habit.id}' data-day='${day}'>📝</button></div></td>`;
       }
       html += "</tr>";
     });
@@ -1187,323 +894,218 @@
     html += "</tbody>";
     grid.innerHTML = html;
 
-    // Attach events
-    grid.querySelectorAll(".weekly-check").forEach((cb) => {
+    grid.querySelectorAll(".habit-check").forEach((cb) => {
       cb.addEventListener("change", function () {
         const habitId = this.dataset.habit;
-        const week = parseInt(this.dataset.week);
-        if (!data.weeklyCompletions[habitId]) {
-          data.weeklyCompletions[habitId] = {};
-        }
-        data.weeklyCompletions[habitId][week] = this.checked;
+        const day = parseInt(this.dataset.day, 10);
+        if (!monthData.dailyCompletions[habitId])
+          monthData.dailyCompletions[habitId] = {};
+        monthData.dailyCompletions[habitId][day] = this.checked;
         saveState();
-        renderWeeklyProgressCards();
+        renderSummary();
+        renderWeeklySummaryCards();
+        renderDailyBarChart();
+        renderCategoryBarChart();
+        updateHabitStreak(habitId);
       });
     });
+
+    grid.querySelectorAll(".note-btn").forEach((btn) => {
+      btn.addEventListener("click", function () {
+        openNoteModal(this.dataset.habit, parseInt(this.dataset.day, 10));
+      });
+    });
+
+    habits.forEach((h) => updateHabitStreak(h.id));
   }
 
-  // ─── Manage View ─────────────────────────────────────────
-  function renderManageView() {
-    renderCategoriesList();
-    renderDailyHabitsList();
-    renderWeeklyHabitsList();
+  function renderMonthlyReview() {
+    const review = getCurrentMonthData().monthlyReview;
+    document.getElementById("monthlyWins").value = review.wins || "";
+    document.getElementById("monthlyBlockers").value = review.blockers || "";
+    document.getElementById("monthlyFocus").value = review.focus || "";
+  }
+
+  function saveMonthlyReview() {
+    const monthData = getCurrentMonthData();
+    monthData.monthlyReview = {
+      wins: document.getElementById("monthlyWins").value.trim(),
+      blockers: document.getElementById("monthlyBlockers").value.trim(),
+      focus: document.getElementById("monthlyFocus").value.trim(),
+    };
+    saveState();
   }
 
   function renderCategoriesList() {
     const list = document.getElementById("categoriesList");
+    if (!list) return;
     if (state.categories.length === 0) {
       list.innerHTML =
-        '<div class="empty-state"><p>No categories. Add one to get started.</p></div>';
+        "<div class='empty-state'><p>No categories yet.</p></div>";
       return;
     }
+
     list.innerHTML = state.categories
       .map(
-        (c) => `
-            <div class="manage-item">
-                <div class="manage-item-info">
-                    <span class="manage-item-emoji" style="background:${c.color}18">${c.emoji}</span>
-                    <div>
-                        <div class="manage-item-name">${sanitize(c.name)}</div>
-                        <div class="manage-item-meta" style="color:${c.color}">${c.color}</div>
-                    </div>
-                </div>
-                <div class="manage-item-actions">
-                    <button class="manage-btn" onclick="HabitApp.editCategory('${c.id}')" title="Edit">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                    </button>
-                    <button class="manage-btn delete" onclick="HabitApp.deleteCategory('${c.id}')" title="Delete">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                    </button>
-                </div>
-            </div>
-        `,
+        (c) =>
+          `<div class='manage-item'><div class='manage-item-info'><span class='manage-item-emoji' style='background:${c.color}18'>${sanitize(c.emoji)}</span><div><div class='manage-item-name'>${sanitize(c.name)}</div><div class='manage-item-meta'>${sanitize(c.color)}</div></div></div><div class='manage-item-actions'><button class='manage-btn' onclick="HabitApp.editCategory('${c.id}')">Edit</button><button class='manage-btn delete' onclick="HabitApp.deleteCategory('${c.id}')">Delete</button></div></div>`,
       )
       .join("");
   }
 
   function renderDailyHabitsList() {
     const list = document.getElementById("dailyHabitsList");
-    const habits = getSortedHabits("daily");
+    if (!list) return;
+
+    const habits = getSortedDailyHabits();
     if (habits.length === 0) {
       list.innerHTML =
-        '<div class="empty-state"><p>No daily habits. Add one to start tracking.</p></div>';
+        "<div class='empty-state'><p>No daily habits yet.</p></div>";
       return;
     }
+
     list.innerHTML = habits
       .map((h) => {
         const cat = getCategoryById(h.categoryId);
-        const habitEmoji = getHabitEmoji(h);
-        return `
-            <div class="manage-item" draggable="true" data-habit-type="daily" data-habit-id="${h.id}" data-dnd-surface="manage-daily">
-                <div class="manage-item-info">
-                    <span class="drag-handle" title="Drag to reorder">⋮⋮</span>
-                    <span class="manage-item-emoji" style="background:${cat ? cat.color + "18" : "#121f34"}">${sanitize(habitEmoji)}</span>
-                    <div>
-                        <div class="manage-item-name">${sanitize(h.name)}</div>
-                        <div class="manage-item-meta">${cat ? sanitize(cat.name) : "No category"} · ${h.type === "dynamic" ? "Dynamic" : "Fixed"} · Goal: ${h.monthGoal}</div>
-                    </div>
-                </div>
-                <div class="manage-item-actions">
-                    <button class="manage-btn" onclick="HabitApp.editHabit('daily','${h.id}')" title="Edit">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                    </button>
-                    <button class="manage-btn delete" onclick="HabitApp.deleteHabit('daily','${h.id}')" title="Delete">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                    </button>
-                </div>
-            </div>`;
+        return `<div class='manage-item'><div class='manage-item-info'><span class='manage-item-emoji'>${sanitize(getHabitEmoji(h))}</span><div><div class='manage-item-name'>${sanitize(h.name)}</div><div class='manage-item-meta'>${cat ? sanitize(cat.name) : "No category"} · ${h.type}</div></div></div><div class='manage-item-actions'><button class='manage-btn' onclick="HabitApp.editHabit('${h.id}')">Edit</button><button class='manage-btn delete' onclick="HabitApp.deleteHabit('${h.id}')">Delete</button></div></div>`;
       })
       .join("");
   }
 
-  function renderWeeklyHabitsList() {
-    const list = document.getElementById("weeklyHabitsList");
-    const habits = getSortedHabits("weekly");
-    if (habits.length === 0) {
-      list.innerHTML =
-        '<div class="empty-state"><p>No weekly habits. Add one to start tracking.</p></div>';
-      return;
-    }
-    list.innerHTML = habits
-      .map(
-        (h) => `
-            <div class="manage-item" draggable="true" data-habit-type="weekly" data-habit-id="${h.id}" data-dnd-surface="manage-weekly">
-                <div class="manage-item-info">
-                    <span class="drag-handle" title="Drag to reorder">⋮⋮</span>
-                    <span class="manage-item-emoji" style="background:#121f34">📋</span>
-                    <div>
-                        <div class="manage-item-name">${sanitize(h.name)}</div>
-                        <div class="manage-item-meta">Weekly habit</div>
-                    </div>
-                </div>
-                <div class="manage-item-actions">
-                    <button class="manage-btn" onclick="HabitApp.editHabit('weekly','${h.id}')" title="Edit">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                    </button>
-                    <button class="manage-btn delete" onclick="HabitApp.deleteHabit('weekly','${h.id}')" title="Delete">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                    </button>
-                </div>
-            </div>
-        `,
-      )
-      .join("");
+  function renderManageView() {
+    renderCategoriesList();
+    renderDailyHabitsList();
   }
 
-  // ─── Modals ──────────────────────────────────────────────
   function openModal(id) {
-    document.getElementById(id).classList.add("open");
+    const el = document.getElementById(id);
+    if (el) el.classList.add("open");
   }
 
   function closeModal(id) {
-    document.getElementById(id).classList.remove("open");
+    const el = document.getElementById(id);
+    if (el) el.classList.remove("open");
   }
 
-  let editingHabitId = null;
-  let editingHabitType = null;
-
-  function renderExcludedDaysPicker(selectedWeekdays) {
-    const container = document.getElementById("habitExcludedDays");
-    const selected = new Set(selectedWeekdays || []);
-    container.innerHTML = WEEKDAY_OPTIONS.map(
-      (option) =>
-        `<label class="excluded-day-option" title="${option.label}"><input type="checkbox" value="${option.value}" ${selected.has(option.value) ? "checked" : ""}><span>${option.shortLabel}</span></label>`,
-    ).join("");
+  function openConfirm(title, message, callback) {
+    document.getElementById("confirmTitle").textContent = title;
+    document.getElementById("confirmMessage").textContent = message;
+    confirmCallback = callback;
+    openModal("confirmModal");
   }
 
-  function updateHabitModalDailyFields(type) {
-    const isWeekly = type === "weekly";
-    const catGroup = document
-      .getElementById("habitCategory")
-      .closest(".form-group");
-    document.getElementById("habitGoalGroup").style.display = isWeekly
-      ? "none"
-      : "block";
-    document.getElementById("habitEmojiGroup").style.display = isWeekly
-      ? "none"
-      : "block";
-    document.getElementById("habitScheduleTypeGroup").style.display = isWeekly
-      ? "none"
-      : "block";
-    catGroup.style.display = isWeekly ? "none" : "block";
-
-    if (isWeekly) {
-      document.getElementById("habitExcludedDaysGroup").style.display = "none";
-      return;
-    }
-
-    const scheduleType = document.getElementById("habitScheduleType").value;
-    document.getElementById("habitExcludedDaysGroup").style.display =
-      scheduleType === "dynamic" ? "block" : "none";
-  }
-
-  function openHabitModal(type, habitId) {
-    editingHabitType = type;
+  function openHabitModal(habitId) {
     editingHabitId = habitId || null;
 
-    const titleEl = document.getElementById("habitModalTitle");
-    const nameEl = document.getElementById("habitName");
-    const catEl = document.getElementById("habitCategory");
-    const typeEl = document.getElementById("habitType");
-    const emojiEl = document.getElementById("habitEmoji");
-    const scheduleTypeEl = document.getElementById("habitScheduleType");
-    const goalEl = document.getElementById("habitGoal");
-    const typeGroup = document.getElementById("habitTypeGroup");
+    const title = document.getElementById("habitModalTitle");
+    const name = document.getElementById("habitName");
+    const category = document.getElementById("habitCategory");
+    const type = document.getElementById("habitScheduleType");
+    const goal = document.getElementById("habitGoal");
+    const emoji = document.getElementById("habitEmoji");
 
-    // Populate category dropdown
-    catEl.innerHTML = state.categories
+    category.innerHTML = state.categories
       .map(
         (c) =>
-          `<option value="${c.id}">${c.emoji} ${sanitize(c.name)}</option>`,
+          `<option value='${c.id}'>${sanitize(c.emoji)} ${sanitize(c.name)}</option>`,
       )
       .join("");
 
-    if (habitId) {
-      titleEl.textContent = "Edit Habit";
-      const list = type === "daily" ? state.habits.daily : state.habits.weekly;
-      const habit = list.find((h) => h.id === habitId);
-      if (habit) {
-        nameEl.value = habit.name;
-        if (type === "daily") {
-          catEl.value = habit.categoryId;
-          goalEl.value = habit.monthGoal || 20;
-          emojiEl.value = getHabitEmoji(habit);
-          scheduleTypeEl.value = habit.type || "fixed";
-          renderExcludedDaysPicker(habit.excludedWeekdays || []);
-        }
-      }
-      typeGroup.style.display = "none";
-      typeEl.value = type;
+    if (editingHabitId) {
+      const habit = state.habits.daily.find((h) => h.id === editingHabitId);
+      if (!habit) return;
+      title.textContent = "Edit Habit";
+      name.value = habit.name;
+      category.value = habit.categoryId;
+      type.value = habit.type || "fixed";
+      goal.value = habit.monthGoal || 20;
+      emoji.value = getHabitEmoji(habit);
     } else {
-      titleEl.textContent = "Add Habit";
-      nameEl.value = "";
-      typeEl.value = type;
-      goalEl.value = 20;
-      emojiEl.value = "📌";
-      scheduleTypeEl.value = "fixed";
-      renderExcludedDaysPicker([]);
-      typeGroup.style.display = type ? "none" : "block";
+      title.textContent = "Add Habit";
+      name.value = "";
+      goal.value = 20;
+      type.value = "fixed";
+      emoji.value = "📌";
     }
 
-    updateHabitModalDailyFields(type);
+    document.getElementById("habitTypeGroup").style.display = "none";
+    document.getElementById("habitScheduleTypeGroup").style.display = "block";
+    document.getElementById("habitGoalGroup").style.display = "block";
+    document.getElementById("habitEmojiGroup").style.display = "block";
+    document.getElementById("habitExcludedDaysGroup").style.display = "none";
 
     openModal("habitModal");
-    nameEl.focus();
   }
 
   function saveHabitModal() {
     const name = document.getElementById("habitName").value.trim();
     if (!name) return;
 
-    const type = editingHabitType || document.getElementById("habitType").value;
-    const catId = document.getElementById("habitCategory").value;
+    const categoryId = document.getElementById("habitCategory").value;
+    const type =
+      document.getElementById("habitScheduleType").value === "dynamic"
+        ? "dynamic"
+        : "fixed";
+    const emoji = document.getElementById("habitEmoji").value || "📌";
     const totalDays = daysInMonth(state.currentYear, state.currentMonth);
-    const goal = Math.max(
+    const monthGoal = Math.max(
       1,
       Math.min(
         totalDays,
         parseInt(document.getElementById("habitGoal").value, 10) || 20,
       ),
     );
-    const emoji = document.getElementById("habitEmoji").value || "📌";
-    const scheduleType = document.getElementById("habitScheduleType").value;
-    const excludedWeekdays = Array.from(
-      document.querySelectorAll("#habitExcludedDays input:checked"),
-    )
-      .map((el) => parseInt(el.value, 10))
-      .filter((day) => Number.isInteger(day) && day >= 0 && day <= 6)
-      .filter((day, idx, arr) => arr.indexOf(day) === idx)
-      .sort((a, b) => a - b);
 
     if (editingHabitId) {
-      const list = type === "daily" ? state.habits.daily : state.habits.weekly;
-      const habit = list.find((h) => h.id === editingHabitId);
+      const habit = state.habits.daily.find((h) => h.id === editingHabitId);
       if (habit) {
         habit.name = name;
-        if (type === "daily") {
-          habit.categoryId = catId;
-          habit.monthGoal = goal;
-          habit.emoji = emoji;
-          habit.type = scheduleType;
-          habit.excludedWeekdays =
-            scheduleType === "dynamic" ? excludedWeekdays : [];
-        }
+        habit.categoryId = categoryId;
+        habit.type = type;
+        habit.emoji = emoji;
+        habit.monthGoal = monthGoal;
       }
     } else {
-      if (type === "daily") {
-        state.habits.daily.push({
-          id: "dh_" + uid(),
-          name,
-          categoryId: catId,
-          monthGoal: goal,
-          type: scheduleType,
-          excludedDays: [],
-          excludedWeekdays: scheduleType === "dynamic" ? excludedWeekdays : [],
-          emoji,
-          order: state.habits.daily.length,
-        });
-      } else {
-        state.habits.weekly.push({
-          id: "wh_" + uid(),
-          name,
-          order: state.habits.weekly.length,
-        });
-      }
+      state.habits.daily.push({
+        id: uid("dh"),
+        name,
+        categoryId,
+        monthGoal,
+        type,
+        excludedWeekdays: [],
+        emoji,
+        order: state.habits.daily.length,
+      });
     }
 
-    resequenceHabitOrder(type);
-
+    updateHabitOrder();
     saveState();
     closeModal("habitModal");
     renderAll();
   }
 
-  let editingCategoryId = null;
-
   function openCategoryModal(catId) {
     editingCategoryId = catId || null;
-    const titleEl = document.getElementById("categoryModalTitle");
-    const nameEl = document.getElementById("categoryName");
-    const emojiEl = document.getElementById("categoryEmoji");
-    const colorEl = document.getElementById("categoryColor");
+    const title = document.getElementById("categoryModalTitle");
+    const name = document.getElementById("categoryName");
+    const emoji = document.getElementById("categoryEmoji");
+    const color = document.getElementById("categoryColor");
 
-    if (catId) {
-      titleEl.textContent = "Edit Category";
-      const cat = state.categories.find((c) => c.id === catId);
-      if (cat) {
-        nameEl.value = cat.name;
-        emojiEl.value = cat.emoji;
-        colorEl.value = cat.color;
-      }
+    if (editingCategoryId) {
+      const cat = state.categories.find((c) => c.id === editingCategoryId);
+      if (!cat) return;
+      title.textContent = "Edit Category";
+      name.value = cat.name;
+      emoji.value = cat.emoji;
+      color.value = cat.color;
     } else {
-      titleEl.textContent = "Add Category";
-      nameEl.value = "";
-      emojiEl.value = "⭐";
-      colorEl.value = "#3e85b5";
+      title.textContent = "Add Category";
+      name.value = "";
+      emoji.value = "⭐";
+      color.value = "#3e85b5";
     }
 
     openModal("categoryModal");
-    nameEl.focus();
   }
 
   function saveCategoryModal() {
@@ -1521,12 +1123,7 @@
         cat.color = color;
       }
     } else {
-      state.categories.push({
-        id: "cat_" + uid(),
-        name,
-        emoji,
-        color,
-      });
+      state.categories.push({ id: uid("cat"), name, emoji, color });
     }
 
     saveState();
@@ -1534,66 +1131,492 @@
     renderAll();
   }
 
-  let confirmCallback = null;
+  function openNoteModal(habitId, day) {
+    const monthData = getCurrentMonthData();
+    if (!monthData.dailyNotes[habitId]) {
+      monthData.dailyNotes[habitId] = {};
+    }
 
-  function openConfirm(title, message, callback) {
-    document.getElementById("confirmTitle").textContent = title;
-    document.getElementById("confirmMessage").textContent = message;
-    confirmCallback = callback;
-    openModal("confirmModal");
+    noteModalState = { habitId, day };
+    const habit = state.habits.daily.find((h) => h.id === habitId);
+    document.getElementById("noteModalTitle").textContent = habit
+      ? `${habit.name} - ${formatDateKey(state.currentYear, state.currentMonth, day)}`
+      : "Daily Note";
+    document.getElementById("noteText").value =
+      monthData.dailyNotes[habitId][day] || "";
+    openModal("noteModal");
   }
 
-  // ─── CRUD Operations ─────────────────────────────────────
-  function deleteHabit(type, id) {
-    const list = type === "daily" ? state.habits.daily : state.habits.weekly;
-    const habit = list.find((h) => h.id === id);
+  function saveNoteModal() {
+    if (!noteModalState.habitId || !noteModalState.day) return;
+    const monthData = getCurrentMonthData();
+    const value = document.getElementById("noteText").value.trim();
+
+    if (!monthData.dailyNotes[noteModalState.habitId]) {
+      monthData.dailyNotes[noteModalState.habitId] = {};
+    }
+
+    if (value) {
+      monthData.dailyNotes[noteModalState.habitId][noteModalState.day] = value;
+    } else {
+      delete monthData.dailyNotes[noteModalState.habitId][noteModalState.day];
+      if (
+        Object.keys(monthData.dailyNotes[noteModalState.habitId]).length === 0
+      ) {
+        delete monthData.dailyNotes[noteModalState.habitId];
+      }
+    }
+
+    saveState();
+    closeModal("noteModal");
+    noteModalState = { habitId: null, day: null };
+    renderDailyHabitsGrid();
+  }
+
+  function deleteHabit(id) {
+    const habit = state.habits.daily.find((h) => h.id === id);
     if (!habit) return;
 
-    openConfirm(
-      "Delete Habit",
-      `Are you sure you want to delete "${habit.name}"?`,
-      () => {
-        if (type === "daily") {
-          state.habits.daily = state.habits.daily.filter((h) => h.id !== id);
-          resequenceHabitOrder("daily");
-          // Clean up completions
-          Object.values(state.months).forEach((m) => {
-            delete m.dailyCompletions[id];
-          });
-        } else {
-          state.habits.weekly = state.habits.weekly.filter((h) => h.id !== id);
-          resequenceHabitOrder("weekly");
-          Object.values(state.months).forEach((m) => {
-            delete m.weeklyCompletions[id];
-          });
+    openConfirm("Delete Habit", `Delete \"${habit.name}\"?`, () => {
+      state.habits.daily = state.habits.daily.filter((h) => h.id !== id);
+      updateHabitOrder();
+      Object.values(state.months).forEach((monthData) => {
+        delete monthData.dailyCompletions[id];
+        if (monthData.dailyNotes) {
+          delete monthData.dailyNotes[id];
         }
-        saveState();
-        renderAll();
-      },
-    );
+      });
+      saveState();
+      renderAll();
+    });
   }
 
   function deleteCategory(id) {
     const cat = state.categories.find((c) => c.id === id);
     if (!cat) return;
 
+    openConfirm("Delete Category", `Delete \"${cat.name}\"?`, () => {
+      state.categories = state.categories.filter((c) => c.id !== id);
+      state.habits.daily.forEach((h) => {
+        if (h.categoryId === id) h.categoryId = "";
+      });
+      saveState();
+      renderAll();
+    });
+  }
+
+  function openPdfDatabase() {
+    if (idbPromise) return idbPromise;
+
+    idbPromise = new Promise((resolve, reject) => {
+      const request = indexedDB.open(PDF_DB_NAME, PDF_DB_VERSION);
+
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains(PDF_STORE_NAME)) {
+          db.createObjectStore(PDF_STORE_NAME, { keyPath: "fileId" });
+        }
+      };
+
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () =>
+        reject(request.error || new Error("IndexedDB open failed"));
+    });
+
+    return idbPromise;
+  }
+
+  async function idbSavePdfBlob(fileId, blob) {
+    const db = await openPdfDatabase();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(PDF_STORE_NAME, "readwrite");
+      tx.objectStore(PDF_STORE_NAME).put({ fileId, blob, updatedAt: nowIso() });
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error || new Error("PDF save failed"));
+    });
+  }
+
+  async function idbGetPdfBlob(fileId) {
+    const db = await openPdfDatabase();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(PDF_STORE_NAME, "readonly");
+      const req = tx.objectStore(PDF_STORE_NAME).get(fileId);
+      req.onsuccess = () => resolve(req.result ? req.result.blob : null);
+      req.onerror = () => reject(req.error || new Error("PDF read failed"));
+    });
+  }
+
+  async function idbDeletePdfBlob(fileId) {
+    const db = await openPdfDatabase();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(PDF_STORE_NAME, "readwrite");
+      tx.objectStore(PDF_STORE_NAME).delete(fileId);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error || new Error("PDF delete failed"));
+    });
+  }
+
+  function getBookById(bookId) {
+    return state.books.items.find((b) => b.bookId === bookId) || null;
+  }
+
+  function getActiveBook() {
+    return getBookById(state.books.activeBookId);
+  }
+
+  async function refreshBookBlobStatus() {
+    const entries = await Promise.all(
+      state.books.items.map(async (book) => {
+        try {
+          const blob = await idbGetPdfBlob(book.fileId);
+          return [book.bookId, !!blob];
+        } catch (_) {
+          return [book.bookId, false];
+        }
+      }),
+    );
+    booksBlobStatus = Object.fromEntries(entries);
+  }
+
+  function setActiveBook(bookId) {
+    state.books.activeBookId = bookId;
+    saveState();
+    renderBooksView();
+  }
+
+  async function saveBookFromUpload() {
+    const titleInput = document.getElementById("bookTitleInput");
+    const authorInput = document.getElementById("bookAuthorInput");
+    const fileInput = document.getElementById("bookPdfInput");
+
+    const title = titleInput.value.trim();
+    const author = authorInput.value.trim();
+    const file =
+      fileInput.files && fileInput.files[0] ? fileInput.files[0] : null;
+
+    if (!title) {
+      alert("Please enter a book title.");
+      return;
+    }
+    if (!file) {
+      alert("Please choose a PDF file.");
+      return;
+    }
+    if (!/\.pdf$/i.test(file.name) || file.type !== "application/pdf") {
+      alert("Only PDF files are supported.");
+      return;
+    }
+    if (file.size > MAX_PDF_FILE_SIZE_BYTES) {
+      alert("PDF file is too large. Maximum size is 40MB.");
+      return;
+    }
+
+    const fileId = uid("file");
+    const bookId = uid("book");
+    const createdAt = nowIso();
+
+    await idbSavePdfBlob(fileId, file);
+
+    state.books.items.push({
+      bookId,
+      title,
+      author,
+      fileId,
+      fileName: file.name,
+      fileSize: file.size,
+      createdAt,
+      updatedAt: createdAt,
+      bookmarks: [],
+    });
+    state.books.activeBookId = bookId;
+    saveState();
+
+    titleInput.value = "";
+    authorInput.value = "";
+    fileInput.value = "";
+
+    await refreshBookBlobStatus();
+    renderBooksView();
+  }
+
+  function openBookModal(bookId) {
+    bookModalState.editingBookId = bookId || null;
+    const titleEl = document.getElementById("bookModalTitle");
+    const titleInput = document.getElementById("bookModalTitleInput");
+    const authorInput = document.getElementById("bookModalAuthorInput");
+
+    if (bookId) {
+      const book = getBookById(bookId);
+      if (!book) return;
+      titleEl.textContent = "Edit Book Metadata";
+      titleInput.value = book.title;
+      authorInput.value = book.author || "";
+    } else {
+      titleEl.textContent = "Add Book Metadata";
+      titleInput.value = "";
+      authorInput.value = "";
+    }
+
+    openModal("bookModal");
+  }
+
+  function saveBookModal() {
+    const title = document.getElementById("bookModalTitleInput").value.trim();
+    const author = document.getElementById("bookModalAuthorInput").value.trim();
+    if (!title) {
+      alert("Book title is required.");
+      return;
+    }
+
+    if (bookModalState.editingBookId) {
+      const book = getBookById(bookModalState.editingBookId);
+      if (book) {
+        book.title = title;
+        book.author = author;
+        book.updatedAt = nowIso();
+      }
+    } else {
+      state.books.items.push({
+        bookId: uid("book"),
+        title,
+        author,
+        fileId: uid("file"),
+        fileName: "missing.pdf",
+        fileSize: 0,
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+        bookmarks: [],
+      });
+    }
+
+    saveState();
+    closeModal("bookModal");
+    renderBooksView();
+  }
+
+  async function deleteBook(bookId) {
+    const book = getBookById(bookId);
+    if (!book) return;
+
     openConfirm(
-      "Delete Category",
-      `Delete "${cat.name}"? Habits in this category will become uncategorized.`,
-      () => {
-        state.categories = state.categories.filter((c) => c.id !== id);
-        // Update habits using this category
-        state.habits.daily.forEach((h) => {
-          if (h.categoryId === id) h.categoryId = "";
-        });
+      "Delete Book",
+      `Delete \"${book.title}\" and all its bookmarks?`,
+      async () => {
+        state.books.items = state.books.items.filter(
+          (b) => b.bookId !== bookId,
+        );
+        if (state.books.activeBookId === bookId) {
+          state.books.activeBookId = state.books.items[0]
+            ? state.books.items[0].bookId
+            : null;
+        }
         saveState();
-        renderAll();
+        try {
+          await idbDeletePdfBlob(book.fileId);
+        } catch (_) {
+          // Non-fatal; metadata is already removed.
+        }
+        await refreshBookBlobStatus();
+        renderBooksView();
       },
     );
   }
 
-  // ─── Export / Import ─────────────────────────────────────
+  function addBookmarkHistoryEvent(bookmark, type, note) {
+    const event = {
+      eventId: uid("hist"),
+      type,
+      at: nowIso(),
+      note: String(note || ""),
+    };
+    bookmark.history = [
+      event,
+      ...(Array.isArray(bookmark.history) ? bookmark.history : []),
+    ].slice(0, MAX_BOOKMARK_HISTORY);
+    return event;
+  }
+
+  function openBookmarkModal(bookId, bookmarkId) {
+    const book = getBookById(bookId);
+    if (!book) {
+      alert("Please select a book first.");
+      return;
+    }
+
+    bookmarkModalState = {
+      editingBookId: bookId,
+      editingBookmarkId: bookmarkId || null,
+    };
+
+    const title = document.getElementById("bookmarkModalTitle");
+    const labelInput = document.getElementById("bookmarkLabel");
+    const pdfPageInput = document.getElementById("bookmarkPdfPage");
+    const realPageInput = document.getElementById("bookmarkRealPage");
+    const noteInput = document.getElementById("bookmarkNote");
+
+    if (bookmarkId) {
+      const bm = book.bookmarks.find((b) => b.bookmarkId === bookmarkId);
+      if (!bm) return;
+      title.textContent = "Edit Bookmark";
+      labelInput.value = bm.label;
+      pdfPageInput.value = String(bm.pdfPage);
+      realPageInput.value = String(bm.realPage);
+      noteInput.value = bm.note || "";
+    } else {
+      title.textContent = "Add Bookmark";
+      labelInput.value = "";
+      pdfPageInput.value = "1";
+      realPageInput.value = "1";
+      noteInput.value = "";
+    }
+
+    openModal("bookmarkModal");
+  }
+
+  function saveBookmark() {
+    const book = getBookById(bookmarkModalState.editingBookId);
+    if (!book) return;
+
+    const label =
+      document.getElementById("bookmarkLabel").value.trim() || "Bookmark";
+    const pdfPage = Math.max(
+      1,
+      parseInt(document.getElementById("bookmarkPdfPage").value, 10) || 1,
+    );
+    const realPage = Math.max(
+      1,
+      parseInt(document.getElementById("bookmarkRealPage").value, 10) || 1,
+    );
+    const note = document.getElementById("bookmarkNote").value.trim();
+
+    if (bookmarkModalState.editingBookmarkId) {
+      const bm = book.bookmarks.find(
+        (b) => b.bookmarkId === bookmarkModalState.editingBookmarkId,
+      );
+      if (!bm) return;
+      bm.label = label;
+      bm.pdfPage = pdfPage;
+      bm.realPage = realPage;
+      bm.note = note;
+      bm.updatedAt = nowIso();
+      addBookmarkHistoryEvent(bm, "updated", "Bookmark updated");
+    } else {
+      const ts = nowIso();
+      const bookmark = {
+        bookmarkId: uid("bm"),
+        label,
+        pdfPage,
+        realPage,
+        note,
+        createdAt: ts,
+        updatedAt: ts,
+        history: [],
+      };
+      addBookmarkHistoryEvent(bookmark, "created", "Bookmark created");
+      book.bookmarks.unshift(bookmark);
+    }
+
+    book.bookmarks.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+    book.updatedAt = nowIso();
+    saveState();
+    closeModal("bookmarkModal");
+    renderBooksView();
+  }
+
+  function deleteBookmark(bookId, bookmarkId) {
+    const book = getBookById(bookId);
+    if (!book) return;
+    const bm = book.bookmarks.find((b) => b.bookmarkId === bookmarkId);
+    if (!bm) return;
+
+    openConfirm("Delete Bookmark", `Delete bookmark \"${bm.label}\"?`, () => {
+      book.bookmarks = book.bookmarks.filter(
+        (b) => b.bookmarkId !== bookmarkId,
+      );
+      book.updatedAt = nowIso();
+      saveState();
+      renderBooksView();
+    });
+  }
+
+  function openBookmarkInNewTab(bookId, page) {
+    const url = `${window.location.pathname}?reader=1&book=${encodeURIComponent(bookId)}&page=${encodeURIComponent(page)}`;
+    window.open(url, "_blank", "noopener");
+  }
+
+  async function renderBooksList() {
+    const list = document.getElementById("booksList");
+    if (!list) return;
+
+    if (state.books.items.length === 0) {
+      list.innerHTML =
+        "<div class='empty-state'><p>No books added yet.</p></div>";
+      return;
+    }
+
+    list.innerHTML = state.books.items
+      .map((book) => {
+        const active = state.books.activeBookId === book.bookId ? "active" : "";
+        const hasBlob = !!booksBlobStatus[book.bookId];
+        return `<article class='books-item ${active}'><div class='books-item-main'><h4>${sanitize(book.title)}</h4><p>${sanitize(book.author || "Unknown author")}</p><p class='books-file-meta'>${sanitize(book.fileName)} · ${Math.round((book.fileSize || 0) / 1024)}KB</p>${hasBlob ? "" : "<p class='books-warning'>PDF blob missing in this browser storage.</p>"}</div><div class='books-item-actions'><button class='btn-secondary' type='button' onclick="HabitApp.setActiveBook('${book.bookId}')">Select</button><button class='btn-secondary' type='button' onclick="HabitApp.editBook('${book.bookId}')">Edit</button><button class='btn-danger' type='button' onclick="HabitApp.deleteBook('${book.bookId}')">Delete</button></div></article>`;
+      })
+      .join("");
+  }
+
+  function renderBookmarksPanel() {
+    const panel = document.getElementById("bookmarksPanel");
+    if (!panel) return;
+
+    const book = getActiveBook();
+    if (!book) {
+      panel.innerHTML =
+        "<div class='empty-state'><p>Select a book to view bookmarks.</p></div>";
+      return;
+    }
+
+    if (!Array.isArray(book.bookmarks) || book.bookmarks.length === 0) {
+      panel.innerHTML =
+        "<div class='empty-state'><p>No bookmarks yet. Add your first bookmark.</p></div>";
+      return;
+    }
+
+    panel.innerHTML = book.bookmarks
+      .map((bm) => {
+        const historyHtml = (Array.isArray(bm.history) ? bm.history : [])
+          .slice(0, 8)
+          .map(
+            (h) =>
+              `<li><strong>${sanitize(h.type)}</strong> · ${sanitize(formatIsoForDisplay(h.at))}${h.note ? ` · ${sanitize(h.note)}` : ""}</li>`,
+          )
+          .join("");
+
+        return `<article class='bookmark-item'><div class='bookmark-main'><h4>${sanitize(bm.label)}</h4><p>PDF page ${bm.pdfPage} · Real page ${bm.realPage}</p><p>${sanitize(bm.note || "No note")}</p><p class='bookmark-updated'>Updated ${sanitize(formatIsoForDisplay(bm.updatedAt))}</p></div><div class='bookmark-actions'><button class='btn-primary' type='button' onclick="HabitApp.openBookmark('${book.bookId}', ${bm.pdfPage})">Open at Bookmark</button><button class='btn-secondary' type='button' onclick="HabitApp.editBookmark('${book.bookId}', '${bm.bookmarkId}')">Edit</button><button class='btn-danger' type='button' onclick="HabitApp.deleteBookmark('${book.bookId}', '${bm.bookmarkId}')">Delete</button></div><ul class='bookmark-history'>${historyHtml || "<li>No history yet.</li>"}</ul></article>`;
+      })
+      .join("");
+  }
+
+  async function renderBooksView() {
+    await refreshBookBlobStatus();
+    await renderBooksList();
+    renderBookmarksPanel();
+  }
+
+  function renderAll() {
+    renderMonthHeader();
+    renderSummary();
+    renderWeeklySummaryCards();
+    renderDailyBarChart();
+    renderCategoryBarChart();
+    renderDailyHabitsGrid();
+    renderMonthlyReview();
+    renderManageView();
+  }
+
   function exportData() {
+    alert(
+      "Export note: JSON backup includes habits + books metadata only. PDF binaries stored in IndexedDB are not embedded.",
+    );
+
     const blob = new Blob([JSON.stringify(state, null, 2)], {
       type: "application/json",
     });
@@ -1605,41 +1628,380 @@
     URL.revokeObjectURL(url);
   }
 
+  function validateImportedState(imported) {
+    const errors = [];
+
+    if (!isPlainObject(imported)) {
+      return { ok: false, errors: ["Root value must be an object."] };
+    }
+
+    if (!Array.isArray(imported.categories)) {
+      errors.push("categories must be an array.");
+    }
+
+    if (
+      !isPlainObject(imported.habits) ||
+      !Array.isArray(imported.habits.daily)
+    ) {
+      errors.push("habits.daily must be an array.");
+    }
+
+    if (!isPlainObject(imported.months)) {
+      errors.push("months must be an object.");
+    }
+
+    if (imported.books !== undefined) {
+      if (!isPlainObject(imported.books)) {
+        errors.push("books must be an object when provided.");
+      } else {
+        if (!Array.isArray(imported.books.items)) {
+          errors.push("books.items must be an array.");
+        } else {
+          imported.books.items.forEach((book, i) => {
+            if (!isPlainObject(book)) {
+              errors.push(`books.items[${i}] must be an object.`);
+              return;
+            }
+            if (typeof book.bookId !== "string" || !book.bookId.trim()) {
+              errors.push(
+                `books.items[${i}].bookId must be a non-empty string.`,
+              );
+            }
+            if (
+              book.bookmarks !== undefined &&
+              !Array.isArray(book.bookmarks)
+            ) {
+              errors.push(`books.items[${i}].bookmarks must be an array.`);
+            }
+            if (Array.isArray(book.bookmarks)) {
+              book.bookmarks.forEach((bm, j) => {
+                if (!isPlainObject(bm)) {
+                  errors.push(
+                    `books.items[${i}].bookmarks[${j}] must be an object.`,
+                  );
+                  return;
+                }
+                if (
+                  typeof bm.bookmarkId !== "string" ||
+                  !bm.bookmarkId.trim()
+                ) {
+                  errors.push(
+                    `books.items[${i}].bookmarks[${j}].bookmarkId must be a non-empty string.`,
+                  );
+                }
+                if (!Number.isFinite(Number(bm.pdfPage))) {
+                  errors.push(
+                    `books.items[${i}].bookmarks[${j}].pdfPage must be numeric.`,
+                  );
+                }
+                if (!Number.isFinite(Number(bm.realPage))) {
+                  errors.push(
+                    `books.items[${i}].bookmarks[${j}].realPage must be numeric.`,
+                  );
+                }
+                if (bm.history !== undefined && !Array.isArray(bm.history)) {
+                  errors.push(
+                    `books.items[${i}].bookmarks[${j}].history must be an array.`,
+                  );
+                }
+              });
+            }
+          });
+        }
+      }
+    }
+
+    return { ok: errors.length === 0, errors };
+  }
+
   function importData(file) {
     const reader = new FileReader();
     reader.onload = function (e) {
       try {
         const imported = JSON.parse(e.target.result);
-        // Basic validation
-        if (
-          imported &&
-          imported.categories &&
-          imported.habits &&
-          imported.months
-        ) {
-          state = imported;
-          migrateState();
-          ensureMonthData();
-          saveState();
-          renderAll();
-        } else {
-          alert("Invalid backup file format.");
+        const validation = validateImportedState(imported);
+        if (!validation.ok) {
+          alert(
+            `Import failed:\n- ${validation.errors.slice(0, 8).join("\n- ")}`,
+          );
+          return;
         }
-      } catch (err) {
+        state = imported;
+        migrateState();
+        ensureMonthData();
+        saveState();
+        renderAll();
+        renderBooksView();
+        alert(
+          "Import completed. Note: PDF binaries are not included in JSON and may need re-upload.",
+        );
+      } catch (_) {
         alert("Failed to parse backup file.");
       }
     };
     reader.readAsText(file);
   }
 
-  // ─── Event Binding ───────────────────────────────────────
+  function initSidebarCollapse() {
+    sidebarCollapsed = localStorage.getItem(SIDEBAR_COLLAPSE_KEY) === "1";
+    applySidebarCollapseState();
+  }
+
+  function isDesktopViewport() {
+    return window.innerWidth > 768;
+  }
+
+  function applySidebarCollapseState() {
+    const sidebar = document.querySelector(".sidebar");
+    const toggle = document.getElementById("sidebarCollapseToggle");
+    if (!sidebar || !toggle) return;
+    const effective = sidebarCollapsed && isDesktopViewport();
+    sidebar.classList.toggle("collapsed", effective);
+    toggle.setAttribute("aria-expanded", String(!effective));
+  }
+
+  function setSidebarCollapsed(collapsed, persist = true) {
+    sidebarCollapsed = !!collapsed;
+    applySidebarCollapseState();
+    if (persist) {
+      localStorage.setItem(SIDEBAR_COLLAPSE_KEY, sidebarCollapsed ? "1" : "0");
+    }
+  }
+
+  function loadScriptTag(url) {
+    return new Promise((resolve, reject) => {
+      const existing = document.querySelector(
+        `script[data-pdfjs-url="${url}"]`,
+      );
+
+      if (existing) {
+        if (existing.dataset.loaded === "1") {
+          resolve();
+          return;
+        }
+        if (existing.dataset.failed === "1") {
+          reject(new Error(`Script failed earlier: ${url}`));
+          return;
+        }
+        existing.addEventListener("load", () => resolve(), { once: true });
+        existing.addEventListener(
+          "error",
+          () => reject(new Error(`Failed to load script: ${url}`)),
+          { once: true },
+        );
+        return;
+      }
+
+      const script = document.createElement("script");
+      script.src = url;
+      script.async = true;
+      script.dataset.pdfjsUrl = url;
+      script.addEventListener(
+        "load",
+        () => {
+          script.dataset.loaded = "1";
+          resolve();
+        },
+        { once: true },
+      );
+      script.addEventListener(
+        "error",
+        () => {
+          script.dataset.failed = "1";
+          reject(new Error(`Failed to load script: ${url}`));
+        },
+        { once: true },
+      );
+      document.head.appendChild(script);
+    });
+  }
+
+  async function ensurePdfJsLibLoaded() {
+    if (window.pdfjsLib && typeof window.pdfjsLib.getDocument === "function") {
+      return window.pdfjsLib;
+    }
+
+    for (const url of PDFJS_SCRIPT_URLS) {
+      try {
+        await loadScriptTag(url);
+      } catch (_) {
+        continue;
+      }
+
+      if (
+        window.pdfjsLib &&
+        typeof window.pdfjsLib.getDocument === "function"
+      ) {
+        return window.pdfjsLib;
+      }
+    }
+
+    return null;
+  }
+
+  async function initReaderMode() {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("reader") !== "1") {
+      return false;
+    }
+
+    document.getElementById("app").style.display = "none";
+    const readerRoot = document.getElementById("readerMode");
+    readerRoot.style.display = "block";
+    loadReaderThemePreferences();
+    applyReaderThemeClasses();
+
+    const bookId = params.get("book") || "";
+    const targetPage = Math.max(1, parseInt(params.get("page"), 10) || 1);
+    const book = getBookById(bookId);
+    if (!book) {
+      document.getElementById("readerStatusText").textContent =
+        "Book metadata not found.";
+      return true;
+    }
+
+    readerState.book = book;
+    document.getElementById("readerBookTitle").textContent = book.title;
+
+    let blob = null;
+    try {
+      blob = await idbGetPdfBlob(book.fileId);
+    } catch (_) {
+      blob = null;
+    }
+    if (!blob) {
+      document.getElementById("readerStatusText").textContent =
+        "PDF file is missing in IndexedDB for this browser.";
+      return true;
+    }
+
+    const pdfjsLib = await ensurePdfJsLibLoaded();
+    if (!pdfjsLib) {
+      document.getElementById("readerStatusText").textContent =
+        "PDF.js failed to load. Check your internet and refresh.";
+      return true;
+    }
+
+    pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_URL;
+
+    const url = URL.createObjectURL(blob);
+    try {
+      const loadingTask = pdfjsLib.getDocument(url);
+      readerState.pdfDoc = await loadingTask.promise;
+      readerState.totalPages = readerState.pdfDoc.numPages;
+      document.getElementById("readerStatusText").textContent = "Loaded";
+      await renderReaderPage(Math.min(targetPage, readerState.totalPages));
+    } catch (_) {
+      document.getElementById("readerStatusText").textContent =
+        "Failed to open PDF.";
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+
+    bindReaderEvents();
+    updateReaderThemeControls();
+    return true;
+  }
+
+  async function renderReaderPage(pageNumber) {
+    if (!readerState.pdfDoc) return;
+
+    const safePage = Math.max(1, Math.min(pageNumber, readerState.totalPages));
+    readerState.currentPage = safePage;
+
+    const page = await readerState.pdfDoc.getPage(safePage);
+    const baseViewport = page.getViewport({ scale: 1 });
+    const canvasWrap = document.querySelector(".reader-canvas-wrap");
+    const availableWidth = Math.max(
+      320,
+      (canvasWrap ? canvasWrap.clientWidth : window.innerWidth) - 24,
+    );
+    const fitScale = availableWidth / baseViewport.width;
+    const cssScale = Math.max(1.4, Math.min(fitScale, 2.6));
+    const viewport = page.getViewport({ scale: cssScale });
+
+    // Render above CSS pixel resolution for crisper text on high-DPI displays.
+    const outputScale = Math.min(window.devicePixelRatio || 1, 3);
+    const canvas = document.getElementById("readerCanvas");
+    const ctx = canvas.getContext("2d");
+    canvas.width = Math.floor(viewport.width * outputScale);
+    canvas.height = Math.floor(viewport.height * outputScale);
+    canvas.style.width = `${Math.floor(viewport.width)}px`;
+    canvas.style.height = `${Math.floor(viewport.height)}px`;
+
+    if (readerState.renderTask) {
+      try {
+        readerState.renderTask.cancel();
+      } catch (_) {
+        // Ignore cancellation race.
+      }
+    }
+
+    readerState.renderTask = page.render({
+      canvasContext: ctx,
+      viewport,
+      transform: [outputScale, 0, 0, outputScale, 0, 0],
+    });
+    await readerState.renderTask.promise;
+    applyReaderThemeClasses();
+
+    document.getElementById("readerPageIndicator").textContent =
+      `${readerState.currentPage} / ${readerState.totalPages}`;
+    document.getElementById("readerJumpPage").value = String(
+      readerState.currentPage,
+    );
+  }
+
+  function bindReaderEvents() {
+    const prev = document.getElementById("readerPrevPage");
+    const next = document.getElementById("readerNextPage");
+    const go = document.getElementById("readerGoPage");
+    const jump = document.getElementById("readerJumpPage");
+    const darkToggle = document.getElementById("readerDarkToggle");
+    const darkMode = document.getElementById("readerDarkMode");
+
+    prev.addEventListener("click", () =>
+      renderReaderPage(readerState.currentPage - 1),
+    );
+    next.addEventListener("click", () =>
+      renderReaderPage(readerState.currentPage + 1),
+    );
+    go.addEventListener("click", () => {
+      renderReaderPage(parseInt(jump.value, 10) || 1);
+    });
+    jump.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        renderReaderPage(parseInt(jump.value, 10) || 1);
+      }
+    });
+
+    darkToggle.addEventListener("click", () => {
+      toggleReaderDarkTheme();
+    });
+
+    darkMode.addEventListener("change", (e) => {
+      setReaderDarkMode(e.target.value);
+    });
+
+    if (!readerState.resizeHandlerBound) {
+      window.addEventListener("resize", () => {
+        if (!readerState.pdfDoc) return;
+        if (readerState.resizeTimer) {
+          clearTimeout(readerState.resizeTimer);
+        }
+        readerState.resizeTimer = setTimeout(() => {
+          renderReaderPage(readerState.currentPage);
+        }, 120);
+      });
+      readerState.resizeHandlerBound = true;
+    }
+  }
+
   function bindEvents() {
-    // Navigation tabs
     document.querySelectorAll(".nav-tab").forEach((tab) => {
       tab.addEventListener("click", () => switchView(tab.dataset.view));
     });
 
-    // Month navigation — dashboard
     document
       .getElementById("prevMonth")
       .addEventListener("click", () => navigateMonth(-1));
@@ -1647,34 +2009,16 @@
       .getElementById("nextMonth")
       .addEventListener("click", () => navigateMonth(1));
 
-    // Month navigation — weekly view
-    document
-      .getElementById("prevMonthW")
-      .addEventListener("click", () => navigateMonth(-1));
-    document
-      .getElementById("nextMonthW")
-      .addEventListener("click", () => navigateMonth(1));
-
-    // Add habit buttons
     document
       .getElementById("btnAddDailyHabit")
-      .addEventListener("click", () => openHabitModal("daily"));
-    document
-      .getElementById("btnAddWeeklyHabit")
-      .addEventListener("click", () => openHabitModal("weekly"));
+      .addEventListener("click", () => openHabitModal());
     document
       .getElementById("btnAddDailyManage")
-      .addEventListener("click", () => openHabitModal("daily"));
-    document
-      .getElementById("btnAddWeeklyManage")
-      .addEventListener("click", () => openHabitModal("weekly"));
-
-    // Add category
+      .addEventListener("click", () => openHabitModal());
     document
       .getElementById("btnAddCategory")
       .addEventListener("click", () => openCategoryModal());
 
-    // Habit modal
     document
       .getElementById("habitModalClose")
       .addEventListener("click", () => closeModal("habitModal"));
@@ -1685,7 +2029,6 @@
       .getElementById("habitModalSave")
       .addEventListener("click", saveHabitModal);
 
-    // Category modal
     document
       .getElementById("categoryModalClose")
       .addEventListener("click", () => closeModal("categoryModal"));
@@ -1696,7 +2039,36 @@
       .getElementById("categoryModalSave")
       .addEventListener("click", saveCategoryModal);
 
-    // Confirm modal
+    document
+      .getElementById("noteModalClose")
+      .addEventListener("click", () => closeModal("noteModal"));
+    document
+      .getElementById("noteModalCancel")
+      .addEventListener("click", () => closeModal("noteModal"));
+    document
+      .getElementById("noteModalSave")
+      .addEventListener("click", saveNoteModal);
+
+    document
+      .getElementById("bookModalClose")
+      .addEventListener("click", () => closeModal("bookModal"));
+    document
+      .getElementById("bookModalCancel")
+      .addEventListener("click", () => closeModal("bookModal"));
+    document
+      .getElementById("bookModalSave")
+      .addEventListener("click", saveBookModal);
+
+    document
+      .getElementById("bookmarkModalClose")
+      .addEventListener("click", () => closeModal("bookmarkModal"));
+    document
+      .getElementById("bookmarkModalCancel")
+      .addEventListener("click", () => closeModal("bookmarkModal"));
+    document
+      .getElementById("bookmarkModalSave")
+      .addEventListener("click", saveBookmark);
+
     document
       .getElementById("confirmModalClose")
       .addEventListener("click", () => closeModal("confirmModal"));
@@ -1709,44 +2081,10 @@
       confirmCallback = null;
     });
 
-    // Emoji picker
-    document.querySelectorAll(".emoji-option").forEach((opt) => {
-      opt.addEventListener("click", () => {
-        const targetId = opt.dataset.target || "categoryEmoji";
-        const input = document.getElementById(targetId);
-        if (input) input.value = opt.dataset.emoji;
-      });
-    });
-
-    // Color presets
-    document.querySelectorAll(".color-option").forEach((opt) => {
-      opt.addEventListener("click", () => {
-        document.getElementById("categoryColor").value = opt.dataset.color;
-      });
-    });
-
-    // Habit type toggle
     document
-      .getElementById("habitType")
-      .addEventListener("change", function () {
-        updateHabitModalDailyFields(this.value);
-      });
-    document
-      .getElementById("habitScheduleType")
-      .addEventListener("change", function () {
-        if (this.value === "dynamic") {
-          renderExcludedDaysPicker(
-            Array.from(
-              document.querySelectorAll("#habitExcludedDays input:checked"),
-            ).map((el) => parseInt(el.value, 10)),
-          );
-        }
-        updateHabitModalDailyFields(
-          editingHabitType || document.getElementById("habitType").value,
-        );
-      });
+      .getElementById("monthlyReviewSave")
+      .addEventListener("click", saveMonthlyReview);
 
-    // Export / Import
     document.getElementById("btnExport").addEventListener("click", exportData);
     document.getElementById("btnImport").addEventListener("click", () => {
       document.getElementById("importFile").click();
@@ -1754,41 +2092,38 @@
     document
       .getElementById("importFile")
       .addEventListener("change", function () {
-        if (this.files[0]) {
+        if (this.files && this.files[0]) {
           importData(this.files[0]);
           this.value = "";
         }
       });
 
-    // Reset month
     document.getElementById("btnResetMonth").addEventListener("click", () => {
       openConfirm(
         "Reset Month",
-        `Clear all check marks for ${MONTH_NAMES[state.currentMonth]} ${state.currentYear}?`,
+        `Clear all check marks and notes for ${MONTH_NAMES[state.currentMonth]} ${state.currentYear}?`,
         () => {
-          const key = monthKey(state.currentYear, state.currentMonth);
-          state.months[key] = { dailyCompletions: {}, weeklyCompletions: {} };
+          state.months[monthKey(state.currentYear, state.currentMonth)] =
+            getDefaultMonthData();
           saveState();
           renderAll();
         },
       );
     });
 
-    // Clear all
     document.getElementById("btnClearAll").addEventListener("click", () => {
       openConfirm(
         "Clear All Data",
-        "This will delete ALL habits, categories, and progress. This cannot be undone!",
+        "This deletes all habits and books metadata. Continue?",
         () => {
-          localStorage.removeItem(STORAGE_KEY);
           state = getDefaultState();
           saveState();
           renderAll();
+          renderBooksView();
         },
       );
     });
 
-    // Mobile menu toggle
     document
       .getElementById("mobileMenuToggle")
       .addEventListener("click", () => {
@@ -1801,33 +2136,29 @@
         setSidebarCollapsed(!sidebarCollapsed);
       });
 
-    window.addEventListener("resize", () => {
-      applySidebarCollapseState();
-    });
+    window.addEventListener("resize", applySidebarCollapseState);
 
-    // Close sidebar on outside click (mobile)
-    document.addEventListener("click", (e) => {
-      const sidebar = document.querySelector(".sidebar");
-      const toggle = document.getElementById("mobileMenuToggle");
-      if (
-        sidebar.classList.contains("open") &&
-        !sidebar.contains(e.target) &&
-        !toggle.contains(e.target)
-      ) {
-        sidebar.classList.remove("open");
-      }
-    });
-
-    // Close modals on overlay click
-    document.querySelectorAll(".modal-overlay").forEach((overlay) => {
-      overlay.addEventListener("click", (e) => {
-        if (e.target === overlay) {
-          overlay.classList.remove("open");
-        }
+    document.querySelectorAll(".emoji-option").forEach((opt) => {
+      opt.addEventListener("click", () => {
+        const target = document.getElementById(
+          opt.dataset.target || "categoryEmoji",
+        );
+        if (target) target.value = opt.dataset.emoji;
       });
     });
 
-    // Keyboard: Enter to save modals, Escape to close
+    document.querySelectorAll(".color-option").forEach((opt) => {
+      opt.addEventListener("click", () => {
+        document.getElementById("categoryColor").value = opt.dataset.color;
+      });
+    });
+
+    document.querySelectorAll(".modal-overlay").forEach((overlay) => {
+      overlay.addEventListener("click", (e) => {
+        if (e.target === overlay) overlay.classList.remove("open");
+      });
+    });
+
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") {
         document
@@ -1836,93 +2167,73 @@
       }
     });
 
-    document.getElementById("habitName").addEventListener("keydown", (e) => {
-      if (e.key === "Enter") saveHabitModal();
+    document.getElementById("btnUploadBook").addEventListener("click", () => {
+      saveBookFromUpload().catch((err) => {
+        console.error(err);
+        alert("Failed to upload PDF.");
+      });
     });
-
-    document.getElementById("categoryName").addEventListener("keydown", (e) => {
-      if (e.key === "Enter") saveCategoryModal();
-    });
-
-    // Drag and drop reordering
-    document.addEventListener("dragstart", (e) => {
-      const row = e.target.closest("[draggable='true'][data-habit-id]");
-      if (!row) return;
-      dragState = {
-        type: row.dataset.habitType,
-        habitId: row.dataset.habitId,
-        surface: row.dataset.dndSurface,
-      };
-      row.classList.add("dragging");
-      e.dataTransfer.effectAllowed = "move";
-      e.dataTransfer.setData("text/plain", row.dataset.habitId);
-    });
-
-    document.addEventListener("dragover", (e) => {
-      const target = e.target.closest("[draggable='true'][data-habit-id]");
-      if (!target || !dragState) return;
-      if (
-        target.dataset.habitType !== dragState.type ||
-        target.dataset.dndSurface !== dragState.surface
-      ) {
+    document
+      .getElementById("btnBookCreate")
+      .addEventListener("click", () => openBookModal());
+    document.getElementById("btnAddBookmark").addEventListener("click", () => {
+      if (!state.books.activeBookId) {
+        alert("Select a book first.");
         return;
       }
-      e.preventDefault();
-      target.classList.add("drop-target");
-    });
-
-    document.addEventListener("dragleave", (e) => {
-      const target = e.target.closest("[draggable='true'][data-habit-id]");
-      if (target) target.classList.remove("drop-target");
-    });
-
-    document.addEventListener("drop", (e) => {
-      const target = e.target.closest("[draggable='true'][data-habit-id]");
-      if (!target || !dragState) return;
-      if (
-        target.dataset.habitType !== dragState.type ||
-        target.dataset.dndSurface !== dragState.surface
-      ) {
-        return;
-      }
-      e.preventDefault();
-      target.classList.remove("drop-target");
-      moveHabit(dragState.type, dragState.habitId, target.dataset.habitId);
-      dragState = null;
-    });
-
-    document.addEventListener("dragend", () => {
-      dragState = null;
-      document
-        .querySelectorAll(".dragging, .drop-target")
-        .forEach((el) => el.classList.remove("dragging", "drop-target"));
+      openBookmarkModal(state.books.activeBookId);
     });
   }
 
-  // ─── Public API (for inline onclick handlers) ────────────
   window.HabitApp = {
-    editHabit: function (type, id) {
-      openHabitModal(type, id);
+    editHabit(id) {
+      openHabitModal(id);
     },
-    deleteHabit: deleteHabit,
-    editCategory: function (id) {
+    deleteHabit,
+    editCategory(id) {
       openCategoryModal(id);
     },
-    deleteCategory: deleteCategory,
+    deleteCategory,
+    setActiveBook,
+    editBook(bookId) {
+      openBookModal(bookId);
+    },
+    deleteBook(bookId) {
+      deleteBook(bookId);
+    },
+    editBookmark(bookId, bookmarkId) {
+      openBookmarkModal(bookId, bookmarkId);
+    },
+    deleteBookmark,
+    openBookmark(bookId, page) {
+      openBookmarkInNewTab(bookId, page);
+    },
   };
 
-  // ─── Init ────────────────────────────────────────────────
-  function init() {
+  async function init() {
     loadState();
     bindEvents();
     initSidebarCollapse();
+
+    const inReaderMode = await initReaderMode();
+    if (inReaderMode) {
+      return;
+    }
+
+    initTopClock();
     renderAll();
+    renderBooksView();
   }
 
-  // Start when DOM is ready
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", init);
+    document.addEventListener("DOMContentLoaded", () => {
+      init().catch((err) => {
+        console.error(err);
+      });
+    });
   } else {
-    init();
+    init().catch((err) => {
+      console.error(err);
+    });
   }
 })();

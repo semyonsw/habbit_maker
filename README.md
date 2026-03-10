@@ -1,6 +1,6 @@
 # Habit Maker
 
-Habit Maker is a local-first web app for tracking daily and weekly habits. It is built with plain HTML, CSS, and JavaScript, and runs directly in the browser with no backend required.
+Habit Maker is a local-first web app for tracking daily habits and managing personal PDF books with bookmark history. It is built with plain HTML, CSS, and JavaScript, and runs directly in the browser with no backend required.
 
 ## Project Information
 
@@ -15,11 +15,17 @@ Habit Maker is a local-first web app for tracking daily and weekly habits. It is
 
 - Monthly dashboard with completion summary and progress visuals
 - Daily habit tracking grid (day-by-day checkboxes)
-- Weekly habit tracking view
 - Category management with emoji and color support
-- Drag-and-drop reordering for habits
 - JSON import/export for backup and restore
-- Local persistence via browser `localStorage`
+- Local persistence via browser `localStorage` for app metadata
+- IndexedDB persistence for PDF binaries
+- Books module:
+- Upload PDF (max 40MB)
+- Track per-book metadata (`title`, `author`, file metadata)
+- Create/edit/delete bookmarks (`label`, `pdfPage`, `realPage`, `note`)
+- Automatic immutable bookmark history events with ISO timestamps
+- Open bookmark in a new tab reader at exact page
+- Reader mode with previous/next page and direct page jump
 - Responsive layout optimized for desktop and mobile
 - Visual analytics via Chart.js:
 - Daily completion bar chart
@@ -65,9 +71,12 @@ habbit_maker/
 
 ## Data and Privacy
 
-- Data is stored locally in your browser under key `habitTracker_v1`.
+- Metadata is stored locally in your browser under key `habitTracker_v1`.
+- PDF binaries are stored separately in IndexedDB (`habitTracker_books_pdf_v1`).
 - No server-side storage is used by default.
-- Clearing browser data will remove local progress unless exported.
+- JSON export/import includes habits and books metadata only.
+- JSON export/import does not include PDF binaries; after restore, books may require PDF re-upload.
+- Clearing browser data removes both metadata and PDF binaries.
 
 ## Automation Script
 

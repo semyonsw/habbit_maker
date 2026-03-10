@@ -249,6 +249,49 @@ body {
   transition: margin-left 0.25s ease;
 }
 
+.top-clock-wrap {
+  margin-bottom: 18px;
+}
+
+.top-clock-card {
+  position: relative;
+  overflow: hidden;
+  background:
+    linear-gradient(140deg, rgba(88, 165, 209, 0.25), rgba(31, 74, 119, 0.18)),
+    var(--purple-100);
+  border: 1px solid rgba(88, 165, 209, 0.45);
+  border-radius: var(--radius-lg);
+  padding: 12px 16px;
+  box-shadow: var(--shadow-md);
+}
+
+.top-clock-card::after {
+  content: "";
+  position: absolute;
+  inset: auto -20% -80% auto;
+  width: 220px;
+  height: 220px;
+  background: radial-gradient(circle, rgba(88, 165, 209, 0.3), transparent 70%);
+  pointer-events: none;
+}
+
+.top-clock-label {
+  color: var(--gray-600);
+  text-transform: uppercase;
+  letter-spacing: 1.6px;
+  font-size: 0.72rem;
+  margin-bottom: 3px;
+}
+
+#topDateTime {
+  position: relative;
+  z-index: 1;
+  font-family: var(--font-display);
+  font-size: clamp(1.2rem, 2.4vw, 1.7rem);
+  color: var(--gray-900);
+  line-height: 1.2;
+}
+
 @media (min-width: 769px) {
   .sidebar.collapsed {
     width: var(--sidebar-collapsed-width);
@@ -503,6 +546,36 @@ body {
   max-height: 220px;
 }
 
+.monthly-review-card {
+  background: var(--purple-100);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--gray-100);
+  margin-bottom: 24px;
+}
+
+.monthly-review-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.monthly-review-header h3 {
+  font-size: 0.95rem;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: var(--gray-700);
+}
+
+.monthly-review-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
 /* ============================================================
    HABITS SECTION & GRID
    ============================================================ */
@@ -660,6 +733,19 @@ body {
   color: var(--white);
 }
 
+.streak-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--purple-50);
+  border: 1px solid var(--purple-300);
+  color: var(--gray-700);
+  font-size: 0.64rem;
+  letter-spacing: 0.2px;
+}
+
 .habits-grid td.category-cell {
   white-space: nowrap;
 }
@@ -685,6 +771,41 @@ body {
   padding: 4px 2px;
 }
 
+.day-cell-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.note-btn {
+  border: 1px solid var(--gray-300);
+  background: var(--purple-50);
+  color: var(--gray-500);
+  border-radius: 4px;
+  width: 20px;
+  height: 20px;
+  line-height: 1;
+  font-size: 11px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition);
+}
+
+.note-btn:hover {
+  border-color: var(--purple-400);
+  color: var(--white);
+  background: var(--purple-600);
+}
+
+.note-btn.has-note {
+  border-color: var(--success);
+  background: rgba(34, 197, 94, 0.2);
+  color: var(--white);
+}
+
 .habits-grid td.day-cell.day-cell-off {
   background: var(--purple-900);
 }
@@ -705,6 +826,13 @@ body {
 
 .habits-grid td.day-cell.today-col {
   background: var(--purple-50);
+}
+
+.habits-grid td.day-cell.today-col .day-cell-content {
+  background: rgba(88, 165, 209, 0.15);
+  border: 1px solid rgba(88, 165, 209, 0.35);
+  border-radius: 8px;
+  padding: 3px 2px;
 }
 
 .habits-grid tr.completion-row td {
@@ -800,6 +928,22 @@ body {
   animation: checkPop 0.2s ease;
 }
 
+.habit-check.today-check {
+  border-color: #7bc7ec;
+  box-shadow: 0 0 0 2px rgba(123, 199, 236, 0.2);
+}
+
+.habit-check.today-check:hover {
+  box-shadow:
+    0 0 0 2px rgba(123, 199, 236, 0.35),
+    0 0 0 6px rgba(123, 199, 236, 0.12);
+}
+
+.habit-check.today-check:checked {
+  background: linear-gradient(135deg, #3e85b5, #58a5d1);
+  border-color: #58a5d1;
+}
+
 @keyframes checkPop {
   0% {
     transform: scale(1);
@@ -813,77 +957,213 @@ body {
 }
 
 /* ============================================================
-   WEEKLY HABITS VIEW
+   BOOKS VIEW + READER
    ============================================================ */
-.weekly-progress-row {
-  display: flex;
-  gap: 16px;
-  margin-bottom: 24px;
-  overflow-x: auto;
-  padding-bottom: 4px;
-}
-
-.weekly-progress-card {
-  background: var(--purple-100);
-  border-radius: var(--radius-lg);
-  padding: 16px 20px;
-  box-shadow: var(--shadow-md);
-  border: 1px solid var(--gray-100);
-  text-align: center;
-  min-width: 130px;
-  flex: 1;
-}
-
-.weekly-progress-card .wp-title {
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  color: var(--white);
-  font-weight: 600;
-  background: linear-gradient(135deg, var(--purple-600), var(--purple-700));
-  padding: 4px 12px;
-  border-radius: var(--radius-sm);
-  display: inline-block;
-  margin-bottom: 10px;
-}
-
-.weekly-progress-card .wp-stats {
-  display: flex;
-  justify-content: center;
-  gap: 16px;
-  margin-bottom: 8px;
-}
-
-.weekly-progress-card .wp-num {
-  font-size: 1.4rem;
+.week-pct {
+  margin-top: 10px;
+  font-size: 1.1rem;
   font-weight: 700;
   color: var(--gray-900);
 }
 
-.weekly-progress-card .wp-label {
-  font-size: 0.65rem;
-  text-transform: uppercase;
+.books-header {
+  margin-bottom: 20px;
+}
+
+.books-header h2 {
+  font-family: var(--font-display);
+  font-size: 2rem;
+  color: var(--gray-900);
+}
+
+.books-header p {
+  margin-top: 4px;
+  color: var(--gray-600);
+}
+
+.books-layout {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr 1.1fr;
+  gap: 16px;
+}
+
+.books-card {
+  background: var(--purple-100);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--gray-100);
+  box-shadow: var(--shadow-md);
+  padding: 16px;
+  min-height: 250px;
+}
+
+.books-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.books-card-header h3 {
+  font-family: var(--font-display);
+  color: var(--gray-900);
+  font-size: 1.2rem;
+}
+
+.books-help-text {
+  margin-top: 8px;
+  font-size: 0.8rem;
   color: var(--gray-500);
-  letter-spacing: 0.5px;
 }
 
-.weekly-progress-card canvas {
-  margin: 0 auto;
-  display: block;
+.books-list,
+#bookmarksPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
-.weekly-grid th.week-col {
-  text-align: center;
-  min-width: 100px;
+.books-item,
+.bookmark-item {
+  background: var(--purple-50);
+  border: 1px solid var(--gray-100);
+  border-radius: var(--radius-md);
+  padding: 10px;
 }
 
-.weekly-grid th.week-col .week-col-header {
-  background: linear-gradient(135deg, var(--purple-500), var(--purple-700));
-  color: var(--white);
-  padding: 4px 10px;
+.books-item.active {
+  border-color: var(--purple-400);
+  box-shadow: inset 0 0 0 1px rgba(88, 165, 209, 0.35);
+}
+
+.books-item-main h4,
+.bookmark-main h4 {
+  color: var(--gray-900);
+  margin-bottom: 4px;
+}
+
+.books-item-main p,
+.bookmark-main p {
+  font-size: 0.84rem;
+  color: var(--gray-600);
+  margin-bottom: 4px;
+}
+
+.books-file-meta,
+.bookmark-updated {
+  color: var(--gray-500);
+  font-size: 0.78rem;
+}
+
+.books-warning {
+  color: #f59e0b;
+}
+
+.books-item-actions,
+.bookmark-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.bookmark-history {
+  margin-top: 8px;
+  list-style: none;
+  padding: 8px;
   border-radius: var(--radius-sm);
-  font-size: 0.72rem;
-  display: inline-block;
+  border: 1px solid var(--gray-100);
+  background: rgba(15, 29, 62, 0.35);
+}
+
+.bookmark-history li {
+  font-size: 0.76rem;
+  color: var(--gray-600);
+  margin-bottom: 3px;
+}
+
+.reader-mode {
+  min-height: 100vh;
+  padding: 16px;
+  background:
+    radial-gradient(
+      circle at 20% 0%,
+      rgba(88, 165, 209, 0.12),
+      transparent 40%
+    ),
+    var(--purple-25);
+}
+
+.reader-topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.reader-topbar h2 {
+  color: var(--gray-900);
+  font-family: var(--font-display);
+}
+
+.reader-topbar p {
+  color: var(--gray-600);
+}
+
+.reader-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.reader-controls input {
+  width: 84px;
+  padding: 8px;
+  border: 1px solid var(--gray-300);
+  border-radius: var(--radius-sm);
+  background: var(--purple-50);
+  color: var(--gray-800);
+}
+
+.reader-dark-mode {
+  padding: 8px;
+  border: 1px solid var(--gray-300);
+  border-radius: var(--radius-sm);
+  background: var(--purple-50);
+  color: var(--gray-800);
+}
+
+.reader-dark-mode:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.reader-canvas-wrap {
+  overflow: auto;
+  border: 1px solid var(--gray-100);
+  border-radius: var(--radius-md);
+  background: #0f1628;
+  padding: 10px;
+}
+
+#readerCanvas {
+  display: block;
+  margin: 0 auto;
+  max-width: 100%;
+}
+
+.reader-dark-enabled .reader-canvas-wrap {
+  background: #02050c;
+}
+
+#readerCanvas.reader-dark-full {
+  filter: invert(1) hue-rotate(180deg);
+}
+
+#readerCanvas.reader-dark-text {
+  filter: invert(1) grayscale(0.35) contrast(1.12) brightness(0.95);
 }
 
 /* ============================================================
@@ -1210,8 +1490,25 @@ body {
     box-shadow var(--transition);
 }
 
+.form-group textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 84px;
+  padding: 10px 14px;
+  border: 1.5px solid var(--gray-300);
+  border-radius: var(--radius-md);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  color: var(--gray-800);
+  background: var(--purple-50);
+  transition:
+    border-color var(--transition),
+    box-shadow var(--transition);
+}
+
 .form-group input:focus,
-.form-group select:focus {
+.form-group select:focus,
+.form-group textarea:focus {
   outline: none;
   border-color: var(--purple-500);
   box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.1);
@@ -1359,6 +1656,54 @@ body {
   box-shadow: var(--shadow-lg);
 }
 
+.undo-toast {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--purple-900);
+  color: var(--gray-900);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-xl);
+  padding: 10px 12px;
+  transform: translateY(14px);
+  opacity: 0;
+  pointer-events: none;
+  transition: all var(--transition);
+}
+
+.undo-toast.show {
+  transform: translateY(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.undo-toast-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.undo-toast-btn,
+.undo-toast-close {
+  border: 1px solid var(--gray-200);
+  background: var(--purple-100);
+  color: var(--gray-900);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.undo-toast-btn:hover,
+.undo-toast-close:hover {
+  background: var(--purple-600);
+  color: var(--white);
+}
+
 /* ============================================================
    RESPONSIVE
    ============================================================ */
@@ -1374,6 +1719,9 @@ body {
   }
   .weekly-summary-cards {
     overflow-x: auto;
+  }
+  .monthly-review-grid {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -1398,14 +1746,24 @@ body {
   .month-title h2 {
     font-size: 1.8rem;
   }
-  .weekly-progress-row {
+  .books-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .reader-topbar {
     flex-direction: column;
+    align-items: flex-start;
   }
   .data-actions {
     flex-direction: column;
   }
   .excluded-days-grid {
     grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+  .undo-toast {
+    left: 16px;
+    right: 16px;
+    justify-content: space-between;
   }
 }
 
