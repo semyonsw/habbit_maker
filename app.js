@@ -36,6 +36,7 @@
     "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
   const READER_DARK_ENABLED_KEY = "habitTracker_readerDarkEnabled_v1";
   const READER_DARK_MODE_KEY = "habitTracker_readerDarkMode_v1";
+  const ANALYTICS_DISPLAY_MODE_KEY = "habitTracker_analyticsDisplayMode_v1";
 
   const DEFAULT_CATEGORIES = [
     { id: "cat_health", name: "Health", emoji: "❤️", color: "#3E85B5" },
@@ -94,6 +95,9 @@
   let idbPromise = null;
   let booksBlobStatus = {};
   let topClockTimer = null;
+  const analyticsState = {
+    displayMode: "percent",
+  };
 
   const readerState = {
     pdfDoc: null,
@@ -173,6 +177,60 @@
     persistReaderThemePreferences();
     applyReaderThemeClasses();
     updateReaderThemeControls();
+  }
+
+  function loadAnalyticsPreferences() {
+    const savedMode = localStorage.getItem(ANALYTICS_DISPLAY_MODE_KEY);
+    analyticsState.displayMode = savedMode === "raw" ? "raw" : "percent";
+  }
+
+  function persistAnalyticsPreferences() {
+    localStorage.setItem(
+      ANALYTICS_DISPLAY_MODE_KEY,
+      analyticsState.displayMode,
+    );
+  }
+
+  function getAnalyticsDisplayMode() {
+    return analyticsState.displayMode === "raw" ? "raw" : "percent";
+  }
+
+  function getMetricValue(done, possible) {
+    if (getAnalyticsDisplayMode() === "raw") {
+      return Number(done || 0);
+    }
+    if (!possible) return 0;
+    return Math.round((Number(done || 0) / Number(possible || 1)) * 100);
+  }
+
+  function getMetricLabel(value) {
+    if (getAnalyticsDisplayMode() === "raw") {
+      return String(Math.round(value || 0));
+    }
+    return `${Math.round(value || 0)}%`;
+  }
+
+  function getMetricAxisLabel() {
+    return getAnalyticsDisplayMode() === "raw"
+      ? "Completed habits"
+      : "Completion rate (%)";
+  }
+
+  function syncAnalyticsModeControls() {
+    ["analyticsDisplayModeDashboard", "analyticsDisplayModeAnalytics"]
+      .map((id) => document.getElementById(id))
+      .filter(Boolean)
+      .forEach((control) => {
+        control.value = getAnalyticsDisplayMode();
+      });
+  }
+
+  function setAnalyticsDisplayMode(mode) {
+    analyticsState.displayMode = mode === "raw" ? "raw" : "percent";
+    persistAnalyticsPreferences();
+    syncAnalyticsModeControls();
+    renderDashboardAnalytics();
+    renderAnalyticsView();
   }
 
   function uid(prefix) {
@@ -530,6 +588,16 @@
 
     if (viewId === "books") {
       renderBooksView();
+      return;
+    }
+
+    if (viewId === "analytics") {
+      renderAnalyticsView();
+      return;
+    }
+
+    if (viewId === "dashboard") {
+      renderAll();
     }
   }
 
@@ -793,6 +861,576 @@
     });
   }
 
+  function safeMonthData(year, month) {
+    const key = monthKey(year, month);
+    const monthData = state.months[key];
+    if (!isPlainObject(monthData)) {
+      return getDefaultMonthData();
+    }
+    return ensureMonthDataShape(monthData);
+  }
+
+  function buildMonthTotals(year, month) {
+    const monthData = safeMonthData(year, month);
+    const habits = getSortedDailyHabits();
+    const totalDays = daysInMonth(year, month);
+    let done = 0;
+    let possible = 0;
+
+    for (let day = 1; day <= totalDays; day++) {
+      habits.forEach((habit) => {
+        if (!isHabitTrackedOnDate(habit, year, month, day)) return;
+        possible += 1;
+        if (
+          monthData.dailyCompletions[habit.id] &&
+          monthData.dailyCompletions[habit.id][day]
+        ) {
+          done += 1;
+        }
+      });
+    }
+
+    return { done, possible, totalDays, monthData, habits };
+  }
+
+  function buildWeeklyAnalytics(year, month) {
+    const totals = buildMonthTotals(year, month);
+    const maxWeek = Math.max(1, Math.min(5, Math.ceil(totals.totalDays / 7)));
+
+    const weekBuckets = Array.from({ length: maxWeek }, (_, index) => ({
+      label: `Week ${index + 1}`,
+      done: 0,
+      possible: 0,
+      weekdays: Array.from({ length: 7 }, () => ({ done: 0, possible: 0 })),
+    }));
+
+    const categoryWeek = {};
+    state.categories.forEach((category) => {
+      categoryWeek[category.id] = Array.from({ length: maxWeek }, () => ({
+        done: 0,
+        possible: 0,
+      }));
+    });
+
+    for (let day = 1; day <= totals.totalDays; day++) {
+      const weekIndex = Math.min(maxWeek - 1, Math.floor((day - 1) / 7));
+      const weekday = new Date(year, month, day).getDay();
+
+      totals.habits.forEach((habit) => {
+        if (!isHabitTrackedOnDate(habit, year, month, day)) return;
+
+        weekBuckets[weekIndex].possible += 1;
+        weekBuckets[weekIndex].weekdays[weekday].possible += 1;
+
+        if (!categoryWeek[habit.categoryId]) {
+          categoryWeek[habit.categoryId] = Array.from(
+            { length: maxWeek },
+            () => ({
+              done: 0,
+              possible: 0,
+            }),
+          );
+        }
+        categoryWeek[habit.categoryId][weekIndex].possible += 1;
+
+        const done = !!(
+          totals.monthData.dailyCompletions[habit.id] &&
+          totals.monthData.dailyCompletions[habit.id][day]
+        );
+
+        if (done) {
+          weekBuckets[weekIndex].done += 1;
+          weekBuckets[weekIndex].weekdays[weekday].done += 1;
+          categoryWeek[habit.categoryId][weekIndex].done += 1;
+        }
+      });
+    }
+
+    return { weekBuckets, categoryWeek };
+  }
+
+  function buildMonthlyTimeline(monthCount = 12) {
+    const timeline = [];
+    for (let offset = monthCount - 1; offset >= 0; offset--) {
+      const dt = new Date(state.currentYear, state.currentMonth - offset, 1);
+      const year = dt.getFullYear();
+      const month = dt.getMonth();
+      const totals = buildMonthTotals(year, month);
+
+      const byCategory = {};
+      state.categories.forEach((category) => {
+        byCategory[category.id] = { done: 0, possible: 0 };
+      });
+
+      for (let day = 1; day <= totals.totalDays; day++) {
+        totals.habits.forEach((habit) => {
+          if (!isHabitTrackedOnDate(habit, year, month, day)) return;
+          if (!byCategory[habit.categoryId]) {
+            byCategory[habit.categoryId] = { done: 0, possible: 0 };
+          }
+          byCategory[habit.categoryId].possible += 1;
+          if (
+            totals.monthData.dailyCompletions[habit.id] &&
+            totals.monthData.dailyCompletions[habit.id][day]
+          ) {
+            byCategory[habit.categoryId].done += 1;
+          }
+        });
+      }
+
+      timeline.push({
+        label: `${MONTH_NAMES[month].slice(0, 3)} ${String(year).slice(-2)}`,
+        done: totals.done,
+        possible: totals.possible,
+        byCategory,
+      });
+    }
+    return timeline;
+  }
+
+  function getMonthStreakLeaderboard(limit = 10) {
+    const totalDays = daysInMonth(state.currentYear, state.currentMonth);
+    const monthData = getCurrentMonthData();
+    const now = new Date();
+    const isCurrentMonth =
+      now.getFullYear() === state.currentYear &&
+      now.getMonth() === state.currentMonth;
+    const endDay = isCurrentMonth ? now.getDate() : totalDays;
+
+    const rows = getSortedDailyHabits().map((habit) => {
+      let streak = 0;
+      let trackedDays = 0;
+      for (let day = 1; day <= endDay; day++) {
+        if (
+          isHabitTrackedOnDate(
+            habit,
+            state.currentYear,
+            state.currentMonth,
+            day,
+          )
+        ) {
+          trackedDays += 1;
+        }
+      }
+
+      for (let day = endDay; day >= 1; day--) {
+        if (
+          !isHabitTrackedOnDate(
+            habit,
+            state.currentYear,
+            state.currentMonth,
+            day,
+          )
+        ) {
+          continue;
+        }
+        const done = !!(
+          monthData.dailyCompletions[habit.id] &&
+          monthData.dailyCompletions[habit.id][day]
+        );
+        if (!done) break;
+        streak += 1;
+      }
+
+      const cat = getCategoryById(habit.categoryId);
+      return {
+        label: `${getHabitEmoji(habit)} ${habit.name}`,
+        done: streak,
+        possible: Math.max(1, trackedDays),
+        color: cat ? cat.color : "#58a5d1",
+      };
+    });
+
+    return rows
+      .sort((a, b) => b.done - a.done)
+      .slice(0, limit)
+      .filter((row) => row.possible > 0);
+  }
+
+  function destroyChart(chartKey) {
+    if (!chartInstances[chartKey]) return;
+    chartInstances[chartKey].destroy();
+    delete chartInstances[chartKey];
+  }
+
+  function renderChart(chartKey, canvasId, config) {
+    if (typeof Chart === "undefined") return;
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) {
+      destroyChart(chartKey);
+      return;
+    }
+    destroyChart(chartKey);
+    chartInstances[chartKey] = new Chart(canvas.getContext("2d"), config);
+  }
+
+  function renderWeeklyTrendChart(canvasId, chartKey, weeklyData) {
+    const values = weeklyData.weekBuckets.map((bucket) =>
+      getMetricValue(bucket.done, bucket.possible),
+    );
+
+    renderChart(chartKey, canvasId, {
+      type: "line",
+      data: {
+        labels: weeklyData.weekBuckets.map((bucket) => bucket.label),
+        datasets: [
+          {
+            label: getMetricAxisLabel(),
+            data: values,
+            borderColor: "#58a5d1",
+            backgroundColor: "rgba(88, 165, 209, 0.2)",
+            borderWidth: 3,
+            fill: true,
+            tension: 0.34,
+            pointRadius: 4,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label(context) {
+                return `${getMetricAxisLabel()}: ${getMetricLabel(context.parsed.y)}`;
+              },
+            },
+          },
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            max: getAnalyticsDisplayMode() === "percent" ? 100 : undefined,
+            ticks: {
+              callback(value) {
+                return getAnalyticsDisplayMode() === "percent"
+                  ? `${Math.round(value)}%`
+                  : value;
+              },
+            },
+          },
+        },
+      },
+    });
+  }
+
+  function renderWeeklyCategoryStackedChart(canvasId, chartKey, weeklyData) {
+    const labels = weeklyData.weekBuckets.map((bucket) => bucket.label);
+    const datasets = state.categories
+      .map((category) => {
+        const points = labels.map((_, index) => {
+          const slot = weeklyData.categoryWeek[category.id]
+            ? weeklyData.categoryWeek[category.id][index]
+            : { done: 0, possible: 0 };
+          return getMetricValue(slot.done, slot.possible);
+        });
+        const visible = points.some((point) => point > 0);
+        if (!visible) return null;
+        return {
+          label: `${category.emoji} ${category.name}`,
+          data: points,
+          backgroundColor: category.color || "#58a5d1",
+          borderRadius: 4,
+        };
+      })
+      .filter(Boolean);
+
+    renderChart(chartKey, canvasId, {
+      type: "bar",
+      data: { labels, datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: "bottom" },
+          tooltip: {
+            callbacks: {
+              label(context) {
+                return `${context.dataset.label}: ${getMetricLabel(context.parsed.y)}`;
+              },
+            },
+          },
+        },
+        scales: {
+          x: { stacked: true },
+          y: {
+            stacked: true,
+            beginAtZero: true,
+            max: getAnalyticsDisplayMode() === "percent" ? 100 : undefined,
+            ticks: {
+              callback(value) {
+                return getAnalyticsDisplayMode() === "percent"
+                  ? `${Math.round(value)}%`
+                  : value;
+              },
+            },
+          },
+        },
+      },
+    });
+  }
+
+  function renderMonthlyTrendChart(canvasId, chartKey, timeline) {
+    const values = timeline.map((item) =>
+      getMetricValue(item.done, item.possible),
+    );
+    renderChart(chartKey, canvasId, {
+      type: "line",
+      data: {
+        labels: timeline.map((item) => item.label),
+        datasets: [
+          {
+            data: values,
+            borderColor: "#7c8cff",
+            backgroundColor: "rgba(124, 140, 255, 0.18)",
+            borderWidth: 3,
+            fill: true,
+            tension: 0.26,
+            pointRadius: 3,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label(context) {
+                return getMetricLabel(context.parsed.y);
+              },
+            },
+          },
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            max: getAnalyticsDisplayMode() === "percent" ? 100 : undefined,
+            ticks: {
+              callback(value) {
+                return getAnalyticsDisplayMode() === "percent"
+                  ? `${Math.round(value)}%`
+                  : value;
+              },
+            },
+          },
+        },
+      },
+    });
+  }
+
+  function renderMonthlyStreakChart(canvasId, chartKey, rows) {
+    renderChart(chartKey, canvasId, {
+      type: "bar",
+      data: {
+        labels: rows.map((row) => row.label),
+        datasets: [
+          {
+            data: rows.map((row) => getMetricValue(row.done, row.possible)),
+            backgroundColor: rows.map((row) => row.color),
+          },
+        ],
+      },
+      options: {
+        indexAxis: "y",
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label(context) {
+                return getMetricLabel(context.parsed.x);
+              },
+            },
+          },
+        },
+        scales: {
+          x: {
+            beginAtZero: true,
+            max: getAnalyticsDisplayMode() === "percent" ? 100 : undefined,
+            ticks: {
+              callback(value) {
+                return getAnalyticsDisplayMode() === "percent"
+                  ? `${Math.round(value)}%`
+                  : value;
+              },
+            },
+          },
+        },
+      },
+    });
+  }
+
+  function renderMonthlyCategoryTrendChart(canvasId, chartKey, timeline) {
+    const topCategories = state.categories
+      .map((category) => {
+        const sum = timeline.reduce((acc, item) => {
+          const slot = item.byCategory[category.id] || { done: 0 };
+          return acc + slot.done;
+        }, 0);
+        return { category, sum };
+      })
+      .filter((item) => item.sum > 0)
+      .sort((a, b) => b.sum - a.sum)
+      .slice(0, 6);
+
+    const datasets = topCategories.map((item) => ({
+      label: `${item.category.emoji} ${item.category.name}`,
+      data: timeline.map((point) => {
+        const slot = point.byCategory[item.category.id] || {
+          done: 0,
+          possible: 0,
+        };
+        return getMetricValue(slot.done, slot.possible);
+      }),
+      borderColor: item.category.color,
+      backgroundColor: `${item.category.color}33`,
+      fill: false,
+      tension: 0.25,
+    }));
+
+    renderChart(chartKey, canvasId, {
+      type: "line",
+      data: {
+        labels: timeline.map((item) => item.label),
+        datasets,
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: "bottom" },
+          tooltip: {
+            callbacks: {
+              label(context) {
+                return `${context.dataset.label}: ${getMetricLabel(context.parsed.y)}`;
+              },
+            },
+          },
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            max: getAnalyticsDisplayMode() === "percent" ? 100 : undefined,
+            ticks: {
+              callback(value) {
+                return getAnalyticsDisplayMode() === "percent"
+                  ? `${Math.round(value)}%`
+                  : value;
+              },
+            },
+          },
+        },
+      },
+    });
+  }
+
+  function getHeatColor(strength) {
+    const clamped = Math.max(0, Math.min(1, strength));
+    const alpha = 0.2 + clamped * 0.75;
+    return `rgba(88, 165, 209, ${alpha.toFixed(3)})`;
+  }
+
+  function renderWeeklyHeatmap(containerId, weeklyData) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    const dayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const cells = [];
+    weeklyData.weekBuckets.forEach((week) => {
+      week.weekdays.forEach((entry) => {
+        cells.push(getMetricValue(entry.done, entry.possible));
+      });
+    });
+    const maxValue = Math.max(1, ...cells);
+
+    let html = "<div></div>";
+    dayLabels.forEach((label) => {
+      html += `<div class='heatmap-head'>${label}</div>`;
+    });
+
+    weeklyData.weekBuckets.forEach((week, weekIndex) => {
+      html += `<div class='heatmap-week-label'>W${weekIndex + 1}</div>`;
+      week.weekdays.forEach((entry) => {
+        const value = getMetricValue(entry.done, entry.possible);
+        const ratio = maxValue > 0 ? value / maxValue : 0;
+        html += `<div class='heatmap-cell' style='background:${getHeatColor(ratio)}' title='Done ${entry.done} / ${entry.possible}'>${getMetricLabel(value)}</div>`;
+      });
+    });
+
+    container.innerHTML = html;
+  }
+
+  function renderDashboardAnalytics() {
+    syncAnalyticsModeControls();
+    const weeklyData = buildWeeklyAnalytics(
+      state.currentYear,
+      state.currentMonth,
+    );
+    const timeline = buildMonthlyTimeline(12);
+    const streakRows = getMonthStreakLeaderboard(10);
+
+    renderWeeklyTrendChart("weeklyTrendChart", "weeklyTrendChart", weeklyData);
+    renderWeeklyCategoryStackedChart(
+      "weeklyCategoryStackedChart",
+      "weeklyCategoryStackedChart",
+      weeklyData,
+    );
+    renderMonthlyTrendChart("monthlyTrendChart", "monthlyTrendChart", timeline);
+    renderMonthlyStreakChart(
+      "monthlyStreakChart",
+      "monthlyStreakChart",
+      streakRows,
+    );
+    renderMonthlyCategoryTrendChart(
+      "monthlyCategoryTrendChart",
+      "monthlyCategoryTrendChart",
+      timeline,
+    );
+    renderWeeklyHeatmap("weeklyHeatmap", weeklyData);
+  }
+
+  function renderAnalyticsView() {
+    syncAnalyticsModeControls();
+    const weeklyData = buildWeeklyAnalytics(
+      state.currentYear,
+      state.currentMonth,
+    );
+    const timeline = buildMonthlyTimeline(12);
+    const streakRows = getMonthStreakLeaderboard(14);
+
+    renderWeeklyTrendChart(
+      "analyticsWeeklyTrendChart",
+      "analyticsWeeklyTrendChart",
+      weeklyData,
+    );
+    renderWeeklyCategoryStackedChart(
+      "analyticsWeeklyCategoryStackedChart",
+      "analyticsWeeklyCategoryStackedChart",
+      weeklyData,
+    );
+    renderMonthlyTrendChart(
+      "analyticsMonthlyTrendChart",
+      "analyticsMonthlyTrendChart",
+      timeline,
+    );
+    renderMonthlyStreakChart(
+      "analyticsMonthlyStreakChart",
+      "analyticsMonthlyStreakChart",
+      streakRows,
+    );
+    renderMonthlyCategoryTrendChart(
+      "analyticsMonthlyCategoryTrendChart",
+      "analyticsMonthlyCategoryTrendChart",
+      timeline,
+    );
+    renderWeeklyHeatmap("analyticsWeeklyHeatmap", weeklyData);
+  }
+
   function updateHabitStreak(habitId) {
     const badge = document.querySelector(
       `.streak-badge[data-streak-habit="${habitId}"]`,
@@ -921,6 +1559,8 @@
         renderWeeklySummaryCards();
         renderDailyBarChart();
         renderCategoryBarChart();
+        renderDashboardAnalytics();
+        renderAnalyticsView();
         updateHabitStreak(habitId);
       });
     });
@@ -1829,9 +2469,16 @@
     renderWeeklySummaryCards();
     renderDailyBarChart();
     renderCategoryBarChart();
+    renderDashboardAnalytics();
     renderDailyHabitsGrid();
     renderMonthlyReview();
     renderManageView();
+
+    if (
+      document.getElementById("view-analytics")?.classList.contains("active")
+    ) {
+      renderAnalyticsView();
+    }
   }
 
   function exportData() {
@@ -2331,6 +2978,24 @@
       .getElementById("monthlyReviewSave")
       .addEventListener("click", saveMonthlyReview);
 
+    const dashboardMode = document.getElementById(
+      "analyticsDisplayModeDashboard",
+    );
+    if (dashboardMode) {
+      dashboardMode.addEventListener("change", (event) => {
+        setAnalyticsDisplayMode(event.target.value);
+      });
+    }
+
+    const analyticsMode = document.getElementById(
+      "analyticsDisplayModeAnalytics",
+    );
+    if (analyticsMode) {
+      analyticsMode.addEventListener("change", (event) => {
+        setAnalyticsDisplayMode(event.target.value);
+      });
+    }
+
     document.getElementById("btnExport").addEventListener("click", exportData);
     document.getElementById("btnImport").addEventListener("click", () => {
       document.getElementById("importFile").click();
@@ -2462,6 +3127,7 @@
 
   async function init() {
     loadState();
+    loadAnalyticsPreferences();
     bindEvents();
     initSidebarCollapse();
 

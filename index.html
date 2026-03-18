@@ -100,6 +100,22 @@
             </svg>
             <span>Manage</span>
           </li>
+          <li class="nav-tab" data-view="analytics" title="Analytics">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M4 19h16" />
+              <path d="M7 16V8" />
+              <path d="M12 16V5" />
+              <path d="M17 16v-6" />
+            </svg>
+            <span>Analytics</span>
+          </li>
         </ul>
         <div class="sidebar-footer">
           <button class="btn-export" id="btnExport" title="Export Data">
@@ -216,6 +232,54 @@
             <div class="chart-card">
               <h3>Habit Count by Category</h3>
               <canvas id="categoryBarChart"></canvas>
+            </div>
+          </div>
+
+          <div class="analytics-mode-row">
+            <div class="analytics-mode-card">
+              <h3>Analytics Mode</h3>
+              <div class="analytics-mode-controls">
+                <label for="analyticsDisplayModeDashboard"
+                  >Show values as</label
+                >
+                <select id="analyticsDisplayModeDashboard">
+                  <option value="percent">Percentages</option>
+                  <option value="raw">Raw counts</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div class="charts-row charts-row-analytics">
+            <div class="chart-card">
+              <h3>Weekly Completion Trend</h3>
+              <canvas id="weeklyTrendChart"></canvas>
+            </div>
+            <div class="chart-card">
+              <h3>Weekly Heatmap</h3>
+              <div class="weekly-heatmap" id="weeklyHeatmap"></div>
+            </div>
+          </div>
+
+          <div class="charts-row charts-row-analytics">
+            <div class="chart-card">
+              <h3>Weekly Category Stacks</h3>
+              <canvas id="weeklyCategoryStackedChart"></canvas>
+            </div>
+            <div class="chart-card">
+              <h3>Monthly Streak Leaderboard</h3>
+              <canvas id="monthlyStreakChart"></canvas>
+            </div>
+          </div>
+
+          <div class="charts-row charts-row-analytics">
+            <div class="chart-card">
+              <h3>Monthly Trend (12 Months)</h3>
+              <canvas id="monthlyTrendChart"></canvas>
+            </div>
+            <div class="chart-card">
+              <h3>Category Performance Over Time</h3>
+              <canvas id="monthlyCategoryTrendChart"></canvas>
             </div>
           </div>
 
@@ -440,6 +504,64 @@
                 </svg>
                 Clear All Data
               </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ======================== ANALYTICS VIEW ======================== -->
+        <section class="view" id="view-analytics">
+          <div class="manage-header">
+            <h2>Weekly & Monthly Analytics</h2>
+          </div>
+
+          <div class="analytics-mode-row">
+            <div class="analytics-mode-card">
+              <h3>Display Mode</h3>
+              <div class="analytics-mode-controls">
+                <label for="analyticsDisplayModeAnalytics"
+                  >Show values as</label
+                >
+                <select id="analyticsDisplayModeAnalytics">
+                  <option value="percent">Percentages</option>
+                  <option value="raw">Raw counts</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div class="charts-row charts-row-analytics">
+            <div class="chart-card">
+              <h3>Weekly Completion Trend</h3>
+              <canvas id="analyticsWeeklyTrendChart"></canvas>
+            </div>
+            <div class="chart-card">
+              <h3>Weekly Heatmap</h3>
+              <div
+                class="weekly-heatmap weekly-heatmap-large"
+                id="analyticsWeeklyHeatmap"
+              ></div>
+            </div>
+          </div>
+
+          <div class="charts-row charts-row-analytics">
+            <div class="chart-card">
+              <h3>Weekly Category Stacks</h3>
+              <canvas id="analyticsWeeklyCategoryStackedChart"></canvas>
+            </div>
+            <div class="chart-card">
+              <h3>Monthly Streak Leaderboard</h3>
+              <canvas id="analyticsMonthlyStreakChart"></canvas>
+            </div>
+          </div>
+
+          <div class="charts-row charts-row-analytics">
+            <div class="chart-card">
+              <h3>Monthly Trend (12 Months)</h3>
+              <canvas id="analyticsMonthlyTrendChart"></canvas>
+            </div>
+            <div class="chart-card">
+              <h3>Category Performance Over Time</h3>
+              <canvas id="analyticsMonthlyCategoryTrendChart"></canvas>
             </div>
           </div>
         </section>

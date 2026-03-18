@@ -546,6 +546,105 @@ body {
   max-height: 220px;
 }
 
+.analytics-mode-row {
+  margin-bottom: 16px;
+}
+
+.analytics-mode-card {
+  background: var(--purple-100);
+  border-radius: var(--radius-lg);
+  padding: 14px 18px;
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--gray-100);
+}
+
+.analytics-mode-card h3 {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: var(--gray-700);
+  margin-bottom: 10px;
+}
+
+.analytics-mode-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.analytics-mode-controls label {
+  font-size: 0.82rem;
+  color: var(--gray-600);
+}
+
+.analytics-mode-controls select {
+  background: var(--purple-50);
+  color: var(--gray-800);
+  border: 1px solid var(--gray-300);
+  border-radius: var(--radius-sm);
+  padding: 7px 10px;
+}
+
+.charts-row-analytics {
+  grid-template-columns: 1fr 1fr;
+}
+
+.weekly-heatmap {
+  display: grid;
+  grid-template-columns: 58px repeat(7, minmax(0, 1fr));
+  gap: 6px;
+  align-items: center;
+}
+
+.weekly-heatmap.large,
+.weekly-heatmap-large {
+  min-height: 250px;
+}
+
+.heatmap-head {
+  font-size: 0.7rem;
+  color: var(--gray-500);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  text-align: center;
+}
+
+.heatmap-week-label {
+  font-size: 0.72rem;
+  color: var(--gray-600);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+
+.heatmap-cell {
+  border-radius: 8px;
+  min-height: 34px;
+  border: 1px solid rgba(88, 165, 209, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.73rem;
+  color: #f7fbff;
+  font-weight: 600;
+  transition: transform var(--transition);
+}
+
+.heatmap-cell:hover {
+  transform: translateY(-1px);
+}
+
+.heatmap-empty {
+  min-height: 150px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--gray-500);
+  font-size: 0.88rem;
+  border: 1px dashed var(--gray-300);
+  border-radius: var(--radius-md);
+  background: var(--purple-50);
+}
+
 .monthly-review-card {
   background: var(--purple-100);
   border-radius: var(--radius-lg);
@@ -1772,6 +1871,10 @@ body {
   .charts-row {
     grid-template-columns: 1fr;
   }
+
+  .charts-row-analytics {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 900px) {
@@ -1783,6 +1886,11 @@ body {
   }
   .monthly-review-grid {
     grid-template-columns: 1fr;
+  }
+
+  .analytics-mode-controls {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }
 
@@ -1825,6 +1933,16 @@ body {
     left: 16px;
     right: 16px;
     justify-content: space-between;
+  }
+
+  .weekly-heatmap {
+    grid-template-columns: 50px repeat(7, minmax(0, 1fr));
+    gap: 4px;
+  }
+
+  .heatmap-cell {
+    min-height: 28px;
+    font-size: 0.66rem;
   }
 }
 
