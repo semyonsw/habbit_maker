@@ -1,7 +1,3 @@
-/* ============================================================
-   HABIT TRACKER + BOOKS MODULE — Application Logic
-   ============================================================ */
-
 (function () {
   "use strict";
 
@@ -541,7 +537,6 @@
     if (!liveLogFileState.enabled || !liveLogFileState.handle) return;
     const line = formatLogLineForLiveFile(entry);
     appendLineToLiveLogFile(line).catch(() => {
-      // Status handling is done inside appendLineToLiveLogFile.
     });
   }
 
@@ -608,7 +603,6 @@
       await appendLineToLiveLogFile(
         `# ---- Live log session stopped at ${nowIso()} | session=${liveLogFileState.sessionId || "-"} ----`,
       ).catch(() => {
-        // Ignore close marker write failures.
       });
     }
     liveLogFileState.enabled = false;
@@ -1481,7 +1475,6 @@
     if (!Array.isArray(state.habits.daily)) {
       state.habits.daily = [];
     }
-    // Purge removed weekly schema and persisted fields.
     delete state.habits.weekly;
 
     if (!isPlainObject(state.months)) {
@@ -3426,7 +3419,6 @@
     if (liveFileSelectBtn) {
       liveFileSelectBtn.addEventListener("click", () => {
         enableLiveLogFile().catch(() => {
-          // Function already reports errors to user.
         });
       });
     }
@@ -3434,7 +3426,6 @@
     if (liveFileStopBtn) {
       liveFileStopBtn.addEventListener("click", () => {
         disableLiveLogFile().catch(() => {
-          // Ignore disable failures in UI handler.
         });
       });
     }
@@ -3693,7 +3684,6 @@
           await pdfDoc.destroy();
         }
       } catch (_) {
-        // Ignore cleanup errors.
       }
     }
   }
@@ -4090,7 +4080,6 @@
     let source = String(content || "").trim();
     if (!source) return "";
 
-    // Some model responses are wrapped in markdown code fences.
     const fencedBlock = source.match(
       /^```(?:markdown|md)?\s*([\s\S]*?)\s*```$/i,
     );
@@ -4750,7 +4739,6 @@
         try {
           await idbDeletePdfBlob(book.fileId);
         } catch (_) {
-          // Non-fatal; metadata is already removed.
         }
         await refreshBookBlobStatus();
         renderBooksView();
@@ -4809,8 +4797,6 @@
           ? prefillPdfPage
           : 1;
       labelInput.value = String(options.label || "");
-      // Assign both numeric and string defaults so number inputs keep the value
-      // after modal open across different browsers.
       pdfPageInput.value = "";
       pdfPageInput.valueAsNumber = safePrefillPdfPage;
       pdfPageInput.defaultValue = String(safePrefillPdfPage);
@@ -4832,7 +4818,6 @@
         Number.isFinite(prefillPdfPage) && prefillPdfPage >= 1
           ? prefillPdfPage
           : 1;
-      // Re-apply once after opening in case the browser/UI resets number values.
       requestAnimationFrame(() => {
         pdfPageInput.valueAsNumber = safePrefillPdfPage;
       });
@@ -5004,7 +4989,6 @@
   function addReaderHistoryToBookmark(book, bookmark, page) {
     if (!book || !bookmark) return;
     const safePage = Math.max(1, parseInt(page, 10) || 1);
-    // Keep the bookmark's main target in sync with the latest reader action.
     bookmark.pdfPage = safePage;
     bookmark.updatedAt = nowIso();
     addBookmarkHistoryEvent(
@@ -5484,7 +5468,6 @@
     const cssScale = Math.max(1.4, Math.min(fitScale, 2.6));
     const viewport = page.getViewport({ scale: cssScale });
 
-    // Render above CSS pixel resolution for crisper text on high-DPI displays.
     const outputScale = Math.min(window.devicePixelRatio || 1, 3);
     const canvas = document.getElementById("readerCanvas");
     const ctx = canvas.getContext("2d");
@@ -5497,7 +5480,6 @@
       try {
         readerState.renderTask.cancel();
       } catch (_) {
-        // Ignore cancellation race.
       }
     }
 

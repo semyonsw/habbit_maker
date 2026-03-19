@@ -1,105 +1,137 @@
 # Habit Maker
 
-Habit Maker is a local-first web app for tracking daily habits and managing personal PDF books with bookmark workflows. It is built with plain HTML, CSS, and JavaScript, and runs fully in the browser without a backend.
+Habit Maker is a local-first habit tracker with a built-in PDF workspace. It runs entirely in your browser with no backend and keeps your data on your device.
 
-## Project Snapshot
+![Status](https://img.shields.io/badge/status-active-0ea5e9)
+![License](https://img.shields.io/badge/license-MIT-22c55e)
+![Stack](https://img.shields.io/badge/stack-vanilla%20JS%20%2B%20HTML%20%2B%20CSS-f59e0b)
 
-- Name: `Habit Maker`
-- Type: Browser-only client app
-- Status: Active
-- License: MIT
-- Author: Semyon
-- Main languages: JavaScript, HTML, CSS
+## Preview
 
-## What It Does
+Add your real screenshots/GIFs to make this page shine on GitHub:
 
-### Habit Tracking
+- Hero demo GIF placeholder: `docs/media/habit-maker-demo.gif`
+- Dashboard screenshot placeholder: `docs/media/dashboard.png`
+- Books + reader screenshot placeholder: `docs/media/books-reader.png`
+- Analytics screenshot placeholder: `docs/media/analytics.png`
 
-- Monthly habit dashboard with summary cards and progress charts.
-- Daily grid with per-day completion toggles.
-- Categories with custom emoji and color.
-- Monthly review notes (`wins`, `blockers`, `focus`).
-- Local data persistence and import/export for backup.
+Example markdown when assets are ready:
 
-### Books + PDF Module
+```md
+![Habit Maker Demo](docs/media/habit-maker-demo.gif)
+```
 
-- Upload and store PDF books locally (max file size: `40MB` each).
-- Track book metadata (`title`, `author`, filename, size).
-- Create, edit, and delete bookmarks:
-  - `label`
-  - `pdfPage`
-  - `realPage` (optional)
-  - `note`
-- Open any bookmark in Reader Mode in a new tab.
-- Reader Mode includes:
-  - previous/next navigation
-  - direct page jump
-  - add bookmark on current page
-  - dark reading mode toggle (`full` and `text` styles)
+## Why This Project
 
-### Bookmark History (Current Behavior)
+- Track daily routines with an easy month grid.
+- Keep book/PDF notes and bookmarks in the same app.
+- Summarize PDF sections with optional Gemini AI integration.
+- Stay private: local-first storage by default.
 
-- Every bookmark stores history events with timestamp metadata.
-- History is capped at `200` events per bookmark in stored state.
-- Books panel displays the latest `8` events per bookmark for readability.
-- History events can be:
-  - appended from reader actions
-  - edited (event title/type and note)
-  - deleted
-- Reader actions now update the bookmark's active `pdfPage`, so "Open at Bookmark" tracks the latest reader-fixed page.
+## Feature Highlights
 
-## Data Model and Storage
+### Habit Tracker
 
-- App metadata key in `localStorage`: `habitTracker_v1`
-- Sidebar state key: `habitTracker_sidebarCollapsed_v1`
-- Reader dark-mode keys:
-  - `habitTracker_readerDarkEnabled_v1`
-  - `habitTracker_readerDarkMode_v1`
-- PDF binaries in IndexedDB:
-  - DB: `habitTracker_books_pdf_v1`
-  - Store: `pdfFiles`
+- Daily checkbox grid across the month
+- Category tags with emoji and color
+- Weekly/monthly summaries
+- Review notes: wins, blockers, focus
+- Charts for progress and category analysis
 
-### Important Nuance
+### Books + PDF Reader
 
-- JSON export/import includes habits and books metadata only.
-- PDF binary files are not embedded in exported JSON.
-- After import on another browser/device, books may show metadata but require re-uploading PDFs.
+- Upload PDFs (up to `40MB` each)
+- Create and manage bookmarks with notes
+- Reader mode with page navigation and direct page jump
+- Reader dark mode options (`full` and `text`)
+- Bookmark history with edit/delete actions
 
-## Validation and Limits
+### AI Summary (Optional)
 
-- PDF upload accepts only valid `.pdf` files with MIME `application/pdf`.
-- Maximum PDF size is enforced in code as `40 * 1024 * 1024` bytes.
-- Bookmark and import payloads are shape-validated before state migration.
+- Generate bookmark-oriented PDF summaries
+- Gemini model selection support
+- Secure API key flow with encrypted on-device settings
+- Markdown-formatted summary rendering
 
-## Tech Stack
+## Quick Start
 
-- `index.html`: structure, views, and modal markup
-- `styles.css`: visual system, responsive layout, components
-- `app.js`: state, rendering, reader logic, data persistence
-- `Chart.js` (CDN): dashboard charts
-- `pdf.js` (CDN fallback chain): in-browser PDF rendering
+1. Clone the repo.
 
-## Run Locally
+```bash
+git clone <your-repo-url>
+cd habbit_maker
+```
 
-1. Clone this repository.
-2. Start a local server (recommended):
+2. Run a local server.
 
 ```bash
 python3 -m http.server 8080
 ```
 
-3. Open `http://localhost:8080`.
+3. Open in your browser.
 
-You can also open `index.html` directly, but a local server is more reliable for browser features.
+```text
+http://localhost:8080
+```
 
-## Repository Structure
+## Tutorial
+
+### 1) Set up habits
+
+1. Open `Manage`.
+2. Add categories (name, emoji, color).
+3. Add daily habits linked to categories.
+
+### 2) Track daily progress
+
+1. Go to `Dashboard`.
+2. Mark completed habits in the day columns.
+3. Review completion cards and charts.
+
+### 3) Add books and bookmarks
+
+1. Go to `Books`.
+2. Upload a PDF.
+3. Add bookmarks with page + note.
+4. Open a bookmark in Reader Mode.
+
+### 4) Use AI summary (optional)
+
+1. In `Books`, configure your Gemini API key.
+2. Pick a model.
+3. Run summary up to a selected bookmark.
+4. Save and review generated markdown summaries.
+
+## Data and Storage
+
+Habit Maker is local-first.
+
+- App state in `localStorage`:
+  - `habitTracker_v1`
+  - `habitTracker_sidebarCollapsed_v1`
+  - `habitTracker_readerDarkEnabled_v1`
+  - `habitTracker_readerDarkMode_v1`
+- PDF binary files in IndexedDB:
+  - DB: `habitTracker_books_pdf_v1`
+  - Store: `pdfFiles`
+
+Important: JSON export/import includes metadata and state, but not embedded PDF binaries. Re-upload PDFs after importing on a different browser/device.
+
+## Limits and Validation
+
+- PDF MIME must be `application/pdf`
+- Max PDF size: `40 * 1024 * 1024` bytes
+- Bookmark history capped per bookmark
+- Import payload is validated before migration
+
+## Project Structure
 
 ```text
 habbit_maker/
 |- app.js
-|- auto-sync.sh
 |- index.html
 |- styles.css
+|- auto-sync.sh
 |- README.md
 |- CONTRIBUTING.md
 |- CODE_OF_CONDUCT.md
@@ -107,31 +139,48 @@ habbit_maker/
 `- LICENSE
 ```
 
-## Automation Script
+## Auto Sync Script
 
-`auto-sync.sh` can run periodic git add/commit/push cycles.
+Run periodic git add/commit/push cycles:
 
 ```bash
 ./auto-sync.sh 15
 ```
 
-- Argument `15` means 15 seconds between sync attempts.
-- Stop with `Ctrl+C`.
+- `15` means 15 seconds between sync attempts
+- Stop with `Ctrl+C`
 
-## Open Source Docs
+## Troubleshooting
 
-- Contribution guide: `CONTRIBUTING.md`
-- Code of conduct: `CODE_OF_CONDUCT.md`
-- Security policy: `SECURITY.md`
-- License text: `LICENSE`
+- PDF not opening:
+  - Check file type and size
+  - Confirm browser IndexedDB availability
+- Charts missing:
+  - Check internet access for Chart.js CDN
+- Reader issues:
+  - Refresh and reopen Reader Mode
+- AI summary errors:
+  - Validate API key, model name, and network access
 
-## Roadmap Ideas
+## Tech Stack
 
-- Streak tracking and milestone badges
-- Notifications/reminders
-- PWA install and offline polish
-- Optional cloud sync profile
+- Frontend: HTML, CSS, JavaScript (no framework)
+- Charts: Chart.js
+- PDF rendering: pdf.js (CDN fallback)
+- Markdown rendering: marked
 
-## Acknowledgements
+## Contributing and Community
 
-- Charts by [Chart.js](https://www.chartjs.org/)
+- Contributing: [CONTRIBUTING.md](CONTRIBUTING.md)
+- Code of Conduct: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+- Security Policy: [SECURITY.md](SECURITY.md)
+- License: [LICENSE](LICENSE)
+
+## Roadmap
+
+- Streak badges and milestones
+- Better reminders/notifications
+- PWA install/offline polish
+- Optional sync profile
+
+Built by Semyon.

@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Auto-commit and push local changes at a fixed interval.
-# Usage: ./auto-sync.sh [interval_seconds]
 
 INTERVAL="${1:-20}"
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -28,7 +26,6 @@ while true; do
   if [[ -n "$(git status --porcelain)" ]]; then
     git add -A
 
-    # Commit only when staging produced changes.
     if ! git diff --cached --quiet; then
       git commit -m "chore: auto-sync $(date '+%Y-%m-%d %H:%M:%S')"
       git push origin "$BRANCH"
