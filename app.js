@@ -6,6 +6,9 @@
   "use strict";
 
   const STORAGE_KEY = "habitTracker_v1";
+  const SECURE_SETTINGS_KEY = "habitTracker_secure_settings_v1";
+  const API_KEY_CACHE_KEY = "habitTracker_summary_api_key_cache_v1";
+  const LOGS_STORAGE_KEY = "habitTracker_logs_v1";
   const SIDEBAR_COLLAPSE_KEY = "habitTracker_sidebarCollapsed_v1";
   const SCHEMA_VERSION = 3;
   const MONTH_NAMES = [
@@ -37,6 +40,25 @@
   const READER_DARK_ENABLED_KEY = "habitTracker_readerDarkEnabled_v1";
   const READER_DARK_MODE_KEY = "habitTracker_readerDarkMode_v1";
   const ANALYTICS_DISPLAY_MODE_KEY = "habitTracker_analyticsDisplayMode_v1";
+  const GEMINI_API_BASE_URL =
+    "https://generativelanguage.googleapis.com/v1beta";
+  const GEMINI_MODELS = [
+    "gemini-2.5-pro",
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-3.1-pro-preview",
+    "gemini-3-flash-preview",
+    "gemini-3.1-flash-lite-preview",
+    "gemini-3.1-flash-image-preview",
+    "gemini-3-pro-image-preview",
+    "gemini-2.5-flash-image",
+    "gemini-2.5-pro-preview-tts",
+    "gemini-2.5-flash-preview-tts",
+    "gemini-flash-latest",
+  ];
+  const SUMMARY_MAX_CHARS_PER_CHUNK_DEFAULT = 12000;
+  const SUMMARY_MAX_PAGES_PER_RUN_DEFAULT = 120;
+  const MAX_LOG_RECORDS = 1000;
 
   const DEFAULT_CATEGORIES = [
     { id: "cat_health", name: "Health", emoji: "❤️", color: "#3E85B5" },
@@ -89,12 +111,49 @@
     editingBookmarkId: null,
     editingEventId: null,
   };
+  let summaryModalState = {
+    bookId: null,
+    bookmarkId: null,
+    selectedSummaryId: null,
+    statusText: "",
+    detectionText: "",
+    externalSummary: null,
+    isRunning: false,
+  };
   let confirmCallback = null;
   let editingHabitId = null;
   let editingCategoryId = null;
   let idbPromise = null;
   let booksBlobStatus = {};
   let topClockTimer = null;
+  let lastAutoScrolledMonthKey = null;
+  let secureSettings = {
+    keyCiphertext: null,
+    saltBase64: null,
+    ivBase64: null,
+    kdfIterations: 200000,
+    keyUpdatedAt: null,
+  };
+  let runtimeSecrets = {
+    apiKey: "",
+    unlockedAt: null,
+  };
+  let appLogs = [];
+  let logAutoDownloadBlockedUntil = 0;
+  let legacyPlaintextApiKeyForMigration = "";
+  let summaryModelPickerState = {
+    isOpen: false,
+    activeIndex: -1,
+    filtered: [],
+  };
+  let liveLogFileState = {
+    enabled: false,
+    handle: null,
+    writeQueue: Promise.resolve(),
+    sessionId: "",
+    writeCount: 0,
+    lastError: "",
+  };
   const analyticsState = {
     displayMode: "percent",
   };
@@ -259,6 +318,914 @@
     return new Date().toISOString();
   }
 
+  function toBase64(bytes) {
+    const chars = [];
+    for (let i = 0; i < bytes.length; i += 1) {
+      chars.push(String.fromCharCode(bytes[i]));
+    }
+    return btoa(chars.join(""));
+  }
+
+  function fromBase64(str) {
+    const raw = atob(str);
+    const out = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i += 1) {
+      out[i] = raw.charCodeAt(i);
+    }
+    return out;
+  }
+
+  function bytesFromString(input) {
+    return new TextEncoder().encode(String(input || ""));
+  }
+
+  function stringFromBytes(input) {
+    return new TextDecoder().decode(input);
+  }
+
+  function sanitizeErrorForLog(error) {
+    const message = String(
+      error && error.message ? error.message : error || "",
+    );
+    return {
+      errorName: error && error.name ? String(error.name) : "Error",
+      errorMessage: message,
+      stack:
+        error && typeof error.stack === "string"
+          ? String(error.stack).slice(0, 3000)
+          : "",
+    };
+  }
+
+  function redactForLogs(value) {
+    const serialized = JSON.stringify(value || {});
+    return JSON.parse(
+      serialized
+        .replace(/AIza[0-9A-Za-z_\-]{20,}/g, "[REDACTED_API_KEY]")
+        .replace(/(apiKey\"\s*:\s*\")[^\"]*(\")/gi, "$1[REDACTED]$2")
+        .replace(/(passphrase\"\s*:\s*\")[^\"]*(\")/gi, "$1[REDACTED]$2"),
+    );
+  }
+
+  function loadLogs() {
+    try {
+      const raw = localStorage.getItem(LOGS_STORAGE_KEY);
+      if (!raw) {
+        appLogs = [];
+        return;
+      }
+      const parsed = JSON.parse(raw);
+      appLogs = Array.isArray(parsed) ? parsed.slice(-MAX_LOG_RECORDS) : [];
+    } catch (_) {
+      appLogs = [];
+    }
+  }
+
+  function persistLogs() {
+    localStorage.setItem(LOGS_STORAGE_KEY, JSON.stringify(appLogs));
+  }
+
+  function appendLogEntry({
+    level = "info",
+    component = "app",
+    operation = "unknown",
+    message = "",
+    error = null,
+    context = null,
+    runId = null,
+  }) {
+    const cleanError = error ? sanitizeErrorForLog(error) : null;
+    const payload = {
+      id: uid("log"),
+      timestamp: nowIso(),
+      level: ["debug", "info", "warn", "error"].includes(String(level))
+        ? String(level)
+        : "info",
+      component: String(component || "app"),
+      operation: String(operation || "unknown"),
+      message: String(message || ""),
+      errorName: cleanError ? cleanError.errorName : "",
+      errorMessage: cleanError ? cleanError.errorMessage : "",
+      stack: cleanError ? cleanError.stack : "",
+      context: redactForLogs(context || {}),
+      runId: runId ? String(runId) : "",
+    };
+    appLogs.push(payload);
+    if (appLogs.length > MAX_LOG_RECORDS) {
+      appLogs = appLogs.slice(appLogs.length - MAX_LOG_RECORDS);
+    }
+    persistLogs();
+    appendLiveLogEntryToFile(payload);
+    return payload;
+  }
+
+  function isLiveLogFileSupported() {
+    return (
+      window.isSecureContext === true &&
+      typeof window.showSaveFilePicker === "function"
+    );
+  }
+
+  function normalizeLogSegment(value) {
+    return String(value || "")
+      .replace(/\s+/g, " ")
+      .replace(/\|/g, "/")
+      .trim();
+  }
+
+  function formatLogLineForLiveFile(entry) {
+    const localTime = new Date(entry.timestamp).toLocaleString();
+    const contextString = normalizeLogSegment(
+      JSON.stringify(entry.context || {}),
+    );
+    const chunks = [
+      entry.timestamp,
+      `local=${normalizeLogSegment(localTime)}`,
+      `level=${normalizeLogSegment(String(entry.level || "").toUpperCase())}`,
+      `component=${normalizeLogSegment(entry.component)}`,
+      `operation=${normalizeLogSegment(entry.operation)}`,
+      `session=${normalizeLogSegment(liveLogFileState.sessionId || "-")}`,
+      `runId=${normalizeLogSegment(entry.runId || "-")}`,
+      `msg=${normalizeLogSegment(entry.message)}`,
+    ];
+
+    if (entry.errorMessage) {
+      chunks.push(
+        `error=${normalizeLogSegment(entry.errorName)}:${normalizeLogSegment(entry.errorMessage)}`,
+      );
+    }
+    if (contextString) {
+      chunks.push(`context=${contextString.slice(0, 4000)}`);
+    }
+    return chunks.join(" | ");
+  }
+
+  function updateLiveLogFileStatus() {
+    const statusEl = document.getElementById("logsLiveFileStatus");
+    const selectBtn = document.getElementById("logsLiveFileSelectBtn");
+    const stopBtn = document.getElementById("logsLiveFileStopBtn");
+    if (!statusEl) return;
+
+    if (!isLiveLogFileSupported()) {
+      statusEl.textContent =
+        "Live .log file is not supported in this browser/context.";
+      statusEl.classList.remove("active");
+      statusEl.classList.add("inactive");
+      if (selectBtn) selectBtn.disabled = true;
+      if (stopBtn) stopBtn.disabled = true;
+      return;
+    }
+
+    if (liveLogFileState.enabled && liveLogFileState.handle) {
+      statusEl.textContent = `Live file logging: ON (${liveLogFileState.writeCount} lines written this session).`;
+      statusEl.classList.add("active");
+      statusEl.classList.remove("inactive");
+      if (selectBtn) selectBtn.textContent = "Switch .log File";
+      if (stopBtn) stopBtn.disabled = false;
+      return;
+    }
+
+    const suffix = liveLogFileState.lastError
+      ? ` Last issue: ${liveLogFileState.lastError}`
+      : "";
+    statusEl.textContent = `Live file logging: OFF.${suffix}`;
+    statusEl.classList.remove("active");
+    statusEl.classList.add("inactive");
+    if (selectBtn) selectBtn.textContent = "Enable Live .log File";
+    if (stopBtn) stopBtn.disabled = true;
+  }
+
+  async function appendLineToLiveLogFile(line) {
+    if (!liveLogFileState.enabled || !liveLogFileState.handle) return;
+
+    const job = async () => {
+      const handle = liveLogFileState.handle;
+      const permission = await handle.queryPermission({ mode: "readwrite" });
+      if (permission !== "granted") {
+        const granted = await handle.requestPermission({ mode: "readwrite" });
+        if (granted !== "granted") {
+          throw new Error("Write permission denied for live log file.");
+        }
+      }
+
+      const file = await handle.getFile();
+      const currentSize = Number.isFinite(Number(file.size))
+        ? Number(file.size)
+        : 0;
+      if (currentSize > 10 * 1024 * 1024) {
+        throw new Error(
+          "Live log file reached 10MB safety limit. Switch to a new .log file.",
+        );
+      }
+
+      const writer = await handle.createWritable({ keepExistingData: true });
+      await writer.seek(currentSize);
+      await writer.write(`${line}\n`);
+      await writer.close();
+      liveLogFileState.writeCount += 1;
+    };
+
+    liveLogFileState.writeQueue = liveLogFileState.writeQueue
+      .then(job)
+      .catch((error) => {
+        liveLogFileState.enabled = false;
+        liveLogFileState.lastError = String(
+          error && error.message ? error.message : error,
+        );
+        updateLiveLogFileStatus();
+      });
+    await liveLogFileState.writeQueue;
+  }
+
+  function appendLiveLogEntryToFile(entry) {
+    if (!liveLogFileState.enabled || !liveLogFileState.handle) return;
+    const line = formatLogLineForLiveFile(entry);
+    appendLineToLiveLogFile(line).catch(() => {
+      // Status handling is done inside appendLineToLiveLogFile.
+    });
+  }
+
+  async function enableLiveLogFile() {
+    if (!isLiveLogFileSupported()) {
+      alert(
+        "Live .log writing requires a secure context and File System Access API support.",
+      );
+      updateLiveLogFileStatus();
+      return;
+    }
+
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: `habit-live-${new Date().toISOString().slice(0, 10)}.log`,
+        types: [
+          {
+            description: "Log files",
+            accept: {
+              "text/plain": [".log", ".txt"],
+            },
+          },
+        ],
+      });
+
+      const granted = await handle.requestPermission({ mode: "readwrite" });
+      if (granted !== "granted") {
+        alert("Permission to write the .log file was denied.");
+        return;
+      }
+
+      liveLogFileState.handle = handle;
+      liveLogFileState.enabled = true;
+      liveLogFileState.lastError = "";
+      liveLogFileState.writeCount = 0;
+      liveLogFileState.sessionId = uid("logsession");
+      updateLiveLogFileStatus();
+
+      await appendLineToLiveLogFile(
+        `# ---- Live log session started at ${nowIso()} | session=${liveLogFileState.sessionId} ----`,
+      );
+
+      appLogs.slice(-25).forEach((entry) => {
+        appendLiveLogEntryToFile(entry);
+      });
+
+      updateLiveLogFileStatus();
+      alert("Live .log file enabled. New logs will append in real time.");
+    } catch (error) {
+      const isAbort =
+        error && (error.name === "AbortError" || error.code === 20);
+      if (!isAbort) {
+        liveLogFileState.lastError = String(
+          error && error.message ? error.message : error,
+        );
+        updateLiveLogFileStatus();
+        alert("Failed to enable live .log file.");
+      }
+    }
+  }
+
+  async function disableLiveLogFile() {
+    if (liveLogFileState.enabled && liveLogFileState.handle) {
+      await appendLineToLiveLogFile(
+        `# ---- Live log session stopped at ${nowIso()} | session=${liveLogFileState.sessionId || "-"} ----`,
+      ).catch(() => {
+        // Ignore close marker write failures.
+      });
+    }
+    liveLogFileState.enabled = false;
+    liveLogFileState.handle = null;
+    liveLogFileState.writeCount = 0;
+    liveLogFileState.sessionId = "";
+    updateLiveLogFileStatus();
+  }
+
+  function formatLogsCsv(logs) {
+    const headers = [
+      "id",
+      "timestamp",
+      "level",
+      "component",
+      "operation",
+      "message",
+      "errorName",
+      "errorMessage",
+      "runId",
+      "context",
+    ];
+    const rows = logs.map((entry) =>
+      headers
+        .map((key) => {
+          const rawValue =
+            key === "context"
+              ? JSON.stringify(entry.context || {})
+              : String(entry[key] || "");
+          const escaped = rawValue.replace(/"/g, '""');
+          return `"${escaped}"`;
+        })
+        .join(","),
+    );
+    return [headers.join(","), ...rows].join("\n");
+  }
+
+  function downloadTextFile(fileName, mimeType, text) {
+    const blob = new Blob([text], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => {
+      URL.revokeObjectURL(url);
+    }, 0);
+  }
+
+  function exportLogsAsJson() {
+    const fileName = `habit-logs-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+    downloadTextFile(
+      fileName,
+      "application/json;charset=utf-8",
+      JSON.stringify(appLogs, null, 2),
+    );
+  }
+
+  function exportLogsAsCsv() {
+    const fileName = `habit-logs-${new Date().toISOString().replace(/[:.]/g, "-")}.csv`;
+    downloadTextFile(
+      fileName,
+      "text/csv;charset=utf-8",
+      formatLogsCsv(appLogs),
+    );
+  }
+
+  function maybeAutoDownloadLogs(reason) {
+    const now = Date.now();
+    if (now < logAutoDownloadBlockedUntil) return;
+    logAutoDownloadBlockedUntil = now + 15000;
+    const fileName = `habit-error-log-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+    const payload = {
+      reason: String(reason || "error"),
+      exportedAt: nowIso(),
+      logs: appLogs.slice(-200),
+    };
+    downloadTextFile(
+      fileName,
+      "application/json;charset=utf-8",
+      JSON.stringify(payload, null, 2),
+    );
+  }
+
+  function loadSecureSettings() {
+    try {
+      const raw = localStorage.getItem(SECURE_SETTINGS_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!isPlainObject(parsed)) return;
+      secureSettings = {
+        keyCiphertext:
+          typeof parsed.keyCiphertext === "string"
+            ? parsed.keyCiphertext
+            : null,
+        saltBase64:
+          typeof parsed.saltBase64 === "string" ? parsed.saltBase64 : null,
+        ivBase64: typeof parsed.ivBase64 === "string" ? parsed.ivBase64 : null,
+        kdfIterations: Number.isFinite(Number(parsed.kdfIterations))
+          ? Math.max(120000, Number(parsed.kdfIterations))
+          : 200000,
+        keyUpdatedAt:
+          typeof parsed.keyUpdatedAt === "string" ? parsed.keyUpdatedAt : null,
+      };
+    } catch (error) {
+      appendLogEntry({
+        level: "warn",
+        component: "secure-settings",
+        operation: "loadSecureSettings",
+        message: "Failed to load secure settings; using empty defaults.",
+        error,
+      });
+    }
+  }
+
+  function persistSecureSettings() {
+    localStorage.setItem(SECURE_SETTINGS_KEY, JSON.stringify(secureSettings));
+  }
+
+  function hasStoredEncryptedApiKey() {
+    return !!(
+      secureSettings &&
+      secureSettings.keyCiphertext &&
+      secureSettings.saltBase64 &&
+      secureSettings.ivBase64
+    );
+  }
+
+  function clearRuntimeApiKey() {
+    runtimeSecrets.apiKey = "";
+    runtimeSecrets.unlockedAt = null;
+  }
+
+  function isApiKeyDeviceCacheEnabled() {
+    if (!state || !state.books || !state.books.ai) return false;
+    return state.books.ai.rememberOnDevice === true;
+  }
+
+  function persistRuntimeApiKeyCache(apiKey) {
+    const value = String(apiKey || "").trim();
+    if (!value || !isApiKeyDeviceCacheEnabled()) {
+      localStorage.removeItem(API_KEY_CACHE_KEY);
+      return;
+    }
+    localStorage.setItem(API_KEY_CACHE_KEY, value);
+  }
+
+  function loadRuntimeApiKeyCache() {
+    const cached = String(localStorage.getItem(API_KEY_CACHE_KEY) || "").trim();
+    if (!cached) return false;
+    runtimeSecrets.apiKey = cached;
+    runtimeSecrets.unlockedAt = nowIso();
+    return true;
+  }
+
+  async function derivePassphraseKey(passphrase, salt, iterations) {
+    const keyMaterial = await window.crypto.subtle.importKey(
+      "raw",
+      bytesFromString(passphrase),
+      { name: "PBKDF2" },
+      false,
+      ["deriveKey"],
+    );
+    return window.crypto.subtle.deriveKey(
+      {
+        name: "PBKDF2",
+        salt,
+        iterations,
+        hash: "SHA-256",
+      },
+      keyMaterial,
+      { name: "AES-GCM", length: 256 },
+      false,
+      ["encrypt", "decrypt"],
+    );
+  }
+
+  async function encryptApiKeyWithPassphrase(apiKey, passphrase) {
+    if (!window.crypto || !window.crypto.subtle) {
+      throw new Error("Secure crypto APIs are unavailable in this browser.");
+    }
+    const salt = window.crypto.getRandomValues(new Uint8Array(16));
+    const iv = window.crypto.getRandomValues(new Uint8Array(12));
+    const iterations = 200000;
+    const key = await derivePassphraseKey(passphrase, salt, iterations);
+    const encrypted = await window.crypto.subtle.encrypt(
+      { name: "AES-GCM", iv },
+      key,
+      bytesFromString(apiKey),
+    );
+
+    secureSettings.keyCiphertext = toBase64(new Uint8Array(encrypted));
+    secureSettings.saltBase64 = toBase64(salt);
+    secureSettings.ivBase64 = toBase64(iv);
+    secureSettings.kdfIterations = iterations;
+    secureSettings.keyUpdatedAt = nowIso();
+    persistSecureSettings();
+  }
+
+  async function decryptApiKeyWithPassphrase(passphrase) {
+    if (!hasStoredEncryptedApiKey()) {
+      throw new Error("No encrypted API key is stored yet.");
+    }
+    const salt = fromBase64(secureSettings.saltBase64);
+    const iv = fromBase64(secureSettings.ivBase64);
+    const ciphertext = fromBase64(secureSettings.keyCiphertext);
+    const key = await derivePassphraseKey(
+      passphrase,
+      salt,
+      secureSettings.kdfIterations || 200000,
+    );
+    const decrypted = await window.crypto.subtle.decrypt(
+      { name: "AES-GCM", iv },
+      key,
+      ciphertext,
+    );
+    return stringFromBytes(new Uint8Array(decrypted));
+  }
+
+  function getApiKeyForSummary() {
+    return String(runtimeSecrets.apiKey || "").trim();
+  }
+
+  function applySummaryApiKeyUiState() {
+    const keyInput = document.getElementById("summaryApiKeyInput");
+    const savedLabel = document.getElementById("summaryApiKeySavedLabel");
+    const unlockBtn = document.getElementById("summaryApiKeyUnlockBtn");
+    const clearBtn = document.getElementById("summaryApiKeyClearBtn");
+    const saveBtn = document.getElementById("btnSaveSummarySettings");
+
+    if (!keyInput || !savedLabel || !unlockBtn || !clearBtn || !saveBtn) return;
+
+    const hasEncrypted = hasStoredEncryptedApiKey();
+    const isUnlocked = !!getApiKeyForSummary();
+    const hasCachedRuntimeKey = !!String(
+      localStorage.getItem(API_KEY_CACHE_KEY) || "",
+    ).trim();
+    const cacheEnabled = isApiKeyDeviceCacheEnabled();
+    if (hasEncrypted && isUnlocked) {
+      savedLabel.textContent =
+        "API key is saved (encrypted) and unlocked for this session.";
+    } else if (hasEncrypted) {
+      savedLabel.textContent =
+        "API key is saved (encrypted). Unlock with passphrase to run summaries.";
+    } else if (cacheEnabled && hasCachedRuntimeKey && isUnlocked) {
+      savedLabel.textContent =
+        "API key is cached locally and ready to use on this device.";
+    } else {
+      savedLabel.textContent = "No API key saved yet.";
+    }
+
+    keyInput.placeholder = hasEncrypted
+      ? "Leave empty to keep saved key, or paste a new key to rotate"
+      : "Paste your Gemini API key";
+    unlockBtn.disabled = !hasEncrypted;
+    clearBtn.disabled = !hasEncrypted;
+    saveBtn.textContent = hasEncrypted
+      ? "Save Summary Settings"
+      : "Save Summary Settings + Encrypted API Key";
+  }
+
+  async function unlockStoredApiKeyInteractive() {
+    if (!hasStoredEncryptedApiKey()) {
+      alert("No encrypted API key is saved yet.");
+      return false;
+    }
+    const passphrase = window.prompt(
+      "Enter passphrase to unlock saved API key:",
+      "",
+    );
+    if (!passphrase) return false;
+    try {
+      const decrypted = await decryptApiKeyWithPassphrase(passphrase);
+      runtimeSecrets.apiKey = String(decrypted || "").trim();
+      runtimeSecrets.unlockedAt = nowIso();
+      persistRuntimeApiKeyCache(runtimeSecrets.apiKey);
+      applySummaryApiKeyUiState();
+      appendLogEntry({
+        level: "info",
+        component: "secure-settings",
+        operation: "unlockStoredApiKeyInteractive",
+        message: "Encrypted API key unlocked for current session.",
+      });
+      return true;
+    } catch (error) {
+      clearRuntimeApiKey();
+      applySummaryApiKeyUiState();
+      appendLogEntry({
+        level: "warn",
+        component: "secure-settings",
+        operation: "unlockStoredApiKeyInteractive",
+        message: "Failed to unlock encrypted API key.",
+        error,
+      });
+      alert("Passphrase is incorrect or key is corrupted.");
+      return false;
+    }
+  }
+
+  async function tryUnlockOnStartup() {
+    if (isApiKeyDeviceCacheEnabled() && loadRuntimeApiKeyCache()) {
+      applySummaryApiKeyUiState();
+      return;
+    }
+    if (!hasStoredEncryptedApiKey()) {
+      applySummaryApiKeyUiState();
+      return;
+    }
+    const passphrase = window.prompt(
+      "Enter passphrase to unlock your saved Gemini API key for this session:",
+      "",
+    );
+    if (!passphrase) {
+      clearRuntimeApiKey();
+      applySummaryApiKeyUiState();
+      return;
+    }
+    try {
+      const decrypted = await decryptApiKeyWithPassphrase(passphrase);
+      runtimeSecrets.apiKey = String(decrypted || "").trim();
+      runtimeSecrets.unlockedAt = nowIso();
+      persistRuntimeApiKeyCache(runtimeSecrets.apiKey);
+      appendLogEntry({
+        level: "info",
+        component: "secure-settings",
+        operation: "tryUnlockOnStartup",
+        message: "Encrypted API key unlocked on app startup.",
+      });
+    } catch (error) {
+      clearRuntimeApiKey();
+      appendLogEntry({
+        level: "warn",
+        component: "secure-settings",
+        operation: "tryUnlockOnStartup",
+        message: "Startup unlock failed.",
+        error,
+      });
+      alert(
+        "Could not unlock saved API key. You can retry from Summary AI settings.",
+      );
+    } finally {
+      applySummaryApiKeyUiState();
+    }
+  }
+
+  async function maybeMigrateLegacyApiKey() {
+    const legacyKey = String(legacyPlaintextApiKeyForMigration || "").trim();
+    if (!legacyKey) return;
+
+    legacyPlaintextApiKeyForMigration = "";
+    const passphrase = window.prompt(
+      "A legacy plaintext API key was detected. Create a passphrase to encrypt and migrate it now:",
+      "",
+    );
+
+    if (!passphrase) {
+      appendLogEntry({
+        level: "warn",
+        component: "secure-settings",
+        operation: "maybeMigrateLegacyApiKey",
+        message: "Legacy API key migration skipped by user.",
+      });
+      return;
+    }
+
+    const confirmPassphrase = window.prompt(
+      "Confirm migration passphrase:",
+      "",
+    );
+    if (passphrase !== confirmPassphrase) {
+      appendLogEntry({
+        level: "warn",
+        component: "secure-settings",
+        operation: "maybeMigrateLegacyApiKey",
+        message: "Legacy API key migration passphrase mismatch.",
+      });
+      alert(
+        "Passphrase confirmation did not match. Legacy key was not migrated.",
+      );
+      return;
+    }
+
+    try {
+      await encryptApiKeyWithPassphrase(legacyKey, passphrase);
+      runtimeSecrets.apiKey = legacyKey;
+      runtimeSecrets.unlockedAt = nowIso();
+      persistRuntimeApiKeyCache(runtimeSecrets.apiKey);
+      const settings = getBookAiSettings();
+      settings.apiKeySaved = true;
+      settings.apiKeyLastUpdated = secureSettings.keyUpdatedAt || nowIso();
+      saveState();
+      applySummaryApiKeyUiState();
+      appendLogEntry({
+        level: "info",
+        component: "secure-settings",
+        operation: "maybeMigrateLegacyApiKey",
+        message: "Legacy API key migrated to encrypted storage.",
+      });
+      alert(
+        "Legacy API key migrated successfully and unlocked for this session.",
+      );
+    } catch (error) {
+      appendLogEntry({
+        level: "error",
+        component: "secure-settings",
+        operation: "maybeMigrateLegacyApiKey",
+        message: "Failed to migrate legacy API key.",
+        error,
+      });
+      alert("Failed to migrate legacy API key.");
+    }
+  }
+
+  function wipeStoredApiKey() {
+    secureSettings.keyCiphertext = null;
+    secureSettings.saltBase64 = null;
+    secureSettings.ivBase64 = null;
+    secureSettings.keyUpdatedAt = null;
+    persistSecureSettings();
+    clearRuntimeApiKey();
+    persistRuntimeApiKeyCache("");
+    const settings = getBookAiSettings();
+    settings.apiKeySaved = false;
+    settings.apiKeyLastUpdated = "";
+    saveState();
+    applySummaryApiKeyUiState();
+    appendLogEntry({
+      level: "info",
+      component: "secure-settings",
+      operation: "wipeStoredApiKey",
+      message: "Encrypted API key removed.",
+    });
+  }
+
+  function ensureModelAllowed(value) {
+    const candidate = String(value || "").trim();
+    if (!candidate) return "gemini-2.5-flash";
+    if (GEMINI_MODELS.includes(candidate)) return candidate;
+    return "gemini-2.5-flash";
+  }
+
+  function closeSummaryModelDropdown() {
+    const picker = document.getElementById("summaryModelPicker");
+    const input = document.getElementById("summaryModelInput");
+    if (!picker || !input) return;
+    summaryModelPickerState.isOpen = false;
+    picker.classList.remove("open");
+    input.setAttribute("aria-expanded", "false");
+  }
+
+  function setSummaryModelValue(modelName, closeAfterSelect = true) {
+    const input = document.getElementById("summaryModelInput");
+    if (!input) return;
+    input.value = ensureModelAllowed(modelName);
+    if (closeAfterSelect) {
+      closeSummaryModelDropdown();
+    }
+  }
+
+  function renderSummaryModelOptions() {
+    const dropdown = document.getElementById("summaryModelDropdown");
+    if (!dropdown) return;
+
+    if (!summaryModelPickerState.filtered.length) {
+      dropdown.innerHTML =
+        '<div class="model-picker-empty">No matching model. Keep typing...</div>';
+      return;
+    }
+
+    dropdown.innerHTML = summaryModelPickerState.filtered
+      .map((modelName, idx) => {
+        const activeClass =
+          idx === summaryModelPickerState.activeIndex ? " active" : "";
+        return `<button class="model-picker-option${activeClass}" type="button" role="option" data-model="${sanitize(modelName)}" aria-selected="${idx === summaryModelPickerState.activeIndex}">${sanitize(modelName)}</button>`;
+      })
+      .join("");
+
+    dropdown.querySelectorAll(".model-picker-option").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        setSummaryModelValue(btn.dataset.model || "gemini-2.5-flash", true);
+      });
+    });
+  }
+
+  function updateSummaryModelFilter(query) {
+    const needle = String(query || "")
+      .trim()
+      .toLowerCase();
+    const sorted = [...GEMINI_MODELS].sort((a, b) => a.localeCompare(b));
+    if (!needle) {
+      summaryModelPickerState.filtered = sorted;
+    } else {
+      summaryModelPickerState.filtered = sorted.filter((name) =>
+        name.toLowerCase().includes(needle),
+      );
+    }
+    summaryModelPickerState.activeIndex = summaryModelPickerState.filtered
+      .length
+      ? 0
+      : -1;
+    renderSummaryModelOptions();
+  }
+
+  function openSummaryModelDropdown() {
+    const picker = document.getElementById("summaryModelPicker");
+    const input = document.getElementById("summaryModelInput");
+    if (!picker || !input) return;
+
+    summaryModelPickerState.isOpen = true;
+    picker.classList.add("open");
+    input.setAttribute("aria-expanded", "true");
+    updateSummaryModelFilter(input.value);
+  }
+
+  function moveSummaryModelActive(delta) {
+    if (!summaryModelPickerState.filtered.length) return;
+    const next = summaryModelPickerState.activeIndex + delta;
+    if (next < 0) {
+      summaryModelPickerState.activeIndex =
+        summaryModelPickerState.filtered.length - 1;
+    } else if (next >= summaryModelPickerState.filtered.length) {
+      summaryModelPickerState.activeIndex = 0;
+    } else {
+      summaryModelPickerState.activeIndex = next;
+    }
+    renderSummaryModelOptions();
+
+    const dropdown = document.getElementById("summaryModelDropdown");
+    if (!dropdown) return;
+    const activeOption = dropdown.querySelector(".model-picker-option.active");
+    if (activeOption) {
+      activeOption.scrollIntoView({ block: "nearest" });
+    }
+  }
+
+  function confirmSummaryModelSelection() {
+    if (!summaryModelPickerState.filtered.length) {
+      setSummaryModelValue("gemini-2.5-flash", true);
+      return;
+    }
+
+    const selected =
+      summaryModelPickerState.filtered[summaryModelPickerState.activeIndex] ||
+      summaryModelPickerState.filtered[0] ||
+      "gemini-2.5-flash";
+    setSummaryModelValue(selected, true);
+  }
+
+  function bindSummaryModelPicker() {
+    const input = document.getElementById("summaryModelInput");
+    const toggle = document.getElementById("summaryModelToggle");
+    const picker = document.getElementById("summaryModelPicker");
+    if (!input || !toggle || !picker) return;
+
+    updateSummaryModelFilter(input.value);
+
+    input.addEventListener("focus", () => {
+      openSummaryModelDropdown();
+    });
+
+    input.addEventListener("input", () => {
+      if (!summaryModelPickerState.isOpen) {
+        openSummaryModelDropdown();
+      }
+      updateSummaryModelFilter(input.value);
+    });
+
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        if (!summaryModelPickerState.isOpen) {
+          openSummaryModelDropdown();
+        } else {
+          moveSummaryModelActive(1);
+        }
+      } else if (event.key === "ArrowUp") {
+        event.preventDefault();
+        if (!summaryModelPickerState.isOpen) {
+          openSummaryModelDropdown();
+        } else {
+          moveSummaryModelActive(-1);
+        }
+      } else if (event.key === "Enter") {
+        if (!summaryModelPickerState.isOpen) return;
+        event.preventDefault();
+        confirmSummaryModelSelection();
+      } else if (event.key === "Escape") {
+        closeSummaryModelDropdown();
+      }
+    });
+
+    input.addEventListener("blur", () => {
+      setTimeout(() => {
+        const activeEl = document.activeElement;
+        if (picker.contains(activeEl)) return;
+        closeSummaryModelDropdown();
+      }, 100);
+    });
+
+    toggle.addEventListener("click", () => {
+      if (summaryModelPickerState.isOpen) {
+        closeSummaryModelDropdown();
+        return;
+      }
+      openSummaryModelDropdown();
+      input.focus();
+    });
+
+    document.addEventListener("click", (event) => {
+      if (!picker.contains(event.target)) {
+        closeSummaryModelDropdown();
+      }
+    });
+  }
+
   function formatIsoForDisplay(iso) {
     if (!iso) return "-";
     const dt = new Date(iso);
@@ -330,6 +1297,26 @@
     if (typeof input.books.activeBookId !== "string") {
       input.books.activeBookId = null;
     }
+    if (!isPlainObject(input.books.ai)) {
+      input.books.ai = {};
+    }
+    input.books.ai.apiKey = "";
+    input.books.ai.apiKeyMode = "encrypted";
+    input.books.ai.apiKeySaved = hasStoredEncryptedApiKey();
+    input.books.ai.apiKeyLastUpdated = String(
+      input.books.ai.apiKeyLastUpdated || "",
+    );
+    input.books.ai.model = ensureModelAllowed(input.books.ai.model);
+    const normalizedChunkChars = parseInt(input.books.ai.chunkChars, 10);
+    input.books.ai.chunkChars = Number.isFinite(normalizedChunkChars)
+      ? Math.min(30000, Math.max(4000, normalizedChunkChars))
+      : SUMMARY_MAX_CHARS_PER_CHUNK_DEFAULT;
+    const normalizedMaxPages = parseInt(input.books.ai.maxPagesPerRun, 10);
+    input.books.ai.maxPagesPerRun = Number.isFinite(normalizedMaxPages)
+      ? Math.min(1000, Math.max(20, normalizedMaxPages))
+      : SUMMARY_MAX_PAGES_PER_RUN_DEFAULT;
+    input.books.ai.consolidateMode =
+      input.books.ai.consolidateMode === false ? false : true;
 
     input.books.items = input.books.items
       .filter((book) => isPlainObject(book) && typeof book.bookId === "string")
@@ -365,10 +1352,12 @@
             const bmCreatedAt = String(bm.createdAt || nowIso());
             const bmUpdatedAt = String(bm.updatedAt || bmCreatedAt);
             const history = Array.isArray(bm.history) ? bm.history : [];
+            const bookmarkPage = Math.max(1, parseInt(bm.pdfPage, 10) || 1);
+            const summaries = Array.isArray(bm.summaries) ? bm.summaries : [];
             return {
               bookmarkId: String(bm.bookmarkId),
               label: String(bm.label || "Bookmark").trim() || "Bookmark",
-              pdfPage: Math.max(1, parseInt(bm.pdfPage, 10) || 1),
+              pdfPage: bookmarkPage,
               realPage: (() => {
                 const parsed = parseInt(bm.realPage, 10);
                 return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
@@ -386,6 +1375,55 @@
                 }))
                 .sort((a, b) => (a.at < b.at ? 1 : -1))
                 .slice(0, MAX_BOOKMARK_HISTORY),
+              summaries: summaries
+                .filter((s) => isPlainObject(s))
+                .map((s) => {
+                  const createdAt = String(s.createdAt || nowIso());
+                  const updatedAt = String(s.updatedAt || createdAt);
+                  const fallbackStart =
+                    s.isIncremental === true
+                      ? Math.max(1, parseInt(s.startPage, 10) || 1)
+                      : 1;
+                  const startPage = Math.max(
+                    1,
+                    parseInt(s.startPage, 10) || fallbackStart,
+                  );
+                  const endPage = Math.max(
+                    startPage,
+                    parseInt(s.endPage, 10) || bookmarkPage,
+                  );
+                  const status = ["ready", "failed", "running"].includes(
+                    String(s.status || ""),
+                  )
+                    ? String(s.status)
+                    : String(s.content || "").trim().length
+                      ? "ready"
+                      : "failed";
+                  const basedOnSummaryId =
+                    typeof s.basedOnSummaryId === "string" &&
+                    s.basedOnSummaryId.trim()
+                      ? s.basedOnSummaryId
+                      : null;
+                  const durationMs = Number.isFinite(Number(s.durationMs))
+                    ? Math.max(0, Number(s.durationMs))
+                    : null;
+                  return {
+                    summaryId: String(s.summaryId || uid("sum")),
+                    model: String(s.model || ""),
+                    startPage,
+                    endPage,
+                    isIncremental: s.isIncremental === true,
+                    basedOnSummaryId,
+                    createdAt,
+                    updatedAt,
+                    status,
+                    content: String(s.content || ""),
+                    chunkMeta: isPlainObject(s.chunkMeta) ? s.chunkMeta : {},
+                    durationMs,
+                    error: String(s.error || ""),
+                  };
+                })
+                .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)),
             };
           })
           .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
@@ -410,6 +1448,16 @@
       books: {
         items: [],
         activeBookId: null,
+        ai: {
+          apiKey: "",
+          apiKeyMode: "encrypted",
+          apiKeySaved: false,
+          apiKeyLastUpdated: "",
+          model: "gemini-2.5-flash",
+          chunkChars: SUMMARY_MAX_CHARS_PER_CHUNK_DEFAULT,
+          maxPagesPerRun: SUMMARY_MAX_PAGES_PER_RUN_DEFAULT,
+          consolidateMode: true,
+        },
       },
       meta: {
         schemaVersion: SCHEMA_VERSION,
@@ -512,11 +1560,32 @@
         state = JSON.parse(raw);
         migrateState();
         ensureMonthData();
+        if (
+          isPlainObject(state.books) &&
+          isPlainObject(state.books.ai) &&
+          typeof state.books.ai.apiKey === "string" &&
+          state.books.ai.apiKey.trim().length
+        ) {
+          legacyPlaintextApiKeyForMigration = state.books.ai.apiKey.trim();
+          appendLogEntry({
+            level: "warn",
+            component: "secure-settings",
+            operation: "loadState",
+            message: "Legacy plaintext API key detected; scrubbing from state.",
+          });
+          state.books.ai.apiKey = "";
+        }
         saveState();
         return;
       }
     } catch (error) {
-      console.warn("Failed to load state, using defaults", error);
+      appendLogEntry({
+        level: "error",
+        component: "state",
+        operation: "loadState",
+        message: "Failed to load state, using defaults.",
+        error,
+      });
     }
 
     state = getDefaultState();
@@ -593,6 +1662,11 @@
 
     if (viewId === "analytics") {
       renderAnalyticsView();
+      return;
+    }
+
+    if (viewId === "logs") {
+      renderLogsView();
       return;
     }
 
@@ -703,9 +1777,13 @@
       const end = Math.min(week * 7, totalDays);
       let done = 0;
       let possible = 0;
+      const dayCompletionRates = [];
 
-      habits.forEach((habit) => {
-        for (let day = start; day <= end; day++) {
+      for (let day = start; day <= end; day++) {
+        let dayDone = 0;
+        let dayPossible = 0;
+
+        habits.forEach((habit) => {
           if (
             !isHabitTrackedOnDate(
               habit,
@@ -714,20 +1792,34 @@
               day,
             )
           ) {
-            continue;
+            return;
           }
-          possible += 1;
+
+          dayPossible += 1;
           if (
             monthData.dailyCompletions[habit.id] &&
             monthData.dailyCompletions[habit.id][day]
           ) {
-            done += 1;
+            dayDone += 1;
           }
-        }
-      });
+        });
+
+        done += dayDone;
+        possible += dayPossible;
+        dayCompletionRates.push(
+          dayPossible > 0 ? Math.round((dayDone / dayPossible) * 100) : 0,
+        );
+      }
 
       const pct = possible > 0 ? Math.round((done / possible) * 100) : 0;
-      html += `<div class="week-card"><span class="week-card-title">Week ${week}</span><div class="week-pct">${pct}%</div></div>`;
+      const bars = dayCompletionRates
+        .map(
+          (value, idx) =>
+            `<span class="week-mini-bar" style="--bar-pct:${value}" title="Day ${start + idx}: ${value}%"></span>`,
+        )
+        .join("");
+
+      html += `<div class="week-card"><div class="week-card-top"><span class="week-card-title">Week ${week}</span><span class="week-range">${start}-${end}</span></div><div class="week-ring" style="--week-pct:${pct}" aria-label="Week ${week} completion ${pct}%"><span class="week-pct">${pct}%</span></div><div class="week-meta">${done}/${possible} tasks</div><div class="week-mini-bars" aria-hidden="true">${bars}</div></div>`;
     }
 
     container.innerHTML = html;
@@ -1502,12 +2594,58 @@
       today.getFullYear() === state.currentYear &&
       today.getMonth() === state.currentMonth;
     const todayDay = isCurrentMonthView ? today.getDate() : -1;
+    const currentViewMonthKey = monthKey(state.currentYear, state.currentMonth);
+
+    function isDayFullyCompleted(day) {
+      let requiredCount = 0;
+      let checkedCount = 0;
+
+      habits.forEach((habit) => {
+        if (
+          !isHabitTrackedOnDate(
+            habit,
+            state.currentYear,
+            state.currentMonth,
+            day,
+          )
+        ) {
+          return;
+        }
+
+        requiredCount += 1;
+        if (
+          monthData.dailyCompletions[habit.id] &&
+          monthData.dailyCompletions[habit.id][day]
+        ) {
+          checkedCount += 1;
+        }
+      });
+
+      return requiredCount > 0 && checkedCount === requiredCount;
+    }
+
+    const completedDays = {};
+    for (let day = 1; day <= totalDays; day++) {
+      completedDays[day] = isDayFullyCompleted(day);
+    }
+
+    function syncDayCompletionClass(day, isComplete) {
+      const dayHeader = grid.querySelector(`th.day-col[data-day='${day}']`);
+      if (dayHeader) {
+        dayHeader.classList.toggle("day-complete", !!isComplete);
+      }
+
+      grid
+        .querySelectorAll(`td.day-cell[data-day='${day}']`)
+        .forEach((cell) => cell.classList.toggle("day-complete", !!isComplete));
+    }
 
     let html =
       "<thead><tr><th class='habit-name-col'>Habits</th><th class='category-col'>Category</th><th class='goal-col'>Goal</th>";
     for (let day = 1; day <= totalDays; day++) {
       const isToday = day === todayDay;
-      html += `<th class='day-col ${isToday ? "today" : ""}'>${day}</th>`;
+      const isComplete = completedDays[day];
+      html += `<th class='day-col ${isToday ? "today" : ""} ${isComplete ? "day-complete" : ""}' data-day='${day}'>${day}</th>`;
     }
     html += "</tr></thead><tbody>";
 
@@ -1518,6 +2656,7 @@
       html += `<tr><td class='habit-name-cell'>${emoji} ${sanitize(habit.name)} <span class='streak-badge' data-streak-habit='${habit.id}'>Current 0d | Best 0d</span><span class='habit-actions'><button class='habit-action-btn' onclick="HabitApp.editHabit('${habit.id}')">Edit</button><button class='habit-action-btn delete' onclick="HabitApp.deleteHabit('${habit.id}')">Delete</button></span></td><td class='category-cell'>${catName}</td><td class='goal-cell'>${habit.monthGoal}</td>`;
       for (let day = 1; day <= totalDays; day++) {
         const isToday = day === todayDay;
+        const isComplete = completedDays[day];
         if (
           !isHabitTrackedOnDate(
             habit,
@@ -1526,7 +2665,7 @@
             day,
           )
         ) {
-          html += `<td class='day-cell day-cell-off ${isToday ? "today-col" : ""}'><span class='off-day-mark'>OFF</span></td>`;
+          html += `<td class='day-cell day-cell-off ${isToday ? "today-col" : ""} ${isComplete ? "day-complete" : ""}' data-day='${day}'><span class='off-day-mark'>OFF</span></td>`;
           continue;
         }
         const checked =
@@ -1539,13 +2678,45 @@
           typeof monthData.dailyNotes[habit.id][day] === "string" &&
           monthData.dailyNotes[habit.id][day].trim().length
         );
-        html += `<td class='day-cell ${isToday ? "today-col" : ""}'><div class='day-cell-content'><input type='checkbox' class='habit-check ${isToday ? "today-check" : ""}' data-habit='${habit.id}' data-day='${day}' ${checked}><button type='button' class='note-btn ${hasNote ? "has-note" : ""}' data-habit='${habit.id}' data-day='${day}'>📝</button></div></td>`;
+        html += `<td class='day-cell ${isToday ? "today-col" : ""} ${isComplete ? "day-complete" : ""}' data-day='${day}'><div class='day-cell-content'><input type='checkbox' class='habit-check ${isToday ? "today-check" : ""}' data-habit='${habit.id}' data-day='${day}' ${checked}><button type='button' class='note-btn ${hasNote ? "has-note" : ""}' data-habit='${habit.id}' data-day='${day}'>📝</button></div></td>`;
       }
       html += "</tr>";
     });
 
     html += "</tbody>";
     grid.innerHTML = html;
+
+    if (!isCurrentMonthView) {
+      lastAutoScrolledMonthKey = null;
+    } else if (lastAutoScrolledMonthKey !== currentViewMonthKey) {
+      lastAutoScrolledMonthKey = currentViewMonthKey;
+      requestAnimationFrame(() => {
+        const todayHeader = grid.querySelector("th.day-col.today");
+        const wrapper = grid.closest(".habits-grid-wrapper");
+        if (!todayHeader || !wrapper) return;
+
+        const maxScrollLeft = wrapper.scrollWidth - wrapper.clientWidth;
+        if (maxScrollLeft <= 0) return;
+
+        const targetLeft = Math.max(
+          0,
+          Math.min(
+            maxScrollLeft,
+            todayHeader.offsetLeft -
+              wrapper.clientWidth / 2 +
+              todayHeader.offsetWidth / 2,
+          ),
+        );
+
+        const reduceMotion = window.matchMedia(
+          "(prefers-reduced-motion: reduce)",
+        ).matches;
+        wrapper.scrollTo({
+          left: targetLeft,
+          behavior: reduceMotion ? "auto" : "smooth",
+        });
+      });
+    }
 
     grid.querySelectorAll(".habit-check").forEach((cb) => {
       cb.addEventListener("change", function () {
@@ -1562,6 +2733,8 @@
         renderDashboardAnalytics();
         renderAnalyticsView();
         updateHabitStreak(habitId);
+
+        syncDayCompletionClass(day, isDayFullyCompleted(day));
       });
     });
 
@@ -1874,8 +3047,17 @@
       };
 
       request.onsuccess = () => resolve(request.result);
-      request.onerror = () =>
-        reject(request.error || new Error("IndexedDB open failed"));
+      request.onerror = () => {
+        const error = request.error || new Error("IndexedDB open failed");
+        appendLogEntry({
+          level: "error",
+          component: "idb",
+          operation: "openPdfDatabase",
+          message: "IndexedDB open failed.",
+          error,
+        });
+        reject(error);
+      };
     });
 
     return idbPromise;
@@ -1887,7 +3069,23 @@
       const tx = db.transaction(PDF_STORE_NAME, "readwrite");
       tx.objectStore(PDF_STORE_NAME).put({ fileId, blob, updatedAt: nowIso() });
       tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error || new Error("PDF save failed"));
+      tx.onerror = () => {
+        const error = tx.error || new Error("PDF save failed");
+        appendLogEntry({
+          level: "error",
+          component: "idb",
+          operation: "idbSavePdfBlob",
+          message: "Saving PDF blob failed.",
+          error,
+          context: {
+            fileId,
+            sizeBytes: Number.isFinite(Number(blob && blob.size))
+              ? Number(blob.size)
+              : 0,
+          },
+        });
+        reject(error);
+      };
     });
   }
 
@@ -1897,7 +3095,18 @@
       const tx = db.transaction(PDF_STORE_NAME, "readonly");
       const req = tx.objectStore(PDF_STORE_NAME).get(fileId);
       req.onsuccess = () => resolve(req.result ? req.result.blob : null);
-      req.onerror = () => reject(req.error || new Error("PDF read failed"));
+      req.onerror = () => {
+        const error = req.error || new Error("PDF read failed");
+        appendLogEntry({
+          level: "error",
+          component: "idb",
+          operation: "idbGetPdfBlob",
+          message: "Reading PDF blob failed.",
+          error,
+          context: { fileId },
+        });
+        reject(error);
+      };
     });
   }
 
@@ -1907,7 +3116,18 @@
       const tx = db.transaction(PDF_STORE_NAME, "readwrite");
       tx.objectStore(PDF_STORE_NAME).delete(fileId);
       tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error || new Error("PDF delete failed"));
+      tx.onerror = () => {
+        const error = tx.error || new Error("PDF delete failed");
+        appendLogEntry({
+          level: "error",
+          component: "idb",
+          operation: "idbDeletePdfBlob",
+          message: "Deleting PDF blob failed.",
+          error,
+          context: { fileId },
+        });
+        reject(error);
+      };
     });
   }
 
@@ -1917,6 +3137,1414 @@
 
   function getActiveBook() {
     return getBookById(state.books.activeBookId);
+  }
+
+  function getBookAiSettings() {
+    if (!isPlainObject(state.books.ai)) {
+      state.books.ai = {
+        apiKey: "",
+        apiKeyMode: "encrypted",
+        apiKeySaved: false,
+        apiKeyLastUpdated: "",
+        rememberOnDevice: false,
+        model: "gemini-2.5-flash",
+        chunkChars: SUMMARY_MAX_CHARS_PER_CHUNK_DEFAULT,
+        maxPagesPerRun: SUMMARY_MAX_PAGES_PER_RUN_DEFAULT,
+        consolidateMode: true,
+      };
+    }
+    state.books.ai.apiKey = "";
+    state.books.ai.apiKeyMode = "encrypted";
+    state.books.ai.apiKeySaved = hasStoredEncryptedApiKey();
+    state.books.ai.rememberOnDevice = state.books.ai.rememberOnDevice === true;
+    state.books.ai.model = ensureModelAllowed(state.books.ai.model);
+    return state.books.ai;
+  }
+
+  function applyBookSummarySettingsToInputs() {
+    const settings = getBookAiSettings();
+    const keyInput = document.getElementById("summaryApiKeyInput");
+    const modelInput = document.getElementById("summaryModelInput");
+    const chunkCharsInput = document.getElementById("summaryChunkCharsInput");
+    const maxPagesInput = document.getElementById("summaryMaxPagesInput");
+    const rememberToggle = document.getElementById(
+      "summaryRememberApiKeyToggle",
+    );
+    const consolidateToggle = document.getElementById(
+      "summaryConsolidateToggle",
+    );
+
+    if (keyInput) keyInput.value = "";
+    if (modelInput) {
+      modelInput.value = ensureModelAllowed(settings.model);
+      updateSummaryModelFilter(modelInput.value);
+    }
+    if (chunkCharsInput) {
+      chunkCharsInput.value = String(
+        settings.chunkChars || SUMMARY_MAX_CHARS_PER_CHUNK_DEFAULT,
+      );
+    }
+    if (maxPagesInput) {
+      maxPagesInput.value = String(
+        settings.maxPagesPerRun || SUMMARY_MAX_PAGES_PER_RUN_DEFAULT,
+      );
+    }
+    if (rememberToggle) {
+      rememberToggle.checked = settings.rememberOnDevice === true;
+    }
+    if (consolidateToggle) {
+      consolidateToggle.checked = settings.consolidateMode !== false;
+    }
+    applySummaryApiKeyUiState();
+  }
+
+  async function saveBookSummarySettingsFromInputs() {
+    const settings = getBookAiSettings();
+    const keyInput = document.getElementById("summaryApiKeyInput");
+    const modelInput = document.getElementById("summaryModelInput");
+    const chunkCharsInput = document.getElementById("summaryChunkCharsInput");
+    const maxPagesInput = document.getElementById("summaryMaxPagesInput");
+    const rememberToggle = document.getElementById(
+      "summaryRememberApiKeyToggle",
+    );
+    const consolidateToggle = document.getElementById(
+      "summaryConsolidateToggle",
+    );
+
+    const enteredKey = keyInput ? String(keyInput.value || "").trim() : "";
+    settings.model = ensureModelAllowed(
+      modelInput ? String(modelInput.value || "") : "",
+    );
+
+    const chunkChars = parseInt(
+      chunkCharsInput ? chunkCharsInput.value : "",
+      10,
+    );
+    settings.chunkChars = Number.isFinite(chunkChars)
+      ? Math.min(30000, Math.max(4000, chunkChars))
+      : SUMMARY_MAX_CHARS_PER_CHUNK_DEFAULT;
+
+    const maxPagesPerRun = parseInt(
+      maxPagesInput ? maxPagesInput.value : "",
+      10,
+    );
+    settings.maxPagesPerRun = Number.isFinite(maxPagesPerRun)
+      ? Math.min(1000, Math.max(20, maxPagesPerRun))
+      : SUMMARY_MAX_PAGES_PER_RUN_DEFAULT;
+
+    settings.rememberOnDevice = rememberToggle ? rememberToggle.checked : false;
+
+    settings.consolidateMode = consolidateToggle
+      ? consolidateToggle.checked
+      : true;
+
+    try {
+      if (enteredKey) {
+        const passphrase = window.prompt(
+          "Create a passphrase to encrypt your Gemini API key on this device:",
+          "",
+        );
+        if (!passphrase) {
+          alert("Passphrase is required to save the API key securely.");
+          return;
+        }
+        const confirmPassphrase = window.prompt("Confirm the passphrase:", "");
+        if (passphrase !== confirmPassphrase) {
+          alert("Passphrase confirmation did not match.");
+          return;
+        }
+        await encryptApiKeyWithPassphrase(enteredKey, passphrase);
+        runtimeSecrets.apiKey = enteredKey;
+        runtimeSecrets.unlockedAt = nowIso();
+        persistRuntimeApiKeyCache(runtimeSecrets.apiKey);
+        settings.apiKeySaved = true;
+        settings.apiKeyLastUpdated = secureSettings.keyUpdatedAt || nowIso();
+      } else {
+        settings.apiKeySaved = hasStoredEncryptedApiKey();
+      }
+    } catch (error) {
+      appendLogEntry({
+        level: "error",
+        component: "secure-settings",
+        operation: "saveBookSummarySettingsFromInputs",
+        message: "Failed to encrypt API key.",
+        error,
+      });
+      alert("Failed to save encrypted API key.");
+      return;
+    }
+
+    settings.apiKey = "";
+    settings.apiKeyMode = "encrypted";
+
+    if (settings.rememberOnDevice) {
+      persistRuntimeApiKeyCache(getApiKeyForSummary());
+    } else {
+      persistRuntimeApiKeyCache("");
+    }
+
+    saveState();
+    applyBookSummarySettingsToInputs();
+    if (enteredKey) {
+      alert(
+        "Summary AI settings saved. API key is encrypted and stored safely.",
+      );
+    } else {
+      alert("Summary AI settings saved.");
+    }
+  }
+
+  function getFilteredLogs() {
+    const levelFilter = document.getElementById("logsLevelFilter");
+    const componentFilter = document.getElementById("logsComponentFilter");
+    const textFilter = document.getElementById("logsTextFilter");
+    const level = levelFilter ? String(levelFilter.value || "").trim() : "";
+    const component = componentFilter
+      ? String(componentFilter.value || "")
+          .trim()
+          .toLowerCase()
+      : "";
+    const needle = textFilter
+      ? String(textFilter.value || "")
+          .trim()
+          .toLowerCase()
+      : "";
+
+    return appLogs
+      .filter((entry) => (level ? entry.level === level : true))
+      .filter((entry) =>
+        component
+          ? String(entry.component || "")
+              .toLowerCase()
+              .includes(component)
+          : true,
+      )
+      .filter((entry) => {
+        if (!needle) return true;
+        const haystack = [
+          entry.message,
+          entry.operation,
+          entry.errorMessage,
+          JSON.stringify(entry.context || {}),
+        ]
+          .join(" ")
+          .toLowerCase();
+        return haystack.includes(needle);
+      })
+      .sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1));
+  }
+
+  function renderLogsView() {
+    const table = document.getElementById("logsTable");
+    if (!table) return;
+    const logs = getFilteredLogs();
+    if (!logs.length) {
+      table.innerHTML = '<p class="logs-empty">No matching logs yet.</p>';
+      return;
+    }
+
+    table.innerHTML = logs
+      .map((entry) => {
+        const contextText = sanitize(
+          JSON.stringify(entry.context || {}, null, 2),
+        );
+        const errText = entry.errorMessage
+          ? `<div class=\"logs-error\">${sanitize(entry.errorName)}: ${sanitize(entry.errorMessage)}</div>`
+          : "";
+        return `<article class=\"logs-entry logs-${sanitize(entry.level)}\">
+          <div class=\"logs-entry-top\">
+            <span class=\"logs-pill\">${sanitize(entry.level.toUpperCase())}</span>
+            <span class=\"logs-time\">${sanitize(formatIsoForDisplay(entry.timestamp))}</span>
+            <span class=\"logs-component\">${sanitize(entry.component)}</span>
+            <span class=\"logs-operation\">${sanitize(entry.operation)}</span>
+          </div>
+          <div class=\"logs-message\">${sanitize(entry.message)}</div>
+          ${errText}
+          <pre class=\"logs-context\">${contextText}</pre>
+        </article>`;
+      })
+      .join("");
+  }
+
+  function bindLogsControls() {
+    const exportJsonBtn = document.getElementById("logsExportJsonBtn");
+    const exportCsvBtn = document.getElementById("logsExportCsvBtn");
+    const clearBtn = document.getElementById("logsClearBtn");
+    const levelFilter = document.getElementById("logsLevelFilter");
+    const componentFilter = document.getElementById("logsComponentFilter");
+    const textFilter = document.getElementById("logsTextFilter");
+    const liveFileSelectBtn = document.getElementById("logsLiveFileSelectBtn");
+    const liveFileStopBtn = document.getElementById("logsLiveFileStopBtn");
+
+    if (exportJsonBtn) {
+      exportJsonBtn.addEventListener("click", () => {
+        exportLogsAsJson();
+      });
+    }
+    if (exportCsvBtn) {
+      exportCsvBtn.addEventListener("click", () => {
+        exportLogsAsCsv();
+      });
+    }
+    if (clearBtn) {
+      clearBtn.addEventListener("click", () => {
+        const ok = window.confirm("Clear all debug logs?");
+        if (!ok) return;
+        appLogs = [];
+        persistLogs();
+        renderLogsView();
+      });
+    }
+
+    [levelFilter, componentFilter, textFilter]
+      .filter(Boolean)
+      .forEach((control) => {
+        control.addEventListener("input", renderLogsView);
+        control.addEventListener("change", renderLogsView);
+      });
+
+    if (liveFileSelectBtn) {
+      liveFileSelectBtn.addEventListener("click", () => {
+        enableLiveLogFile().catch(() => {
+          // Function already reports errors to user.
+        });
+      });
+    }
+
+    if (liveFileStopBtn) {
+      liveFileStopBtn.addEventListener("click", () => {
+        disableLiveLogFile().catch(() => {
+          // Ignore disable failures in UI handler.
+        });
+      });
+    }
+
+    updateLiveLogFileStatus();
+  }
+
+  function getBookmarkById(book, bookmarkId) {
+    if (!book || !Array.isArray(book.bookmarks)) return null;
+    return book.bookmarks.find((bm) => bm.bookmarkId === bookmarkId) || null;
+  }
+
+  function getReadySummariesFromBookmark(bookmark) {
+    const summaries = Array.isArray(bookmark && bookmark.summaries)
+      ? bookmark.summaries
+      : [];
+    return summaries.filter(
+      (s) =>
+        isPlainObject(s) &&
+        s.status === "ready" &&
+        typeof s.content === "string" &&
+        s.content.trim().length,
+    );
+  }
+
+  function getBookmarkLastSummarizedPage(bookmark) {
+    const ready = getReadySummariesFromBookmark(bookmark);
+    if (!ready.length) return 0;
+    return ready.reduce(
+      (maxPage, s) => Math.max(maxPage, parseInt(s.endPage, 10) || 0),
+      0,
+    );
+  }
+
+  function getReadySummariesFromBook(book) {
+    if (!book || !Array.isArray(book.bookmarks)) return [];
+    return book.bookmarks
+      .flatMap((bookmark) =>
+        getReadySummariesFromBookmark(bookmark).map((summary) => ({
+          ...summary,
+          bookmarkId: bookmark.bookmarkId,
+        })),
+      )
+      .sort((a, b) => {
+        const endDelta =
+          (parseInt(b.endPage, 10) || 0) - (parseInt(a.endPage, 10) || 0);
+        if (endDelta !== 0) return endDelta;
+        return a.createdAt < b.createdAt ? 1 : -1;
+      });
+  }
+
+  function getLatestSummaryUpToPageFromBook(book, page) {
+    const safePage = Math.max(1, parseInt(page, 10) || 1);
+    const byCoverage = getReadySummariesFromBook(book).filter(
+      (s) => (parseInt(s.endPage, 10) || 0) <= safePage,
+    );
+    if (byCoverage.length) return byCoverage[0];
+
+    const all = getReadySummariesFromBook(book);
+    if (!all.length) return null;
+    return [...all].sort((a, b) => {
+      const aDiff = Math.abs((parseInt(a.endPage, 10) || 0) - safePage);
+      const bDiff = Math.abs((parseInt(b.endPage, 10) || 0) - safePage);
+      if (aDiff !== bDiff) return aDiff - bDiff;
+      return a.createdAt < b.createdAt ? 1 : -1;
+    })[0];
+  }
+
+  function getBookLastSummarizedPage(book) {
+    const summaries = getReadySummariesFromBook(book);
+    if (!summaries.length) return 0;
+    return summaries.reduce(
+      (maxPage, s) => Math.max(maxPage, parseInt(s.endPage, 10) || 0),
+      0,
+    );
+  }
+
+  function resolveIncrementalRange(book, currentBookmarkPage) {
+    const safeCurrentPage = Math.max(1, parseInt(currentBookmarkPage, 10) || 1);
+    const lastSummarizedPage = getBookLastSummarizedPage(book);
+    const relevantSummary = getLatestSummaryUpToPageFromBook(
+      book,
+      safeCurrentPage,
+    );
+
+    if (safeCurrentPage <= lastSummarizedPage) {
+      return {
+        mode: "reuse",
+        startPage: null,
+        endPage: safeCurrentPage,
+        lastSummarizedPage,
+        relevantSummary,
+      };
+    }
+
+    if (!relevantSummary) {
+      return {
+        mode: "full",
+        startPage: 1,
+        endPage: safeCurrentPage,
+        lastSummarizedPage: 0,
+        relevantSummary: null,
+      };
+    }
+
+    return {
+      mode: "incremental",
+      startPage: Math.max(1, (parseInt(relevantSummary.endPage, 10) || 0) + 1),
+      endPage: safeCurrentPage,
+      lastSummarizedPage,
+      relevantSummary,
+    };
+  }
+
+  function chunkTextForSummary(text, maxChars) {
+    const clean = String(text || "")
+      .replace(/\r/g, "")
+      .trim();
+    if (!clean) return [];
+    const targetSize = Math.max(4000, parseInt(maxChars, 10) || 12000);
+    const paragraphs = clean
+      .split(/\n{2,}/)
+      .map((part) => part.trim())
+      .filter(Boolean);
+
+    if (!paragraphs.length) return [clean];
+
+    const chunks = [];
+    let current = "";
+
+    paragraphs.forEach((paragraph) => {
+      const candidate = current ? `${current}\n\n${paragraph}` : paragraph;
+      if (candidate.length <= targetSize) {
+        current = candidate;
+        return;
+      }
+
+      if (current) {
+        chunks.push(current);
+      }
+
+      if (paragraph.length <= targetSize) {
+        current = paragraph;
+        return;
+      }
+
+      let offset = 0;
+      while (offset < paragraph.length) {
+        chunks.push(paragraph.slice(offset, offset + targetSize));
+        offset += targetSize;
+      }
+      current = "";
+    });
+
+    if (current) {
+      chunks.push(current);
+    }
+
+    return chunks;
+  }
+
+  async function extractTextRangeFromBookPdf(
+    book,
+    startPage,
+    endPage,
+    onProgress,
+  ) {
+    if (!book || !book.fileId) {
+      throw new Error("Book PDF reference is missing.");
+    }
+
+    const blob = await idbGetPdfBlob(book.fileId);
+    if (!blob) {
+      throw new Error("PDF file is missing in this browser storage.");
+    }
+
+    const pdfjsLib = await ensurePdfJsLibLoaded();
+    if (!pdfjsLib) {
+      throw new Error("PDF.js failed to load.");
+    }
+    pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_URL;
+
+    const pdfData = await blob.arrayBuffer();
+    const loadingTask = pdfjsLib.getDocument({ data: pdfData });
+    let pdfDoc = null;
+
+    try {
+      pdfDoc = await loadingTask.promise;
+      const totalPages = Math.max(1, parseInt(pdfDoc.numPages, 10) || 1);
+      const safeStart = Math.max(
+        1,
+        Math.min(parseInt(startPage, 10) || 1, totalPages),
+      );
+      const safeEnd = Math.max(
+        safeStart,
+        Math.min(parseInt(endPage, 10) || safeStart, totalPages),
+      );
+
+      const extracted = [];
+      const rangeTotal = safeEnd - safeStart + 1;
+
+      for (let pageNum = safeStart; pageNum <= safeEnd; pageNum += 1) {
+        const page = await pdfDoc.getPage(pageNum);
+        const textContent = await page.getTextContent();
+        const pageText = (
+          Array.isArray(textContent.items) ? textContent.items : []
+        )
+          .map((item) => (typeof item.str === "string" ? item.str : ""))
+          .join(" ")
+          .replace(/\s+/g, " ")
+          .trim();
+
+        extracted.push(`[Page ${pageNum}]\n${pageText}`);
+
+        if (typeof onProgress === "function") {
+          onProgress({
+            current: pageNum - safeStart + 1,
+            total: rangeTotal,
+            absolutePage: pageNum,
+          });
+        }
+      }
+
+      const text = extracted.join("\n\n").trim();
+      if (!text.replace(/\[Page \d+\]/g, "").trim()) {
+        throw new Error(
+          "No extractable text found in this page range. The PDF may be image-based.",
+        );
+      }
+
+      return {
+        text,
+        startPage: safeStart,
+        endPage: safeEnd,
+        totalPages,
+      };
+    } catch (error) {
+      appendLogEntry({
+        level: "error",
+        component: "pdf-extract",
+        operation: "extractTextRangeFromBookPdf",
+        message: "PDF text extraction failed.",
+        error,
+        context: {
+          bookId: book.bookId,
+          fileId: book.fileId,
+          startPage,
+          endPage,
+        },
+      });
+      maybeAutoDownloadLogs("pdf-extract-failed");
+      throw error;
+    } finally {
+      try {
+        if (pdfDoc && typeof pdfDoc.destroy === "function") {
+          await pdfDoc.destroy();
+        }
+      } catch (_) {
+        // Ignore cleanup errors.
+      }
+    }
+  }
+
+  function buildIncrementalChunkPrompt({
+    text,
+    startPage,
+    endPage,
+    chunkIndex,
+    totalChunks,
+  }) {
+    return [
+      "You are a concise reading assistant.",
+      `Summarize only pages ${startPage}-${endPage} from the provided text chunk ${chunkIndex}/${totalChunks}.`,
+      "Keep it factual and avoid speculation.",
+      "Return markdown with these sections:",
+      "## Key Concepts",
+      "## Important Events or Arguments",
+      "## Notable Insights or Takeaways",
+      "Use short bullet points.",
+      "Text to summarize:",
+      text,
+    ].join("\n\n");
+  }
+
+  function buildChunkMergePrompt({ chunkSummaries, startPage, endPage }) {
+    return [
+      "You are consolidating partial summaries of one continuous reading segment.",
+      `Create one clean summary for pages ${startPage}-${endPage}.`,
+      "Remove overlap and duplication while preserving key details.",
+      "Return markdown with these exact sections:",
+      "## Key Concepts",
+      "## Important Events or Arguments",
+      "## Notable Insights or Takeaways",
+      "Partial summaries:",
+      chunkSummaries
+        .map((chunk, idx) => `Chunk ${idx + 1}:\n${chunk}`)
+        .join("\n\n"),
+    ].join("\n\n");
+  }
+
+  function buildFinalMergePrompt({
+    previousSummary,
+    incrementalSummary,
+    currentBookmarkPage,
+  }) {
+    return [
+      "You are updating a running book summary.",
+      `The unified summary should represent reading progress up to page ${currentBookmarkPage}.`,
+      "Merge previous and new summaries without redundancy and keep chronology clear.",
+      "Return markdown with these exact sections:",
+      "## Key Concepts",
+      "## Important Events or Arguments",
+      "## Notable Insights or Takeaways",
+      "Previous summary context:",
+      previousSummary,
+      "New incremental summary:",
+      incrementalSummary,
+    ].join("\n\n");
+  }
+
+  function parseGeminiResponseText(payload) {
+    if (!isPlainObject(payload) || !Array.isArray(payload.candidates)) {
+      return "";
+    }
+    return payload.candidates
+      .map((candidate) => {
+        const parts =
+          candidate &&
+          isPlainObject(candidate.content) &&
+          Array.isArray(candidate.content.parts)
+            ? candidate.content.parts
+            : [];
+        return parts
+          .map((part) => (typeof part.text === "string" ? part.text : ""))
+          .join("");
+      })
+      .join("\n")
+      .trim();
+  }
+
+  async function callGeminiGenerateText({ apiKey, model, prompt }) {
+    if (!apiKey) {
+      throw new Error("Gemini API key is missing.");
+    }
+    if (!model) {
+      throw new Error("Gemini model is missing.");
+    }
+
+    const endpoint = `${GEMINI_API_BASE_URL}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+    const retries = 1;
+    const startedAt = performance.now();
+
+    for (let attempt = 0; attempt <= retries; attempt += 1) {
+      const controller = new AbortController();
+      const timeoutHandle = setTimeout(() => controller.abort(), 90000);
+
+      try {
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: {
+              temperature: 0.2,
+            },
+          }),
+          signal: controller.signal,
+        });
+
+        const body = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          const maybeMessage =
+            body &&
+            isPlainObject(body.error) &&
+            typeof body.error.message === "string"
+              ? body.error.message
+              : `Gemini request failed (${response.status}).`;
+          const retriable = response.status === 429 || response.status >= 500;
+          if (retriable && attempt < retries) {
+            continue;
+          }
+          throw new Error(maybeMessage);
+        }
+
+        const text = parseGeminiResponseText(body);
+        if (!text) {
+          throw new Error("Gemini returned an empty response.");
+        }
+
+        return text;
+      } catch (error) {
+        const isAbort = error && error.name === "AbortError";
+        appendLogEntry({
+          level: "warn",
+          component: "ai-summary",
+          operation: "callGeminiGenerateText",
+          message: "Gemini call attempt failed.",
+          error,
+          context: {
+            model,
+            attempt,
+            retries,
+            promptLength: String(prompt || "").length,
+            elapsedMs: Math.round(performance.now() - startedAt),
+          },
+        });
+        if ((isAbort || /network/i.test(String(error))) && attempt < retries) {
+          continue;
+        }
+        throw error;
+      } finally {
+        clearTimeout(timeoutHandle);
+      }
+    }
+
+    throw new Error("Gemini request failed after retry.");
+  }
+
+  async function summarizeSegmentWithChunking({
+    text,
+    startPage,
+    endPage,
+    apiKey,
+    model,
+    chunkChars,
+    onChunkProgress,
+  }) {
+    const chunks = chunkTextForSummary(text, chunkChars);
+    const totalChunks = chunks.length || 1;
+    const chunkSummaries = [];
+
+    for (let idx = 0; idx < chunks.length; idx += 1) {
+      if (typeof onChunkProgress === "function") {
+        onChunkProgress({ current: idx + 1, total: totalChunks });
+      }
+
+      const prompt = buildIncrementalChunkPrompt({
+        text: chunks[idx],
+        startPage,
+        endPage,
+        chunkIndex: idx + 1,
+        totalChunks,
+      });
+
+      const chunkSummary = await callGeminiGenerateText({
+        apiKey,
+        model,
+        prompt,
+      });
+      chunkSummaries.push(chunkSummary);
+    }
+
+    if (chunkSummaries.length <= 1) {
+      return {
+        summary: chunkSummaries[0] || "",
+        chunkCount: totalChunks,
+      };
+    }
+
+    const mergedPrompt = buildChunkMergePrompt({
+      chunkSummaries,
+      startPage,
+      endPage,
+    });
+    const merged = await callGeminiGenerateText({
+      apiKey,
+      model,
+      prompt: mergedPrompt,
+    });
+    return {
+      summary: merged,
+      chunkCount: totalChunks,
+    };
+  }
+
+  async function mergeWithPreviousSummary({
+    previousSummary,
+    incrementalSummary,
+    currentBookmarkPage,
+    apiKey,
+    model,
+    consolidateMode,
+  }) {
+    const prev = String(previousSummary || "").trim();
+    const inc = String(incrementalSummary || "").trim();
+
+    if (!prev) return inc;
+    if (!consolidateMode) {
+      return `${prev}\n\n---\n\n${inc}`;
+    }
+
+    const prompt = buildFinalMergePrompt({
+      previousSummary: prev.slice(0, 14000),
+      incrementalSummary: inc,
+      currentBookmarkPage,
+    });
+
+    return callGeminiGenerateText({ apiKey, model, prompt });
+  }
+
+  function appendBookmarkSummaryRecord(book, bookmark, recordInput) {
+    const timestamp = nowIso();
+    const record = {
+      summaryId: uid("sum"),
+      model: String(recordInput.model || ""),
+      startPage: Math.max(1, parseInt(recordInput.startPage, 10) || 1),
+      endPage: Math.max(1, parseInt(recordInput.endPage, 10) || 1),
+      isIncremental: recordInput.isIncremental === true,
+      basedOnSummaryId:
+        typeof recordInput.basedOnSummaryId === "string" &&
+        recordInput.basedOnSummaryId.trim()
+          ? recordInput.basedOnSummaryId
+          : null,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      status: recordInput.status === "failed" ? "failed" : "ready",
+      content: String(recordInput.content || ""),
+      chunkMeta: isPlainObject(recordInput.chunkMeta)
+        ? recordInput.chunkMeta
+        : {},
+      durationMs: Number.isFinite(Number(recordInput.durationMs))
+        ? Math.max(0, Number(recordInput.durationMs))
+        : null,
+      error: String(recordInput.error || ""),
+    };
+
+    record.endPage = Math.max(record.startPage, record.endPage);
+
+    if (!Array.isArray(bookmark.summaries)) {
+      bookmark.summaries = [];
+    }
+    bookmark.summaries.unshift(record);
+    bookmark.updatedAt = timestamp;
+    book.updatedAt = timestamp;
+    book.bookmarks.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+    saveState();
+    return record;
+  }
+
+  function getSummaryById(bookmark, summaryId) {
+    if (!bookmark || !Array.isArray(bookmark.summaries)) return null;
+    return (
+      bookmark.summaries.find((summary) => summary.summaryId === summaryId) ||
+      null
+    );
+  }
+
+  function getLatestBookmarkSummary(bookmark) {
+    const summaries = getReadySummariesFromBookmark(bookmark);
+    return summaries.length ? summaries[0] : null;
+  }
+
+  function formatDuration(durationMs) {
+    const ms = Number(durationMs);
+    if (!Number.isFinite(ms) || ms <= 0) return "-";
+    if (ms < 1000) return `${Math.round(ms)} ms`;
+    return `${(ms / 1000).toFixed(1)} s`;
+  }
+
+  function formatSummaryInlineMarkdown(input) {
+    const escaped = sanitize(String(input || "")).replace(/\r/g, "");
+    const withCode = escaped.replace(/`([^`]+)`/g, "<code>$1</code>");
+    const withBold = withCode.replace(
+      /\*\*([^*]+)\*\*/g,
+      "<strong>$1</strong>",
+    );
+    return withBold
+      .replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, "$1<em>$2</em>")
+      .replace(/(^|[^_])_([^_\n]+)_(?!_)/g, "$1<em>$2</em>");
+  }
+
+  function renderSummaryContentHtmlFallback(content) {
+    const source = String(content || "")
+      .replace(/\r\n?/g, "\n")
+      .trim();
+    if (!source) return "";
+
+    const lines = source.split("\n");
+    const html = [];
+    let listDepth = 0;
+    let inParagraph = false;
+
+    function closeParagraph() {
+      if (!inParagraph) return;
+      html.push("</p>");
+      inParagraph = false;
+    }
+
+    function closeLists(targetDepth = 0) {
+      while (listDepth > targetDepth) {
+        html.push("</ul>");
+        listDepth -= 1;
+      }
+    }
+
+    for (let i = 0; i < lines.length; i += 1) {
+      const line = lines[i];
+      const trimmed = line.trim();
+
+      if (!trimmed) {
+        closeParagraph();
+        closeLists(0);
+        continue;
+      }
+
+      const headingMatch = trimmed.match(/^(#{1,6})\s+(.+)$/);
+      if (headingMatch) {
+        closeParagraph();
+        closeLists(0);
+        const level = Math.min(4, headingMatch[1].length + 1);
+        html.push(
+          `<h${level}>${formatSummaryInlineMarkdown(headingMatch[2])}</h${level}>`,
+        );
+        continue;
+      }
+
+      const bulletMatch = line.match(/^(\s*)[-*+]\s+(.+)$/);
+      if (bulletMatch) {
+        closeParagraph();
+        const indent = (bulletMatch[1] || "").replace(/\t/g, "  ").length;
+        const depth = Math.floor(indent / 2) + 1;
+        if (depth > listDepth) {
+          while (listDepth < depth) {
+            html.push("<ul>");
+            listDepth += 1;
+          }
+        } else if (depth < listDepth) {
+          closeLists(depth);
+        }
+        html.push(`<li>${formatSummaryInlineMarkdown(bulletMatch[2])}</li>`);
+        continue;
+      }
+
+      closeLists(0);
+      if (!inParagraph) {
+        html.push("<p>");
+        inParagraph = true;
+      } else {
+        html.push("<br>");
+      }
+      html.push(formatSummaryInlineMarkdown(trimmed));
+    }
+
+    closeParagraph();
+    closeLists(0);
+    return html.join("");
+  }
+
+  function normalizeSummaryMarkdown(content) {
+    let source = String(content || "").trim();
+    if (!source) return "";
+
+    // Some model responses are wrapped in markdown code fences.
+    const fencedBlock = source.match(
+      /^```(?:markdown|md)?\s*([\s\S]*?)\s*```$/i,
+    );
+    if (fencedBlock) {
+      source = String(fencedBlock[1] || "").trim();
+    }
+
+    source = source
+      .replace(/\\r\\n/g, "\n")
+      .replace(/\\n/g, "\n")
+      .replace(/\\t/g, "  ")
+      .replace(/\\([*_`#>[\]\-])/g, "$1")
+      .replace(/\r\n?/g, "\n")
+      .trim();
+
+    return source;
+  }
+
+  function renderSummaryContentHtml(content) {
+    const source = normalizeSummaryMarkdown(content);
+    if (!source) return "";
+
+    if (window.marked && typeof window.marked.parse === "function") {
+      const safeMarkdown = sanitize(source);
+      return window.marked.parse(safeMarkdown, {
+        gfm: true,
+        breaks: true,
+      });
+    }
+
+    return renderSummaryContentHtmlFallback(source);
+  }
+
+  function renderSummaryModal() {
+    const titleEl = document.getElementById("summaryModalTitle");
+    const detectionEl = document.getElementById("summaryDetectionText");
+    const statusEl = document.getElementById("summaryRunStatus");
+    const bodyEl = document.getElementById("summaryBody");
+    const historyEl = document.getElementById("summaryHistoryList");
+    const regenBtn = document.getElementById("summaryRegenerateBtn");
+    const rebuildBtn = document.getElementById("summaryRebuildBtn");
+    const copyBtn = document.getElementById("summaryCopyBtn");
+
+    if (
+      !titleEl ||
+      !detectionEl ||
+      !statusEl ||
+      !bodyEl ||
+      !historyEl ||
+      !regenBtn ||
+      !rebuildBtn ||
+      !copyBtn
+    ) {
+      return;
+    }
+
+    const book = getBookById(summaryModalState.bookId);
+    const bookmark = book
+      ? getBookmarkById(book, summaryModalState.bookmarkId)
+      : null;
+
+    if (!book || !bookmark) {
+      titleEl.textContent = "Summary";
+      detectionEl.textContent = "No bookmark selected.";
+      statusEl.textContent = "";
+      bodyEl.textContent = "";
+      historyEl.innerHTML = "";
+      regenBtn.disabled = true;
+      rebuildBtn.disabled = true;
+      copyBtn.disabled = true;
+      return;
+    }
+
+    titleEl.textContent = `Summary: ${bookmark.label}`;
+    detectionEl.textContent =
+      summaryModalState.detectionText || `Bookmark page ${bookmark.pdfPage}.`;
+    statusEl.textContent = summaryModalState.statusText || "Ready.";
+
+    const selectedSummary =
+      getSummaryById(bookmark, summaryModalState.selectedSummaryId) ||
+      summaryModalState.externalSummary ||
+      getLatestBookmarkSummary(bookmark) ||
+      getLatestSummaryUpToPageFromBook(book, bookmark.pdfPage);
+
+    if (selectedSummary && selectedSummary.content) {
+      bodyEl.innerHTML = renderSummaryContentHtml(selectedSummary.content);
+      copyBtn.disabled = false;
+    } else {
+      bodyEl.innerHTML =
+        "<p>No summary yet. Use Summarize up to Bookmark to generate one.</p>";
+      copyBtn.disabled = true;
+    }
+
+    const entries = Array.isArray(bookmark.summaries) ? bookmark.summaries : [];
+    historyEl.innerHTML = entries.length
+      ? entries
+          .map((entry) => {
+            const stateLabel =
+              entry.status === "failed"
+                ? "Failed"
+                : entry.isIncremental
+                  ? "Incremental"
+                  : "Full";
+            const activeClass =
+              entry.summaryId === summaryModalState.selectedSummaryId
+                ? " active"
+                : "";
+            return `<li class='summary-history-item${activeClass}'><button class='summary-history-btn' type='button' onclick="HabitApp.selectSummary('${book.bookId}', '${bookmark.bookmarkId}', '${entry.summaryId}')">${sanitize(stateLabel)} · p${entry.startPage}-${entry.endPage} · ${sanitize(formatIsoForDisplay(entry.createdAt))}</button></li>`;
+          })
+          .join("")
+      : "<li class='summary-history-item'>No saved summaries for this bookmark.</li>";
+
+    const hasAnySummary = !!getLatestBookmarkSummary(bookmark);
+    regenBtn.disabled = summaryModalState.isRunning || !hasAnySummary;
+    rebuildBtn.disabled = summaryModalState.isRunning;
+  }
+
+  function openSummaryModal(bookId, bookmarkId) {
+    summaryModalState.bookId = bookId;
+    summaryModalState.bookmarkId = bookmarkId;
+    summaryModalState.selectedSummaryId = null;
+    summaryModalState.statusText = "Ready.";
+    summaryModalState.detectionText = "";
+    summaryModalState.externalSummary = null;
+    summaryModalState.isRunning = false;
+    renderSummaryModal();
+    openModal("summaryModal");
+  }
+
+  function closeSummaryModal() {
+    summaryModalState = {
+      bookId: null,
+      bookmarkId: null,
+      selectedSummaryId: null,
+      statusText: "",
+      detectionText: "",
+      externalSummary: null,
+      isRunning: false,
+    };
+    closeModal("summaryModal");
+  }
+
+  function selectSummaryForModal(bookId, bookmarkId, summaryId) {
+    if (
+      summaryModalState.bookId !== bookId ||
+      summaryModalState.bookmarkId !== bookmarkId
+    ) {
+      summaryModalState.bookId = bookId;
+      summaryModalState.bookmarkId = bookmarkId;
+    }
+    summaryModalState.selectedSummaryId = summaryId;
+    summaryModalState.externalSummary = null;
+    renderSummaryModal();
+  }
+
+  async function copySelectedSummaryToClipboard() {
+    const book = getBookById(summaryModalState.bookId);
+    const bookmark = book
+      ? getBookmarkById(book, summaryModalState.bookmarkId)
+      : null;
+    if (!book || !bookmark) return;
+
+    const summary =
+      getSummaryById(bookmark, summaryModalState.selectedSummaryId) ||
+      summaryModalState.externalSummary ||
+      getLatestBookmarkSummary(bookmark);
+    if (!summary || !summary.content) {
+      alert("No summary available to copy.");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(summary.content);
+      summaryModalState.statusText = "Summary copied to clipboard.";
+      renderSummaryModal();
+    } catch (_) {
+      appendLogEntry({
+        level: "warn",
+        component: "clipboard",
+        operation: "copySelectedSummaryToClipboard",
+        message: "Clipboard write failed.",
+      });
+      alert("Clipboard write failed. Please copy manually.");
+    }
+  }
+
+  async function runBookmarkSummary(bookId, bookmarkId, runMode) {
+    const book = getBookById(bookId);
+    const bookmark = book ? getBookmarkById(book, bookmarkId) : null;
+    if (!book || !bookmark) {
+      alert("Bookmark not found.");
+      return;
+    }
+
+    const settings = getBookAiSettings();
+    const runtimeApiKey = getApiKeyForSummary();
+    if (!runtimeApiKey) {
+      alert(
+        "Unlock your saved Gemini API key in Books > Summary AI Settings first.",
+      );
+      return;
+    }
+    if (!String(settings.model || "").trim()) {
+      alert("Select a Gemini model in Summary AI Settings.");
+      return;
+    }
+
+    openSummaryModal(bookId, bookmarkId);
+    summaryModalState.isRunning = true;
+
+    const currentBookmarkPage = Math.max(
+      1,
+      parseInt(bookmark.pdfPage, 10) || 1,
+    );
+    const startedAt = performance.now();
+    const runId = uid("sumrun");
+
+    let startPage = 1;
+    let endPage = currentBookmarkPage;
+    let isIncremental = false;
+    let basedOnSummaryId = null;
+    let previousSummaryContent = "";
+    let attemptDescriptor = "full";
+
+    const latestBookmarkSummary = getLatestBookmarkSummary(bookmark);
+
+    if (runMode === "regenerate-latest") {
+      if (!latestBookmarkSummary) {
+        summaryModalState.isRunning = false;
+        summaryModalState.statusText =
+          "No summary available to regenerate yet.";
+        renderSummaryModal();
+        return;
+      }
+      startPage = Math.max(
+        1,
+        parseInt(latestBookmarkSummary.startPage, 10) || 1,
+      );
+      endPage = Math.max(
+        startPage,
+        parseInt(latestBookmarkSummary.endPage, 10) || startPage,
+      );
+      isIncremental = latestBookmarkSummary.isIncremental === true;
+      basedOnSummaryId = latestBookmarkSummary.basedOnSummaryId;
+      attemptDescriptor = "regenerate-latest-segment";
+      summaryModalState.detectionText = `Regenerating pages ${startPage}-${endPage}.`;
+    } else if (runMode === "rebuild-full") {
+      startPage = 1;
+      endPage = currentBookmarkPage;
+      isIncremental = false;
+      basedOnSummaryId = null;
+      attemptDescriptor = "rebuild-full";
+      summaryModalState.detectionText = `Full rebuild for pages 1-${endPage}.`;
+    } else {
+      const detection = resolveIncrementalRange(book, currentBookmarkPage);
+      if (detection.mode === "reuse") {
+        summaryModalState.isRunning = false;
+        summaryModalState.externalSummary = detection.relevantSummary;
+        summaryModalState.detectionText = `Already summarized through page ${detection.lastSummarizedPage}. No new pages to process.`;
+        summaryModalState.statusText = detection.relevantSummary
+          ? "Showing the most relevant existing summary."
+          : "No relevant prior summary found for this exact page.";
+        if (
+          detection.relevantSummary &&
+          detection.relevantSummary.bookmarkId === bookmark.bookmarkId
+        ) {
+          summaryModalState.selectedSummaryId =
+            detection.relevantSummary.summaryId;
+        }
+        renderSummaryModal();
+        return;
+      }
+
+      startPage = detection.startPage;
+      endPage = detection.endPage;
+      basedOnSummaryId = detection.relevantSummary
+        ? detection.relevantSummary.summaryId
+        : null;
+      previousSummaryContent = detection.relevantSummary
+        ? String(detection.relevantSummary.content || "")
+        : "";
+      isIncremental = detection.mode === "incremental";
+      attemptDescriptor = detection.mode;
+      summaryModalState.detectionText =
+        detection.mode === "incremental"
+          ? `Incremental run: pages ${startPage}-${endPage} (previously summarized through ${detection.lastSummarizedPage}).`
+          : `No previous summary found. Running full summary pages 1-${endPage}.`;
+    }
+
+    const plannedPages = endPage - startPage + 1;
+    if (plannedPages > settings.maxPagesPerRun) {
+      const proceed = window.confirm(
+        `This run will process ${plannedPages} pages (limit is ${settings.maxPagesPerRun}). Continue?`,
+      );
+      if (!proceed) {
+        summaryModalState.isRunning = false;
+        summaryModalState.statusText = "Summary run canceled.";
+        renderSummaryModal();
+        return;
+      }
+    }
+
+    renderSummaryModal();
+    appendLogEntry({
+      level: "info",
+      component: "ai-summary",
+      operation: "runBookmarkSummary",
+      message: "Summary run started.",
+      runId,
+      context: {
+        runMode,
+        attemptDescriptor,
+        bookId,
+        bookmarkId,
+        startPage,
+        endPage,
+        model: settings.model,
+      },
+    });
+
+    try {
+      summaryModalState.statusText = `Extracting pages ${startPage}-${endPage}...`;
+      renderSummaryModal();
+
+      const extracted = await extractTextRangeFromBookPdf(
+        book,
+        startPage,
+        endPage,
+        ({ current, total, absolutePage }) => {
+          summaryModalState.statusText = `Extracting page ${absolutePage} (${current}/${total})...`;
+          renderSummaryModal();
+        },
+      );
+
+      startPage = extracted.startPage;
+      endPage = extracted.endPage;
+
+      summaryModalState.statusText = "Generating incremental summary...";
+      renderSummaryModal();
+
+      const segmentSummary = await summarizeSegmentWithChunking({
+        text: extracted.text,
+        startPage,
+        endPage,
+        apiKey: runtimeApiKey,
+        model: settings.model,
+        chunkChars: settings.chunkChars,
+        onChunkProgress: ({ current, total }) => {
+          summaryModalState.statusText = `Summarizing chunk ${current}/${total}...`;
+          renderSummaryModal();
+        },
+      });
+
+      summaryModalState.statusText = previousSummaryContent
+        ? "Merging with previous summary context..."
+        : "Finalizing summary...";
+      renderSummaryModal();
+
+      const mergedSummary = await mergeWithPreviousSummary({
+        previousSummary: previousSummaryContent,
+        incrementalSummary: segmentSummary.summary,
+        currentBookmarkPage: endPage,
+        apiKey: runtimeApiKey,
+        model: settings.model,
+        consolidateMode: settings.consolidateMode,
+      });
+
+      const durationMs = performance.now() - startedAt;
+      const saved = appendBookmarkSummaryRecord(book, bookmark, {
+        model: settings.model,
+        startPage,
+        endPage,
+        isIncremental,
+        basedOnSummaryId,
+        status: "ready",
+        content: mergedSummary,
+        chunkMeta: {
+          chunkCount: segmentSummary.chunkCount,
+          mode: attemptDescriptor,
+          incrementalOnlySummary: segmentSummary.summary,
+        },
+        durationMs,
+      });
+
+      summaryModalState.selectedSummaryId = saved.summaryId;
+      summaryModalState.externalSummary = null;
+      summaryModalState.statusText = `Summary saved for pages ${startPage}-${endPage} in ${formatDuration(durationMs)}.`;
+      renderBooksView();
+      renderSummaryModal();
+      appendLogEntry({
+        level: "info",
+        component: "ai-summary",
+        operation: "runBookmarkSummary",
+        message: "Summary run completed successfully.",
+        runId,
+        context: {
+          bookId,
+          bookmarkId,
+          startPage,
+          endPage,
+          durationMs: Math.round(durationMs),
+          chunkCount: segmentSummary.chunkCount,
+          model: settings.model,
+        },
+      });
+    } catch (error) {
+      const failedDurationMs = performance.now() - startedAt;
+      appendBookmarkSummaryRecord(book, bookmark, {
+        model: settings.model,
+        startPage,
+        endPage,
+        isIncremental,
+        basedOnSummaryId,
+        status: "failed",
+        content: "",
+        chunkMeta: {
+          mode: attemptDescriptor,
+        },
+        durationMs: failedDurationMs,
+        error: String(error && error.message ? error.message : error),
+      });
+
+      summaryModalState.statusText = `Summary failed: ${String(error && error.message ? error.message : error)}`;
+      renderBooksView();
+      renderSummaryModal();
+      appendLogEntry({
+        level: "error",
+        component: "ai-summary",
+        operation: "runBookmarkSummary",
+        message: "Summary run failed.",
+        error,
+        runId,
+        context: {
+          runMode,
+          attemptDescriptor,
+          bookId,
+          bookmarkId,
+          startPage,
+          endPage,
+          model: settings.model,
+          durationMs: Math.round(failedDurationMs),
+        },
+      });
+      maybeAutoDownloadLogs("summary-run-failed");
+    } finally {
+      summaryModalState.isRunning = false;
+      renderSummaryModal();
+    }
+  }
+
+  function summarizeBookmark(bookId, bookmarkId) {
+    runBookmarkSummary(bookId, bookmarkId, "auto");
+  }
+
+  function viewBookmarkSummary(bookId, bookmarkId) {
+    openSummaryModal(bookId, bookmarkId);
+  }
+
+  function regenerateLatestSummarySegment() {
+    if (!summaryModalState.bookId || !summaryModalState.bookmarkId) return;
+    runBookmarkSummary(
+      summaryModalState.bookId,
+      summaryModalState.bookmarkId,
+      "regenerate-latest",
+    );
+  }
+
+  function rebuildFullSummary() {
+    if (!summaryModalState.bookId || !summaryModalState.bookmarkId) return;
+    runBookmarkSummary(
+      summaryModalState.bookId,
+      summaryModalState.bookmarkId,
+      "rebuild-full",
+    );
   }
 
   async function refreshBookBlobStatus() {
@@ -1939,6 +4567,28 @@
     renderBooksView();
   }
 
+  function setBookUploadStatus(text, tone) {
+    const statusEl = document.getElementById("bookUploadStatus");
+    if (!statusEl) return;
+    statusEl.textContent = String(text || "");
+    statusEl.classList.remove("pending", "success", "error");
+    if (["pending", "success", "error"].includes(tone)) {
+      statusEl.classList.add(tone);
+    }
+  }
+
+  function handleBookFileInputChange() {
+    const fileInput = document.getElementById("bookPdfInput");
+    if (!fileInput) return;
+    const file =
+      fileInput.files && fileInput.files[0] ? fileInput.files[0] : null;
+    if (!file) {
+      setBookUploadStatus("No file uploaded yet.", "");
+      return;
+    }
+    setBookUploadStatus(`Selected: ${file.name}. Ready to upload.`, "pending");
+  }
+
   async function saveBookFromUpload() {
     const titleInput = document.getElementById("bookTitleInput");
     const authorInput = document.getElementById("bookAuthorInput");
@@ -1950,21 +4600,27 @@
       fileInput.files && fileInput.files[0] ? fileInput.files[0] : null;
 
     if (!title) {
+      setBookUploadStatus("Book title is required before upload.", "error");
       alert("Please enter a book title.");
       return;
     }
     if (!file) {
+      setBookUploadStatus("Select a PDF file before upload.", "error");
       alert("Please choose a PDF file.");
       return;
     }
     if (!/\.pdf$/i.test(file.name) || file.type !== "application/pdf") {
+      setBookUploadStatus("Only PDF files are supported.", "error");
       alert("Only PDF files are supported.");
       return;
     }
     if (file.size > MAX_PDF_FILE_SIZE_BYTES) {
+      setBookUploadStatus("File is too large. Maximum size is 40MB.", "error");
       alert("PDF file is too large. Maximum size is 40MB.");
       return;
     }
+
+    setBookUploadStatus(`Uploading ${file.name}...`, "pending");
 
     const fileId = uid("file");
     const bookId = uid("book");
@@ -1989,6 +4645,11 @@
     titleInput.value = "";
     authorInput.value = "";
     fileInput.value = "";
+
+    setBookUploadStatus(
+      `File uploaded: ${file.name} at ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.`,
+      "success",
+    );
 
     await refreshBookBlobStatus();
     renderBooksView();
@@ -2206,6 +4867,7 @@
         createdAt: ts,
         updatedAt: ts,
         history: [],
+        summaries: [],
       };
       addBookmarkHistoryEvent(bookmark, "created", "Bookmark created");
       book.bookmarks.unshift(bookmark);
@@ -2444,6 +5106,11 @@
 
     panel.innerHTML = book.bookmarks
       .map((bm) => {
+        const latestSummary = getLatestBookmarkSummary(bm);
+        const lastSummarizedPage = getBookmarkLastSummarizedPage(bm);
+        const summaryStatus = latestSummary
+          ? `Latest summary: pages ${latestSummary.startPage}-${latestSummary.endPage}`
+          : "No summaries yet";
         const historyHtml = (Array.isArray(bm.history) ? bm.history : [])
           .slice(0, 8)
           .map(
@@ -2452,7 +5119,7 @@
           )
           .join("");
 
-        return `<article class='bookmark-item'><div class='bookmark-main'><h4>${sanitize(bm.label)}</h4><p>PDF page ${bm.pdfPage} · Real page ${formatRealBookPage(bm.realPage)}</p><p>${sanitize(bm.note || "No note")}</p><p class='bookmark-updated'>Updated ${sanitize(formatIsoForDisplay(bm.updatedAt))}</p></div><div class='bookmark-actions'><button class='btn-primary' type='button' onclick="HabitApp.openBookmark('${book.bookId}', ${bm.pdfPage}, '${bm.bookmarkId}')">Open at Bookmark</button><button class='btn-secondary' type='button' onclick="HabitApp.editBookmark('${book.bookId}', '${bm.bookmarkId}')">Edit</button><button class='btn-danger' type='button' onclick="HabitApp.deleteBookmark('${book.bookId}', '${bm.bookmarkId}')">Delete</button></div><ul class='bookmark-history'>${historyHtml || "<li>No history yet.</li>"}</ul></article>`;
+        return `<article class='bookmark-item'><div class='bookmark-main'><h4>${sanitize(bm.label)}</h4><p>PDF page ${bm.pdfPage} · Real page ${formatRealBookPage(bm.realPage)}</p><p>${sanitize(bm.note || "No note")}</p><p class='bookmark-updated'>Updated ${sanitize(formatIsoForDisplay(bm.updatedAt))}</p><p class='bookmark-summary-status'>${sanitize(summaryStatus)}${lastSummarizedPage ? ` · summarized through page ${lastSummarizedPage}` : ""}</p></div><div class='bookmark-actions'><button class='btn-primary' type='button' onclick="HabitApp.openBookmark('${book.bookId}', ${bm.pdfPage}, '${bm.bookmarkId}')">Open at Bookmark</button><button class='btn-secondary' type='button' onclick="HabitApp.summarizeBookmark('${book.bookId}', '${bm.bookmarkId}')">Summarize up to Bookmark</button><button class='btn-secondary' type='button' onclick="HabitApp.viewBookmarkSummary('${book.bookId}', '${bm.bookmarkId}')">View Summaries</button><button class='btn-secondary' type='button' onclick="HabitApp.editBookmark('${book.bookId}', '${bm.bookmarkId}')">Edit</button><button class='btn-danger' type='button' onclick="HabitApp.deleteBookmark('${book.bookId}', '${bm.bookmarkId}')">Delete</button></div><ul class='bookmark-history'>${historyHtml || "<li>No history yet.</li>"}</ul></article>`;
       })
       .join("");
   }
@@ -2461,6 +5128,7 @@
     await refreshBookBlobStatus();
     await renderBooksList();
     renderBookmarksPanel();
+    applyBookSummarySettingsToInputs();
   }
 
   function renderAll() {
@@ -2963,6 +5631,75 @@
       .addEventListener("click", saveHistoryEventModal);
 
     document
+      .getElementById("summaryModalClose")
+      .addEventListener("click", closeSummaryModal);
+    document
+      .getElementById("summaryModalCancel")
+      .addEventListener("click", closeSummaryModal);
+    document
+      .getElementById("summaryRegenerateBtn")
+      .addEventListener("click", regenerateLatestSummarySegment);
+    document
+      .getElementById("summaryRebuildBtn")
+      .addEventListener("click", rebuildFullSummary);
+    document.getElementById("summaryCopyBtn").addEventListener("click", () => {
+      copySelectedSummaryToClipboard().catch((err) => {
+        appendLogEntry({
+          level: "error",
+          component: "clipboard",
+          operation: "summaryCopyBtn.click",
+          message: "Unhandled clipboard error in copy action.",
+          error: err,
+        });
+        alert("Failed to copy summary.");
+      });
+    });
+
+    document
+      .getElementById("btnSaveSummarySettings")
+      .addEventListener("click", () => {
+        saveBookSummarySettingsFromInputs().catch((error) => {
+          appendLogEntry({
+            level: "error",
+            component: "secure-settings",
+            operation: "btnSaveSummarySettings.click",
+            message: "Unhandled settings save error.",
+            error,
+          });
+          alert("Failed to save summary settings.");
+        });
+      });
+
+    const unlockBtn = document.getElementById("summaryApiKeyUnlockBtn");
+    if (unlockBtn) {
+      unlockBtn.addEventListener("click", () => {
+        unlockStoredApiKeyInteractive().catch((error) => {
+          appendLogEntry({
+            level: "error",
+            component: "secure-settings",
+            operation: "summaryApiKeyUnlockBtn.click",
+            message: "Unhandled unlock error.",
+            error,
+          });
+        });
+      });
+    }
+
+    const clearBtn = document.getElementById("summaryApiKeyClearBtn");
+    if (clearBtn) {
+      clearBtn.addEventListener("click", () => {
+        const ok = window.confirm(
+          "Delete the saved encrypted API key from this device?",
+        );
+        if (!ok) return;
+        wipeStoredApiKey();
+      });
+    }
+
+    bindSummaryModelPicker();
+    bindLogsControls();
+
+    document
       .getElementById("confirmModalClose")
       .addEventListener("click", () => closeModal("confirmModal"));
     document
@@ -3080,10 +5817,25 @@
 
     document.getElementById("btnUploadBook").addEventListener("click", () => {
       saveBookFromUpload().catch((err) => {
-        console.error(err);
+        appendLogEntry({
+          level: "error",
+          component: "books",
+          operation: "btnUploadBook.click",
+          message: "Failed to upload PDF.",
+          error: err,
+        });
+        setBookUploadStatus(
+          "Upload failed. Please review the file and try again.",
+          "error",
+        );
         alert("Failed to upload PDF.");
       });
     });
+
+    const pdfInput = document.getElementById("bookPdfInput");
+    if (pdfInput) {
+      pdfInput.addEventListener("change", handleBookFileInputChange);
+    }
     document
       .getElementById("btnBookCreate")
       .addEventListener("click", () => openBookModal());
@@ -3093,6 +5845,26 @@
         return;
       }
       openBookmarkModal(state.books.activeBookId);
+    });
+
+    window.addEventListener("error", (event) => {
+      appendLogEntry({
+        level: "error",
+        component: "window",
+        operation: "error",
+        message: "Unhandled window error.",
+        error: event && event.error ? event.error : event && event.message,
+      });
+    });
+
+    window.addEventListener("unhandledrejection", (event) => {
+      appendLogEntry({
+        level: "error",
+        component: "window",
+        operation: "unhandledrejection",
+        message: "Unhandled promise rejection.",
+        error: event && event.reason ? event.reason : "Promise rejection",
+      });
     });
   }
 
@@ -3123,13 +5895,23 @@
     openBookmark(bookId, page, bookmarkId) {
       openBookmarkInNewTab(bookId, page, bookmarkId);
     },
+    summarizeBookmark,
+    viewBookmarkSummary,
+    selectSummary(bookId, bookmarkId, summaryId) {
+      selectSummaryForModal(bookId, bookmarkId, summaryId);
+    },
   };
 
   async function init() {
+    loadLogs();
+    loadSecureSettings();
     loadState();
     loadAnalyticsPreferences();
     bindEvents();
     initSidebarCollapse();
+    applyBookSummarySettingsToInputs();
+    await maybeMigrateLegacyApiKey();
+    await tryUnlockOnStartup();
 
     const inReaderMode = await initReaderMode();
     if (inReaderMode) {
@@ -3139,17 +5921,31 @@
     initTopClock();
     renderAll();
     renderBooksView();
+    renderLogsView();
+    setBookUploadStatus("No file uploaded yet.", "");
   }
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", () => {
       init().catch((err) => {
-        console.error(err);
+        appendLogEntry({
+          level: "error",
+          component: "app",
+          operation: "DOMContentLoaded.init",
+          message: "App init failed.",
+          error: err,
+        });
       });
     });
   } else {
     init().catch((err) => {
-      console.error(err);
+      appendLogEntry({
+        level: "error",
+        component: "app",
+        operation: "init",
+        message: "App init failed.",
+        error: err,
+      });
     });
   }
 })();
