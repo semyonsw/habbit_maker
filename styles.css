@@ -1107,12 +1107,17 @@ body {
   transition: all var(--transition);
 }
 
-.habit-action-btn:hover {
+.habit-action-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.habit-action-btn:not(:disabled):hover {
   color: var(--purple-600);
   background: var(--purple-50);
 }
 
-.habit-action-btn.delete:hover {
+.habit-action-btn.delete:not(:disabled):hover {
   color: var(--danger);
   background: var(--danger-light);
 }
@@ -1870,13 +1875,18 @@ body {
   transition: all var(--transition);
 }
 
-.manage-btn:hover {
+.manage-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.manage-btn:not(:disabled):hover {
   border-color: var(--purple-300);
   color: var(--purple-600);
   background: var(--purple-50);
 }
 
-.manage-btn.delete:hover {
+.manage-btn.delete:not(:disabled):hover {
   border-color: var(--danger);
   color: var(--danger);
   background: var(--danger-light);

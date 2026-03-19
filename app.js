@@ -1625,6 +1625,26 @@
     });
   }
 
+  function moveDailyHabit(habitId, direction) {
+    const habits = getSortedDailyHabits();
+    const fromIndex = habits.findIndex((h) => h.id === habitId);
+    if (fromIndex < 0) return;
+
+    const offset = direction === "up" ? -1 : 1;
+    const targetIndex = fromIndex + offset;
+    if (targetIndex < 0 || targetIndex >= habits.length) return;
+
+    const moved = habits.splice(fromIndex, 1)[0];
+    habits.splice(targetIndex, 0, moved);
+    habits.forEach((habit, idx) => {
+      habit.order = idx;
+    });
+
+    state.habits.daily = habits;
+    saveState();
+    renderAll();
+  }
+
   function navigateMonth(delta) {
     state.currentMonth += delta;
     if (state.currentMonth > 11) {
@@ -2649,11 +2669,11 @@
     }
     html += "</tr></thead><tbody>";
 
-    habits.forEach((habit) => {
+    habits.forEach((habit, idx) => {
       const cat = getCategoryById(habit.categoryId);
       const catName = cat ? `${cat.emoji} ${sanitize(cat.name)}` : "-";
       const emoji = sanitize(getHabitEmoji(habit));
-      html += `<tr><td class='habit-name-cell'>${emoji} ${sanitize(habit.name)} <span class='streak-badge' data-streak-habit='${habit.id}'>Current 0d | Best 0d</span><span class='habit-actions'><button class='habit-action-btn' onclick="HabitApp.editHabit('${habit.id}')">Edit</button><button class='habit-action-btn delete' onclick="HabitApp.deleteHabit('${habit.id}')">Delete</button></span></td><td class='category-cell'>${catName}</td><td class='goal-cell'>${habit.monthGoal}</td>`;
+      html += `<tr><td class='habit-name-cell'>${emoji} ${sanitize(habit.name)} <span class='streak-badge' data-streak-habit='${habit.id}'>Current 0d | Best 0d</span><span class='habit-actions'><button class='habit-action-btn' onclick="HabitApp.moveHabit('${habit.id}', 'up')" ${idx === 0 ? "disabled" : ""} title='Move up'>Up</button><button class='habit-action-btn' onclick="HabitApp.moveHabit('${habit.id}', 'down')" ${idx === habits.length - 1 ? "disabled" : ""} title='Move down'>Down</button><button class='habit-action-btn' onclick="HabitApp.editHabit('${habit.id}')">Edit</button><button class='habit-action-btn delete' onclick="HabitApp.deleteHabit('${habit.id}')">Delete</button></span></td><td class='category-cell'>${catName}</td><td class='goal-cell'>${habit.monthGoal}</td>`;
       for (let day = 1; day <= totalDays; day++) {
         const isToday = day === todayDay;
         const isComplete = completedDays[day];
@@ -2793,9 +2813,9 @@
     }
 
     list.innerHTML = habits
-      .map((h) => {
+      .map((h, idx) => {
         const cat = getCategoryById(h.categoryId);
-        return `<div class='manage-item'><div class='manage-item-info'><span class='manage-item-emoji'>${sanitize(getHabitEmoji(h))}</span><div><div class='manage-item-name'>${sanitize(h.name)}</div><div class='manage-item-meta'>${cat ? sanitize(cat.name) : "No category"} · ${h.type}</div></div></div><div class='manage-item-actions'><button class='manage-btn' onclick="HabitApp.editHabit('${h.id}')">Edit</button><button class='manage-btn delete' onclick="HabitApp.deleteHabit('${h.id}')">Delete</button></div></div>`;
+        return `<div class='manage-item'><div class='manage-item-info'><span class='manage-item-emoji'>${sanitize(getHabitEmoji(h))}</span><div><div class='manage-item-name'>${sanitize(h.name)}</div><div class='manage-item-meta'>${cat ? sanitize(cat.name) : "No category"} · ${h.type}</div></div></div><div class='manage-item-actions'><button class='manage-btn' onclick="HabitApp.moveHabit('${h.id}', 'up')" ${idx === 0 ? "disabled" : ""} title='Move up'>↑</button><button class='manage-btn' onclick="HabitApp.moveHabit('${h.id}', 'down')" ${idx === habits.length - 1 ? "disabled" : ""} title='Move down'>↓</button><button class='manage-btn' onclick="HabitApp.editHabit('${h.id}')">Edit</button><button class='manage-btn delete' onclick="HabitApp.deleteHabit('${h.id}')">Delete</button></div></div>`;
       })
       .join("");
   }
@@ -5871,6 +5891,9 @@
   window.HabitApp = {
     editHabit(id) {
       openHabitModal(id);
+    },
+    moveHabit(id, direction) {
+      moveDailyHabit(id, direction);
     },
     deleteHabit,
     editCategory(id) {
