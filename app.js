@@ -271,6 +271,23 @@
       : "Completion rate (%)";
   }
 
+  function clampNumber(value, min, max) {
+    return Math.max(min, Math.min(max, Number(value) || 0));
+  }
+
+  function getValueColor(value, maxValue, alpha = 1) {
+    const safeMax = Math.max(1, Number(maxValue) || 1);
+    const ratio = clampNumber((Number(value) || 0) / safeMax, 0, 1);
+    const hue = ratio * 120;
+    return `hsla(${hue.toFixed(1)}, 72%, 46%, ${clampNumber(alpha, 0, 1).toFixed(3)})`;
+  }
+
+  function getWeekShadeColor(isoWeek) {
+    const normalized = (((Number(isoWeek) || 0) % 8) + 8) % 8;
+    const lightness = 72 - normalized * 4;
+    return `hsl(207, 78%, ${lightness}%)`;
+  }
+
   function syncAnalyticsModeControls() {
     ["analyticsDisplayModeDashboard", "analyticsDisplayModeAnalytics"]
       .map((id) => document.getElementById(id))
@@ -536,8 +553,7 @@
   function appendLiveLogEntryToFile(entry) {
     if (!liveLogFileState.enabled || !liveLogFileState.handle) return;
     const line = formatLogLineForLiveFile(entry);
-    appendLineToLiveLogFile(line).catch(() => {
-    });
+    appendLineToLiveLogFile(line).catch(() => {});
   }
 
   async function enableLiveLogFile() {
@@ -602,8 +618,7 @@
     if (liveLogFileState.enabled && liveLogFileState.handle) {
       await appendLineToLiveLogFile(
         `# ---- Live log session stopped at ${nowIso()} | session=${liveLogFileState.sessionId || "-"} ----`,
-      ).catch(() => {
-      });
+      ).catch(() => {});
     }
     liveLogFileState.enabled = false;
     liveLogFileState.handle = null;
@@ -1255,6 +1270,14 @@
     return new Date(year, month + 1, 0).getDate();
   }
 
+  function getIsoWeekNumber(year, month, day) {
+    const date = new Date(Date.UTC(year, month, day));
+    const weekday = date.getUTCDay() || 7;
+    date.setUTCDate(date.getUTCDate() + 4 - weekday);
+    const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+    return Math.ceil(((date - yearStart) / 86400000 + 1) / 7);
+  }
+
   function getDefaultMonthData() {
     return {
       dailyCompletions: {},
@@ -1746,7 +1769,7 @@
         datasets: [
           {
             data: [pct, 100 - pct],
-            backgroundColor: ["#58a5d1", "#1a2840"],
+            backgroundColor: [getValueColor(pct, 100, 0.9), "#1a2840"],
             borderWidth: 0,
           },
         ],
@@ -1788,6 +1811,7 @@
     for (let week = 1; week <= maxWeek; week++) {
       const start = (week - 1) * 7 + 1;
       const end = Math.min(week * 7, totalDays);
+      const weekAccent = getWeekShadeColor(week);
       let done = 0;
       let possible = 0;
       const dayCompletionRates = [];
@@ -1825,14 +1849,16 @@
       }
 
       const pct = possible > 0 ? Math.round((done / possible) * 100) : 0;
+      const weekColor = getValueColor(pct, 100, 0.92);
+      const weekShadowColor = getValueColor(pct, 100, 0.25);
       const bars = dayCompletionRates
         .map(
           (value, idx) =>
-            `<span class="week-mini-bar" style="--bar-pct:${value}" title="Day ${start + idx}: ${value}%"></span>`,
+            `<span class="week-mini-bar" style="--bar-pct:${value};--bar-fill-color:${getValueColor(value, 100, 0.9)};--bar-border-color:${getValueColor(value, 100, 0.42)}" title="Day ${start + idx}: ${value}%"></span>`,
         )
         .join("");
 
-      html += `<div class="week-card"><div class="week-card-top"><span class="week-card-title">Week ${week}</span><span class="week-range">${start}-${end}</span></div><div class="week-ring" style="--week-pct:${pct}" aria-label="Week ${week} completion ${pct}%"><span class="week-pct">${pct}%</span></div><div class="week-meta">${done}/${possible} tasks</div><div class="week-mini-bars" aria-hidden="true">${bars}</div></div>`;
+      html += `<div class="week-card" style="--week-accent:${weekAccent}"><div class="week-card-top"><span class="week-card-title">Week ${week}</span><span class="week-range">${start}-${end}</span></div><div class="week-ring" style="--week-pct:${pct};--week-color:${weekColor};--week-shadow:${weekShadowColor}" aria-label="Week ${week} completion ${pct}%"><span class="week-pct">${pct}%</span></div><div class="week-meta">${done}/${possible} tasks</div><div class="week-mini-bars" aria-hidden="true">${bars}</div></div>`;
     }
 
     container.innerHTML = html;
@@ -1884,7 +1910,9 @@
         datasets: [
           {
             data: values,
-            backgroundColor: "#3e85b5",
+            backgroundColor: values.map((value) =>
+              getValueColor(value, Math.max(1, ...values), 0.86),
+            ),
             borderRadius: 4,
           },
         ],
@@ -1953,7 +1981,13 @@
         datasets: [
           {
             data: entries.map((e) => e.completed),
-            backgroundColor: "#58a5d1",
+            backgroundColor: entries.map((e) =>
+              getValueColor(
+                e.completed,
+                Math.max(1, ...entries.map((item) => item.completed)),
+                0.86,
+              ),
+            ),
           },
         ],
       },
@@ -2173,6 +2207,11 @@
     const values = weeklyData.weekBuckets.map((bucket) =>
       getMetricValue(bucket.done, bucket.possible),
     );
+    const maxScale =
+      getAnalyticsDisplayMode() === "percent" ? 100 : Math.max(1, ...values);
+    const avgValue = values.length
+      ? values.reduce((sum, value) => sum + value, 0) / values.length
+      : 0;
 
     renderChart(chartKey, canvasId, {
       type: "line",
@@ -2182,12 +2221,27 @@
           {
             label: getMetricAxisLabel(),
             data: values,
-            borderColor: "#58a5d1",
-            backgroundColor: "rgba(88, 165, 209, 0.2)",
+            borderColor: getValueColor(avgValue, maxScale, 0.95),
+            backgroundColor: getValueColor(avgValue, maxScale, 0.2),
             borderWidth: 3,
             fill: true,
             tension: 0.34,
             pointRadius: 4,
+            pointBackgroundColor: values.map((value) =>
+              getValueColor(value, maxScale, 0.95),
+            ),
+            pointBorderColor: values.map((value) =>
+              getValueColor(value, maxScale, 1),
+            ),
+            segment: {
+              borderColor(context) {
+                const midpoint =
+                  ((context.p0?.parsed?.y || 0) +
+                    (context.p1?.parsed?.y || 0)) /
+                  2;
+                return getValueColor(midpoint, maxScale, 0.95);
+              },
+            },
           },
         ],
       },
@@ -2236,8 +2290,30 @@
         return {
           label: `${category.emoji} ${category.name}`,
           data: points,
-          backgroundColor: category.color || "#58a5d1",
+          backgroundColor(context) {
+            const value =
+              context.parsed && Number(context.parsed.y)
+                ? Number(context.parsed.y)
+                : 0;
+            const scaleMax =
+              getAnalyticsDisplayMode() === "percent"
+                ? 100
+                : Math.max(1, ...points);
+            return getValueColor(value, scaleMax, 0.86);
+          },
           borderRadius: 4,
+          borderColor(context) {
+            const value =
+              context.parsed && Number(context.parsed.y)
+                ? Number(context.parsed.y)
+                : 0;
+            const scaleMax =
+              getAnalyticsDisplayMode() === "percent"
+                ? 100
+                : Math.max(1, ...points);
+            return getValueColor(value, scaleMax, 1);
+          },
+          borderWidth: 1,
         };
       })
       .filter(Boolean);
@@ -2281,6 +2357,11 @@
     const values = timeline.map((item) =>
       getMetricValue(item.done, item.possible),
     );
+    const maxScale =
+      getAnalyticsDisplayMode() === "percent" ? 100 : Math.max(1, ...values);
+    const avgValue = values.length
+      ? values.reduce((sum, value) => sum + value, 0) / values.length
+      : 0;
     renderChart(chartKey, canvasId, {
       type: "line",
       data: {
@@ -2288,12 +2369,27 @@
         datasets: [
           {
             data: values,
-            borderColor: "#7c8cff",
-            backgroundColor: "rgba(124, 140, 255, 0.18)",
+            borderColor: getValueColor(avgValue, maxScale, 0.95),
+            backgroundColor: getValueColor(avgValue, maxScale, 0.18),
             borderWidth: 3,
             fill: true,
             tension: 0.26,
             pointRadius: 3,
+            pointBackgroundColor: values.map((value) =>
+              getValueColor(value, maxScale, 0.95),
+            ),
+            pointBorderColor: values.map((value) =>
+              getValueColor(value, maxScale, 1),
+            ),
+            segment: {
+              borderColor(context) {
+                const midpoint =
+                  ((context.p0?.parsed?.y || 0) +
+                    (context.p1?.parsed?.y || 0)) /
+                  2;
+                return getValueColor(midpoint, maxScale, 0.95);
+              },
+            },
           },
         ],
       },
@@ -2328,14 +2424,20 @@
   }
 
   function renderMonthlyStreakChart(canvasId, chartKey, rows) {
+    const values = rows.map((row) => getMetricValue(row.done, row.possible));
+    const maxScale =
+      getAnalyticsDisplayMode() === "percent" ? 100 : Math.max(1, ...values);
+
     renderChart(chartKey, canvasId, {
       type: "bar",
       data: {
         labels: rows.map((row) => row.label),
         datasets: [
           {
-            data: rows.map((row) => getMetricValue(row.done, row.possible)),
-            backgroundColor: rows.map((row) => row.color),
+            data: values,
+            backgroundColor: values.map((value) =>
+              getValueColor(value, maxScale, 0.88),
+            ),
           },
         ],
       },
@@ -2383,20 +2485,41 @@
       .sort((a, b) => b.sum - a.sum)
       .slice(0, 6);
 
-    const datasets = topCategories.map((item) => ({
-      label: `${item.category.emoji} ${item.category.name}`,
-      data: timeline.map((point) => {
+    const datasets = topCategories.map((item) => {
+      const points = timeline.map((point) => {
         const slot = point.byCategory[item.category.id] || {
           done: 0,
           possible: 0,
         };
         return getMetricValue(slot.done, slot.possible);
-      }),
-      borderColor: item.category.color,
-      backgroundColor: `${item.category.color}33`,
-      fill: false,
-      tension: 0.25,
-    }));
+      });
+      const maxScale =
+        getAnalyticsDisplayMode() === "percent" ? 100 : Math.max(1, ...points);
+      const avgValue = points.length
+        ? points.reduce((sum, value) => sum + value, 0) / points.length
+        : 0;
+      return {
+        label: `${item.category.emoji} ${item.category.name}`,
+        data: points,
+        borderColor: getValueColor(avgValue, maxScale, 0.95),
+        backgroundColor: getValueColor(avgValue, maxScale, 0.2),
+        pointBackgroundColor: points.map((value) =>
+          getValueColor(value, maxScale, 0.92),
+        ),
+        pointBorderColor: points.map((value) =>
+          getValueColor(value, maxScale, 1),
+        ),
+        segment: {
+          borderColor(context) {
+            const midpoint =
+              ((context.p0?.parsed?.y || 0) + (context.p1?.parsed?.y || 0)) / 2;
+            return getValueColor(midpoint, maxScale, 0.95);
+          },
+        },
+        fill: false,
+        tension: 0.25,
+      };
+    });
 
     renderChart(chartKey, canvasId, {
       type: "line",
@@ -2435,9 +2558,7 @@
   }
 
   function getHeatColor(strength) {
-    const clamped = Math.max(0, Math.min(1, strength));
-    const alpha = 0.2 + clamped * 0.75;
-    return `rgba(88, 165, 209, ${alpha.toFixed(3)})`;
+    return getValueColor((Number(strength) || 0) * 100, 100, 0.82);
   }
 
   function renderWeeklyHeatmap(containerId, weeklyData) {
@@ -2462,7 +2583,9 @@
       html += `<div class='heatmap-week-label'>W${weekIndex + 1}</div>`;
       week.weekdays.forEach((entry) => {
         const value = getMetricValue(entry.done, entry.possible);
-        const ratio = maxValue > 0 ? value / maxValue : 0;
+        const scaleMax =
+          getAnalyticsDisplayMode() === "percent" ? 100 : maxValue;
+        const ratio = scaleMax > 0 ? value / scaleMax : 0;
         html += `<div class='heatmap-cell' style='background:${getHeatColor(ratio)}' title='Done ${entry.done} / ${entry.possible}'>${getMetricLabel(value)}</div>`;
       });
     });
@@ -2658,7 +2781,13 @@
     for (let day = 1; day <= totalDays; day++) {
       const isToday = day === todayDay;
       const isComplete = completedDays[day];
-      html += `<th class='day-col ${isToday ? "today" : ""} ${isComplete ? "day-complete" : ""}' data-day='${day}'>${day}</th>`;
+      const isoWeek = getIsoWeekNumber(
+        state.currentYear,
+        state.currentMonth,
+        day,
+      );
+      const weekShadeColor = getWeekShadeColor(isoWeek);
+      html += `<th class='day-col ${isToday ? "today" : ""} ${isComplete ? "day-complete" : ""}' style='--week-accent:${weekShadeColor}' data-day='${day}'><span class='day-col-week'>W${isoWeek}</span><span class='day-col-day'>${day}</span></th>`;
     }
     html += "</tr></thead><tbody>";
 
@@ -3418,15 +3547,13 @@
 
     if (liveFileSelectBtn) {
       liveFileSelectBtn.addEventListener("click", () => {
-        enableLiveLogFile().catch(() => {
-        });
+        enableLiveLogFile().catch(() => {});
       });
     }
 
     if (liveFileStopBtn) {
       liveFileStopBtn.addEventListener("click", () => {
-        disableLiveLogFile().catch(() => {
-        });
+        disableLiveLogFile().catch(() => {});
       });
     }
 
@@ -3683,8 +3810,7 @@
         if (pdfDoc && typeof pdfDoc.destroy === "function") {
           await pdfDoc.destroy();
         }
-      } catch (_) {
-      }
+      } catch (_) {}
     }
   }
 
@@ -4738,8 +4864,7 @@
         saveState();
         try {
           await idbDeletePdfBlob(book.fileId);
-        } catch (_) {
-        }
+        } catch (_) {}
         await refreshBookBlobStatus();
         renderBooksView();
       },
@@ -5479,8 +5604,7 @@
     if (readerState.renderTask) {
       try {
         readerState.renderTask.cancel();
-      } catch (_) {
-      }
+      } catch (_) {}
     }
 
     readerState.renderTask = page.render({
