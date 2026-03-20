@@ -81,7 +81,7 @@ Who it is for:
 ### 1. Clone
 
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/semyonsw/habbit_maker.git
 cd habbit_maker
 ```
 
@@ -167,7 +167,7 @@ Reason: JSON export/import includes app metadata and state, while PDF binaries a
 
 ### Implemented limits
 
-- Max PDF file size: 40 _ 1024 _ 1024 bytes.
+- Max PDF file size: `40 * 1024 * 1024` bytes (40 MB).
 - Max bookmark history events: 200.
 - Max retained log records: 1000.
 
@@ -242,7 +242,7 @@ Habit Maker-ը local-first վեբ հավելված է, որը միավորում
 1. Clone արա repository-ն և մտիր թղթապանակ։
 
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/semyonsw/habbit_maker.git
 cd habbit_maker
 ```
 
