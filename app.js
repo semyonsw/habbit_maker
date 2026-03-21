@@ -6,7 +6,9 @@
   const API_KEY_CACHE_KEY = "habitTracker_summary_api_key_cache_v1";
   const LOGS_STORAGE_KEY = "habitTracker_logs_v1";
   const SIDEBAR_COLLAPSE_KEY = "habitTracker_sidebarCollapsed_v1";
-  const SCHEMA_VERSION = 3;
+  const SCHEMA_VERSION = 4;
+  const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const ALL_WEEKDAYS = [0, 1, 2, 3, 4, 5, 6];
   const MONTH_NAMES = [
     "January",
     "February",
@@ -80,6 +82,9 @@
       categoryId: "cat_health",
       monthGoal: 30,
       type: "fixed",
+      scheduleMode: "fixed",
+      activeWeekdays: [0, 1, 2, 3, 4, 5, 6],
+      activeMonthDays: [],
       excludedWeekdays: [],
       emoji: "📖",
       order: 0,
@@ -90,6 +95,9 @@
       categoryId: "cat_productivity",
       monthGoal: 28,
       type: "fixed",
+      scheduleMode: "fixed",
+      activeWeekdays: [0, 1, 2, 3, 4, 5, 6],
+      activeMonthDays: [],
       excludedWeekdays: [],
       emoji: "💼",
       order: 1,
@@ -1270,6 +1278,125 @@
     return new Date(year, month + 1, 0).getDate();
   }
 
+  function normalizeWeekdayArray(values) {
+    return [
+      ...new Set(
+        (Array.isArray(values) ? values : [])
+          .map((d) => parseInt(d, 10))
+          .filter((d) => Number.isInteger(d) && d >= 0 && d <= 6),
+      ),
+    ].sort((a, b) => a - b);
+  }
+
+  function normalizeMonthDayArray(values) {
+    return [
+      ...new Set(
+        (Array.isArray(values) ? values : [])
+          .map((d) => parseInt(d, 10))
+          .filter((d) => Number.isInteger(d) && d >= 1 && d <= 31),
+      ),
+    ].sort((a, b) => a - b);
+  }
+
+  function getHabitScheduleMode(habit) {
+    const mode = String(
+      (habit && (habit.scheduleMode || habit.type)) || "fixed",
+    );
+    if (mode === "specific_weekdays" || mode === "specific_month_days") {
+      return mode;
+    }
+    return "fixed";
+  }
+
+  function getPossibleActiveDaysInMonth(habit, year, month) {
+    const totalDays = daysInMonth(year, month);
+    let activeDays = 0;
+    for (let day = 1; day <= totalDays; day += 1) {
+      if (isHabitTrackedOnDate(habit, year, month, day)) {
+        activeDays += 1;
+      }
+    }
+    return activeDays;
+  }
+
+  function buildScheduleCheckboxes(
+    containerId,
+    values,
+    labelBuilder,
+    selectedValues,
+  ) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    const selected = new Set(
+      Array.isArray(selectedValues) ? selectedValues : [],
+    );
+    container.innerHTML = values
+      .map((value) => {
+        const checked = selected.has(value) ? "checked" : "";
+        const inputId = `${containerId}_${value}`;
+        return `<label class='schedule-day-option' for='${inputId}'><input id='${inputId}' type='checkbox' value='${value}' ${checked}><span>${sanitize(labelBuilder(value))}</span></label>`;
+      })
+      .join("");
+  }
+
+  function getCheckedValuesFromContainer(containerId) {
+    const container = document.getElementById(containerId);
+    if (!container) return [];
+    return Array.from(
+      container.querySelectorAll("input[type='checkbox']:checked"),
+    )
+      .map((input) => parseInt(input.value, 10))
+      .filter((value) => Number.isInteger(value));
+  }
+
+  function renderHabitScheduleSelectors(habit) {
+    const mode = getHabitScheduleMode(habit || {});
+    const weekdays = normalizeWeekdayArray(
+      habit && Array.isArray(habit.activeWeekdays)
+        ? habit.activeWeekdays
+        : ALL_WEEKDAYS,
+    );
+    const monthDays = normalizeMonthDayArray(
+      habit && Array.isArray(habit.activeMonthDays)
+        ? habit.activeMonthDays
+        : [1],
+    );
+
+    buildScheduleCheckboxes(
+      "habitActiveWeekdays",
+      ALL_WEEKDAYS,
+      (value) => WEEKDAY_LABELS[value],
+      weekdays,
+    );
+    buildScheduleCheckboxes(
+      "habitActiveMonthDays",
+      Array.from({ length: 31 }, (_, idx) => idx + 1),
+      (value) => String(value),
+      monthDays,
+    );
+
+    updateHabitScheduleTypeUI(mode);
+  }
+
+  function updateHabitScheduleTypeUI(scheduleMode) {
+    const mode =
+      scheduleMode === "specific_month_days"
+        ? "specific_month_days"
+        : scheduleMode === "specific_weekdays"
+          ? "specific_weekdays"
+          : "fixed";
+    const weekdaysGroup = document.getElementById("habitWeekdaysGroup");
+    const monthDaysGroup = document.getElementById("habitMonthDaysGroup");
+    if (weekdaysGroup) {
+      weekdaysGroup.style.display =
+        mode === "specific_weekdays" ? "block" : "none";
+    }
+    if (monthDaysGroup) {
+      monthDaysGroup.style.display =
+        mode === "specific_month_days" ? "block" : "none";
+    }
+  }
+
   function getIsoWeekNumber(year, month, day) {
     const date = new Date(Date.UTC(year, month, day));
     const weekday = date.getUTCDay() || 7;
@@ -1516,7 +1643,7 @@
       habit.name = String(habit.name || "Habit");
       habit.categoryId = String(habit.categoryId || "");
       habit.monthGoal = Math.max(1, parseInt(habit.monthGoal, 10) || 20);
-      habit.type = habit.type === "dynamic" ? "dynamic" : "fixed";
+
       if (!Array.isArray(habit.excludedWeekdays)) {
         const legacy = Array.isArray(habit.excludedDays)
           ? habit.excludedDays
@@ -1528,6 +1655,49 @@
       habit.excludedWeekdays = [...new Set(habit.excludedWeekdays)]
         .filter((d) => Number.isInteger(d) && d >= 0 && d <= 6)
         .sort((a, b) => a - b);
+
+      let mode = String(habit.scheduleMode || habit.type || "fixed");
+      if (mode === "dynamic") {
+        const activeWeekdays = ALL_WEEKDAYS.filter(
+          (weekday) => !habit.excludedWeekdays.includes(weekday),
+        );
+        habit.activeWeekdays = activeWeekdays.length
+          ? activeWeekdays
+          : [...ALL_WEEKDAYS];
+        mode =
+          habit.activeWeekdays.length === 7 ? "fixed" : "specific_weekdays";
+      }
+
+      if (mode !== "specific_weekdays" && mode !== "specific_month_days") {
+        mode = "fixed";
+      }
+
+      habit.activeWeekdays = normalizeWeekdayArray(
+        Array.isArray(habit.activeWeekdays)
+          ? habit.activeWeekdays
+          : mode === "specific_weekdays"
+            ? ALL_WEEKDAYS.filter(
+                (weekday) => !habit.excludedWeekdays.includes(weekday),
+              )
+            : ALL_WEEKDAYS,
+      );
+      if (!habit.activeWeekdays.length) {
+        habit.activeWeekdays = [...ALL_WEEKDAYS];
+      }
+
+      habit.activeMonthDays = normalizeMonthDayArray(
+        Array.isArray(habit.activeMonthDays) ? habit.activeMonthDays : [],
+      );
+      if (mode === "specific_month_days" && !habit.activeMonthDays.length) {
+        habit.activeMonthDays = [1];
+      }
+
+      if (mode === "fixed") {
+        habit.activeWeekdays = [...ALL_WEEKDAYS];
+      }
+
+      habit.scheduleMode = mode;
+      habit.type = mode;
       delete habit.excludedDays;
       habit.emoji = String(habit.emoji || "📌");
       habit.order = Number.isInteger(habit.order) ? habit.order : idx;
@@ -1623,9 +1793,28 @@
   }
 
   function isHabitTrackedOnDate(habit, year, month, day) {
-    if (!habit || habit.type !== "dynamic") return true;
-    const weekday = new Date(year, month, day).getDay();
-    return !habit.excludedWeekdays.includes(weekday);
+    if (!habit) return true;
+    const mode = getHabitScheduleMode(habit);
+    if (mode === "fixed") return true;
+
+    if (mode === "specific_weekdays") {
+      const weekday = new Date(year, month, day).getDay();
+      const activeWeekdays = normalizeWeekdayArray(
+        Array.isArray(habit.activeWeekdays)
+          ? habit.activeWeekdays
+          : ALL_WEEKDAYS,
+      );
+      return activeWeekdays.includes(weekday);
+    }
+
+    if (mode === "specific_month_days") {
+      const activeMonthDays = normalizeMonthDayArray(
+        Array.isArray(habit.activeMonthDays) ? habit.activeMonthDays : [],
+      );
+      return activeMonthDays.includes(day);
+    }
+
+    return true;
   }
 
   function getSortedDailyHabits() {
@@ -2937,7 +3126,10 @@
     list.innerHTML = habits
       .map((h, idx) => {
         const cat = getCategoryById(h.categoryId);
-        return `<div class='manage-item'><div class='manage-item-info'><span class='manage-item-emoji'>${sanitize(getHabitEmoji(h))}</span><div><div class='manage-item-name'>${sanitize(h.name)}</div><div class='manage-item-meta'>${cat ? sanitize(cat.name) : "No category"} · ${h.type}</div></div></div><div class='manage-item-actions'><button class='manage-btn' onclick="HabitApp.moveHabit('${h.id}', 'up')" ${idx === 0 ? "disabled" : ""} title='Move up'>↑</button><button class='manage-btn' onclick="HabitApp.moveHabit('${h.id}', 'down')" ${idx === habits.length - 1 ? "disabled" : ""} title='Move down'>↓</button><button class='manage-btn' onclick="HabitApp.editHabit('${h.id}')">Edit</button><button class='manage-btn delete' onclick="HabitApp.deleteHabit('${h.id}')">Delete</button></div></div>`;
+        const mode = getHabitScheduleMode(h)
+          .replace("specific_weekdays", "specific weekdays")
+          .replace("specific_month_days", "specific month days");
+        return `<div class='manage-item'><div class='manage-item-info'><span class='manage-item-emoji'>${sanitize(getHabitEmoji(h))}</span><div><div class='manage-item-name'>${sanitize(h.name)}</div><div class='manage-item-meta'>${cat ? sanitize(cat.name) : "No category"} · ${sanitize(mode)}</div></div></div><div class='manage-item-actions'><button class='manage-btn' onclick="HabitApp.moveHabit('${h.id}', 'up')" ${idx === 0 ? "disabled" : ""} title='Move up'>↑</button><button class='manage-btn' onclick="HabitApp.moveHabit('${h.id}', 'down')" ${idx === habits.length - 1 ? "disabled" : ""} title='Move down'>↓</button><button class='manage-btn' onclick="HabitApp.editHabit('${h.id}')">Edit</button><button class='manage-btn delete' onclick="HabitApp.deleteHabit('${h.id}')">Delete</button></div></div>`;
       })
       .join("");
   }
@@ -2987,22 +3179,28 @@
       title.textContent = "Edit Habit";
       name.value = habit.name;
       category.value = habit.categoryId;
-      type.value = habit.type || "fixed";
+      type.value = getHabitScheduleMode(habit);
       goal.value = habit.monthGoal || 20;
       emoji.value = getHabitEmoji(habit);
+      renderHabitScheduleSelectors(habit);
     } else {
       title.textContent = "Add Habit";
       name.value = "";
       goal.value = 20;
       type.value = "fixed";
       emoji.value = "📌";
+      renderHabitScheduleSelectors({
+        scheduleMode: "fixed",
+        activeWeekdays: [...ALL_WEEKDAYS],
+        activeMonthDays: [1],
+      });
     }
 
     document.getElementById("habitTypeGroup").style.display = "none";
     document.getElementById("habitScheduleTypeGroup").style.display = "block";
     document.getElementById("habitGoalGroup").style.display = "block";
     document.getElementById("habitEmojiGroup").style.display = "block";
-    document.getElementById("habitExcludedDaysGroup").style.display = "none";
+    updateHabitScheduleTypeUI(type.value);
 
     openModal("habitModal");
   }
@@ -3012,26 +3210,65 @@
     if (!name) return;
 
     const categoryId = document.getElementById("habitCategory").value;
-    const type =
-      document.getElementById("habitScheduleType").value === "dynamic"
-        ? "dynamic"
-        : "fixed";
+    const scheduleMode = getHabitScheduleMode({
+      scheduleMode: document.getElementById("habitScheduleType").value,
+    });
     const emoji = document.getElementById("habitEmoji").value || "📌";
-    const totalDays = daysInMonth(state.currentYear, state.currentMonth);
+    const activeWeekdays = normalizeWeekdayArray(
+      getCheckedValuesFromContainer("habitActiveWeekdays"),
+    );
+    const activeMonthDays = normalizeMonthDayArray(
+      getCheckedValuesFromContainer("habitActiveMonthDays"),
+    );
+    if (scheduleMode === "specific_weekdays" && !activeWeekdays.length) {
+      alert("Select at least one active weekday.");
+      return;
+    }
+    if (scheduleMode === "specific_month_days" && !activeMonthDays.length) {
+      alert("Select at least one active month day.");
+      return;
+    }
+
     const monthGoal = Math.max(
       1,
       Math.min(
-        totalDays,
+        31,
         parseInt(document.getElementById("habitGoal").value, 10) || 20,
       ),
     );
+
+    const possibleActiveDays = getPossibleActiveDaysInMonth(
+      {
+        scheduleMode,
+        activeWeekdays,
+        activeMonthDays,
+      },
+      state.currentYear,
+      state.currentMonth,
+    );
+    if (monthGoal > possibleActiveDays) {
+      alert(
+        `Warning: monthly goal ${monthGoal} is higher than possible active days (${possibleActiveDays}) in ${MONTH_NAMES[state.currentMonth]}. Your goal will be saved as entered.`,
+      );
+    }
 
     if (editingHabitId) {
       const habit = state.habits.daily.find((h) => h.id === editingHabitId);
       if (habit) {
         habit.name = name;
         habit.categoryId = categoryId;
-        habit.type = type;
+        habit.type = scheduleMode;
+        habit.scheduleMode = scheduleMode;
+        habit.activeWeekdays =
+          scheduleMode === "fixed" ? [...ALL_WEEKDAYS] : activeWeekdays;
+        habit.activeMonthDays =
+          scheduleMode === "specific_month_days" ? activeMonthDays : [];
+        habit.excludedWeekdays =
+          scheduleMode === "specific_weekdays"
+            ? ALL_WEEKDAYS.filter(
+                (weekday) => !habit.activeWeekdays.includes(weekday),
+              )
+            : [];
         habit.emoji = emoji;
         habit.monthGoal = monthGoal;
       }
@@ -3041,8 +3278,18 @@
         name,
         categoryId,
         monthGoal,
-        type,
-        excludedWeekdays: [],
+        type: scheduleMode,
+        scheduleMode,
+        activeWeekdays:
+          scheduleMode === "fixed" ? [...ALL_WEEKDAYS] : activeWeekdays,
+        activeMonthDays:
+          scheduleMode === "specific_month_days" ? activeMonthDays : [],
+        excludedWeekdays:
+          scheduleMode === "specific_weekdays"
+            ? ALL_WEEKDAYS.filter(
+                (weekday) => !activeWeekdays.includes(weekday),
+              )
+            : [],
         emoji,
         order: state.habits.daily.length,
       });
@@ -5705,6 +5952,11 @@
     document
       .getElementById("habitModalSave")
       .addEventListener("click", saveHabitModal);
+    document
+      .getElementById("habitScheduleType")
+      .addEventListener("change", (event) => {
+        updateHabitScheduleTypeUI(event.target.value);
+      });
 
     document
       .getElementById("categoryModalClose")

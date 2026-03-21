@@ -228,8 +228,7 @@
                 </div>
               </div>
             </div>
-            <div class="weekly-summary-cards" id="weeklySummaryCards">
-            </div>
+            <div class="weekly-summary-cards" id="weeklySummaryCards"></div>
           </div>
           <div class="habits-section">
             <div class="habits-header">
@@ -250,8 +249,7 @@
               </button>
             </div>
             <div class="habits-grid-wrapper">
-              <table class="habits-grid" id="dailyHabitsGrid">
-              </table>
+              <table class="habits-grid" id="dailyHabitsGrid"></table>
             </div>
           </div>
           <div class="charts-row">
@@ -544,8 +542,7 @@
                 Add Category
               </button>
             </div>
-            <div class="manage-list" id="categoriesList">
-            </div>
+            <div class="manage-list" id="categoriesList"></div>
           </div>
           <div class="manage-section">
             <div class="manage-section-header">
@@ -565,8 +562,7 @@
                 Add Daily Habit
               </button>
             </div>
-            <div class="manage-list" id="dailyHabitsList">
-            </div>
+            <div class="manage-list" id="dailyHabitsList"></div>
           </div>
           <div class="manage-section">
             <div class="manage-section-header">
@@ -741,8 +737,7 @@
           </div>
           <div class="form-group">
             <label for="habitCategory">Category</label>
-            <select id="habitCategory">
-            </select>
+            <select id="habitCategory"></select>
           </div>
           <div class="form-group" id="habitEmojiGroup">
             <label for="habitEmoji">Habit Emoji</label>
@@ -840,18 +835,28 @@
             <label for="habitScheduleType">Daily Task Type</label>
             <select id="habitScheduleType">
               <option value="fixed">Fixed (track every day)</option>
-              <option value="dynamic">
-                Dynamic (turn off specific weekdays)
+              <option value="specific_weekdays">
+                Specific weekdays (active days)
+              </option>
+              <option value="specific_month_days">
+                Specific month days (active days)
               </option>
             </select>
           </div>
+          <div class="form-group" id="habitWeekdaysGroup" style="display: none">
+            <label>Active weekdays</label>
+            <div id="habitActiveWeekdays" class="schedule-days-grid"></div>
+          </div>
           <div
             class="form-group"
-            id="habitExcludedDaysGroup"
+            id="habitMonthDaysGroup"
             style="display: none"
           >
-            <label>Turn Off On These Weekdays</label>
-            <div id="habitExcludedDays" class="excluded-days-grid"></div>
+            <label>Active month days</label>
+            <div
+              id="habitActiveMonthDays"
+              class="schedule-days-grid month-days-grid"
+            ></div>
           </div>
           <div class="form-group" id="habitGoalGroup">
             <label for="habitGoal">Monthly Goal (days)</label>

@@ -2292,7 +2292,7 @@ body {
   border-color: var(--gray-700);
 }
 
-.excluded-days-grid {
+.schedule-days-grid {
   max-height: 180px;
   overflow-y: auto;
   border: 1px solid var(--gray-200);
@@ -2303,7 +2303,11 @@ body {
   gap: 6px;
 }
 
-.excluded-day-option {
+.month-days-grid {
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+}
+
+.schedule-day-option {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2316,12 +2320,12 @@ body {
   background: var(--purple-50);
 }
 
-.excluded-day-option input {
+.schedule-day-option input {
   width: 14px;
   height: 14px;
 }
 
-.excluded-day-option:has(input:checked) {
+.schedule-day-option:has(input:checked) {
   border-color: var(--purple-500);
   background: var(--purple-50);
 }
@@ -2492,8 +2496,12 @@ body {
   .data-actions {
     flex-direction: column;
   }
-  .excluded-days-grid {
+  .schedule-days-grid {
     grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .month-days-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
   }
   .undo-toast {
     left: 16px;
