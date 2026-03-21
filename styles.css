@@ -227,6 +227,42 @@ body {
   color: var(--white);
 }
 
+.export-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 0.78rem;
+  user-select: none;
+}
+
+.export-option input[type="checkbox"] {
+  accent-color: var(--purple-300);
+}
+
+.backup-status {
+  font-size: 0.74rem;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.65);
+  min-height: 2.1em;
+}
+
+.backup-status.pending {
+  color: #93c5fd;
+}
+
+.backup-status.success {
+  color: #86efac;
+}
+
+.backup-status.warn {
+  color: #fcd34d;
+}
+
+.backup-status.error {
+  color: #fca5a5;
+}
+
 .main-content {
   flex: 1;
   margin-left: var(--sidebar-width);
@@ -314,6 +350,11 @@ body {
     justify-content: center;
     padding: 8px;
     gap: 0;
+  }
+
+  .sidebar.collapsed .export-option,
+  .sidebar.collapsed .backup-status {
+    display: none;
   }
 
   .sidebar.collapsed + .main-content {
