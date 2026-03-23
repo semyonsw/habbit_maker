@@ -40,6 +40,7 @@
   const READER_DARK_ENABLED_KEY = "habitTracker_readerDarkEnabled_v1";
   const READER_DARK_MODE_KEY = "habitTracker_readerDarkMode_v1";
   const ANALYTICS_DISPLAY_MODE_KEY = "habitTracker_analyticsDisplayMode_v1";
+  const BOOKS_ANALYTICS_RANGE_KEY = "habitTracker_booksAnalyticsRange_v1";
   const GEMINI_API_BASE_URL =
     "https://generativelanguage.googleapis.com/v1beta";
   const GEMINI_MODELS = [
@@ -168,6 +169,11 @@
   };
   const analyticsState = {
     displayMode: "percent",
+    booksRangeDays: 30,
+  };
+  const finisherState = {
+    loadingBookId: null,
+    lastError: "",
   };
 
   const readerState = {
@@ -253,6 +259,8 @@
   function loadAnalyticsPreferences() {
     const savedMode = localStorage.getItem(ANALYTICS_DISPLAY_MODE_KEY);
     analyticsState.displayMode = savedMode === "raw" ? "raw" : "percent";
+    const savedBooksRange = localStorage.getItem(BOOKS_ANALYTICS_RANGE_KEY);
+    analyticsState.booksRangeDays = normalizeBooksRange(savedBooksRange);
   }
 
   function persistAnalyticsPreferences() {
@@ -260,6 +268,24 @@
       ANALYTICS_DISPLAY_MODE_KEY,
       analyticsState.displayMode,
     );
+    localStorage.setItem(
+      BOOKS_ANALYTICS_RANGE_KEY,
+      analyticsState.booksRangeDays === 0
+        ? "all"
+        : String(analyticsState.booksRangeDays),
+    );
+  }
+
+  function normalizeBooksRange(value) {
+    const asString = String(value || "30").toLowerCase();
+    if (asString === "all") return 0;
+    const parsed = parseInt(asString, 10);
+    if ([7, 30, 90].includes(parsed)) return parsed;
+    return 30;
+  }
+
+  function getBooksAnalyticsRangeDays() {
+    return normalizeBooksRange(analyticsState.booksRangeDays);
   }
 
   function getAnalyticsDisplayMode() {
@@ -318,6 +344,34 @@
     persistAnalyticsPreferences();
     syncAnalyticsModeControls();
     renderAnalyticsView();
+  }
+
+  function syncBooksRangeControls() {
+    const current = getBooksAnalyticsRangeDays();
+    document.querySelectorAll("[data-books-range]").forEach((btn) => {
+      if (!(btn instanceof HTMLElement)) return;
+      const range = normalizeBooksRange(btn.dataset.booksRange);
+      btn.classList.toggle("active", range === current);
+      btn.setAttribute("aria-pressed", range === current ? "true" : "false");
+    });
+  }
+
+  function setBooksAnalyticsRange(value) {
+    const next = normalizeBooksRange(value);
+    if (next === analyticsState.booksRangeDays) return;
+    analyticsState.booksRangeDays = next;
+    persistAnalyticsPreferences();
+    syncBooksRangeControls();
+    if (document.getElementById("view-books")?.classList.contains("active")) {
+      renderBooksView();
+    } else {
+      renderBooksStatsOverview(buildBooksAnalytics());
+    }
+    if (
+      document.getElementById("view-analytics")?.classList.contains("active")
+    ) {
+      renderAnalyticsView();
+    }
   }
 
   function uid(prefix) {
@@ -1493,6 +1547,17 @@
           fileSize: Number.isFinite(book.fileSize)
             ? Math.max(0, book.fileSize)
             : 0,
+          totalPagesDetected: Number.isFinite(
+            parseInt(book.totalPagesDetected, 10),
+          )
+            ? Math.max(1, parseInt(book.totalPagesDetected, 10))
+            : null,
+          totalPagesDetectedAt: String(book.totalPagesDetectedAt || ""),
+          totalPagesOverride: Number.isFinite(
+            parseInt(book.totalPagesOverride, 10),
+          )
+            ? Math.max(1, parseInt(book.totalPagesOverride, 10))
+            : null,
           createdAt,
           updatedAt,
           bookmarks: [],
@@ -1590,6 +1655,30 @@
 
         return cleanBook;
       });
+
+    if (!isPlainObject(input.books.helper)) {
+      input.books.helper = {};
+    }
+    input.books.helper.selectedBookId =
+      typeof input.books.helper.selectedBookId === "string"
+        ? input.books.helper.selectedBookId
+        : "";
+    input.books.helper.targetDate =
+      typeof input.books.helper.targetDate === "string"
+        ? input.books.helper.targetDate
+        : "";
+    input.books.helper.startPage = Number.isFinite(
+      parseInt(input.books.helper.startPage, 10),
+    )
+      ? Math.max(1, parseInt(input.books.helper.startPage, 10))
+      : null;
+    const rawWeekdays = Array.isArray(input.books.helper.weekdays)
+      ? input.books.helper.weekdays
+      : [...ALL_WEEKDAYS];
+    input.books.helper.weekdays = [...new Set(rawWeekdays)]
+      .map((value) => parseInt(value, 10))
+      .filter((value) => Number.isInteger(value) && value >= 0 && value <= 6)
+      .sort((a, b) => a - b);
   }
 
   function getDefaultState() {
@@ -1608,6 +1697,12 @@
       books: {
         items: [],
         activeBookId: null,
+        helper: {
+          selectedBookId: "",
+          targetDate: "",
+          startPage: null,
+          weekdays: [...ALL_WEEKDAYS],
+        },
         ai: {
           apiKey: "",
           apiKeyMode: "encrypted",
@@ -3081,6 +3176,1052 @@
     container.innerHTML = html;
   }
 
+  function formatShortDateLabel(dateValue) {
+    const dt = new Date(dateValue);
+    return `${MONTH_NAMES[dt.getMonth()].slice(0, 3)} ${dt.getDate()}`;
+  }
+
+  function floorToDayTime(ms) {
+    const dt = new Date(ms);
+    dt.setHours(0, 0, 0, 0);
+    return dt.getTime();
+  }
+
+  function toLocalDayKey(ms) {
+    const dt = new Date(ms);
+    const y = dt.getFullYear();
+    const m = String(dt.getMonth() + 1).padStart(2, "0");
+    const d = String(dt.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+
+  function parseIsoMs(value) {
+    const parsed = Date.parse(String(value || ""));
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  function parsePageFromHistoryNote(note) {
+    const match = String(note || "").match(/page\s+(\d+)/i);
+    const parsed = match ? parseInt(match[1], 10) : NaN;
+    if (!Number.isFinite(parsed) || parsed < 1) return null;
+    return parsed;
+  }
+
+  function daysInclusiveFromTimes(startMs, endMs) {
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return 0;
+    const diff = floorToDayTime(endMs) - floorToDayTime(startMs);
+    return Math.max(1, Math.round(diff / 86400000) + 1);
+  }
+
+  function round1(value) {
+    return Math.round((Number(value) || 0) * 10) / 10;
+  }
+
+  function formatDateInputValue(dateLike) {
+    const dt = new Date(dateLike);
+    if (Number.isNaN(dt.getTime())) return "";
+    const y = dt.getFullYear();
+    const m = String(dt.getMonth() + 1).padStart(2, "0");
+    const d = String(dt.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+
+  function getBookMaxBookmarkPage(book) {
+    const bookmarks = Array.isArray(book && book.bookmarks)
+      ? book.bookmarks
+      : [];
+    if (!bookmarks.length) return 1;
+    return Math.max(
+      1,
+      ...bookmarks.map((bm) => Math.max(1, parseInt(bm.pdfPage, 10) || 1)),
+    );
+  }
+
+  function getEffectiveBookTotalPages(book) {
+    if (!book) return null;
+    const override = parseInt(book.totalPagesOverride, 10);
+    if (Number.isFinite(override) && override >= 1) return override;
+    const detected = parseInt(book.totalPagesDetected, 10);
+    if (Number.isFinite(detected) && detected >= 1) return detected;
+    return null;
+  }
+
+  function getOrInitBooksHelperState() {
+    if (!isPlainObject(state.books)) {
+      state.books = { items: [], activeBookId: null, helper: {} };
+    }
+    if (!isPlainObject(state.books.helper)) {
+      state.books.helper = {};
+    }
+    if (typeof state.books.helper.selectedBookId !== "string") {
+      state.books.helper.selectedBookId = "";
+    }
+    if (typeof state.books.helper.targetDate !== "string") {
+      state.books.helper.targetDate = "";
+    }
+    if (!Number.isFinite(parseInt(state.books.helper.startPage, 10))) {
+      state.books.helper.startPage = null;
+    } else {
+      state.books.helper.startPage = Math.max(
+        1,
+        parseInt(state.books.helper.startPage, 10),
+      );
+    }
+    if (!Array.isArray(state.books.helper.weekdays)) {
+      state.books.helper.weekdays = [...ALL_WEEKDAYS];
+    }
+    state.books.helper.weekdays = [...new Set(state.books.helper.weekdays)]
+      .map((value) => parseInt(value, 10))
+      .filter((value) => Number.isInteger(value) && value >= 0 && value <= 6)
+      .sort((a, b) => a - b);
+    return state.books.helper;
+  }
+
+  function getSelectedFinisherBook() {
+    const helper = getOrInitBooksHelperState();
+    const books = Array.isArray(state.books && state.books.items)
+      ? state.books.items
+      : [];
+    if (!books.length) return null;
+    if (helper.selectedBookId) {
+      const matched = books.find(
+        (book) => book.bookId === helper.selectedBookId,
+      );
+      if (matched) return matched;
+    }
+    if (state.books.activeBookId) {
+      const active = books.find(
+        (book) => book.bookId === state.books.activeBookId,
+      );
+      if (active) return active;
+    }
+    return books[0] || null;
+  }
+
+  async function detectBookTotalPages(book) {
+    if (!book || !book.fileId) return null;
+    if (
+      Number.isFinite(parseInt(book.totalPagesDetected, 10)) &&
+      parseInt(book.totalPagesDetected, 10) > 0
+    ) {
+      return Math.max(1, parseInt(book.totalPagesDetected, 10));
+    }
+
+    if (finisherState.loadingBookId === book.bookId) {
+      return null;
+    }
+
+    finisherState.loadingBookId = book.bookId;
+    finisherState.lastError = "";
+    try {
+      const blob = await idbGetPdfBlob(book.fileId);
+      if (!blob) {
+        finisherState.lastError = "PDF blob missing in local storage.";
+        return null;
+      }
+      const pdfjsLib = await ensurePdfJsLibLoaded();
+      if (!pdfjsLib) {
+        finisherState.lastError = "PDF.js failed to load.";
+        return null;
+      }
+      pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_URL;
+      const pdfData = await blob.arrayBuffer();
+      const loadingTask = pdfjsLib.getDocument({ data: pdfData });
+      const pdfDoc = await loadingTask.promise;
+      const pages = Math.max(1, parseInt(pdfDoc.numPages, 10) || 1);
+      book.totalPagesDetected = pages;
+      book.totalPagesDetectedAt = nowIso();
+      saveState();
+      return pages;
+    } catch (error) {
+      finisherState.lastError = "Could not detect total pages from PDF.";
+      appendLogEntry({
+        level: "warn",
+        component: "books-finisher",
+        operation: "detectBookTotalPages",
+        message: "Failed to detect total pages.",
+        error,
+        context: { bookId: book.bookId, fileId: book.fileId },
+      });
+      return null;
+    } finally {
+      finisherState.loadingBookId = null;
+    }
+  }
+
+  function computeBookFinisherPlan(book) {
+    const helper = getOrInitBooksHelperState();
+    if (!book) {
+      return {
+        ok: false,
+        message: "Add a book first to use Book Finisher Helper.",
+      };
+    }
+
+    const totalPages = getEffectiveBookTotalPages(book);
+    const startPage = Math.max(
+      1,
+      parseInt(helper.startPage, 10) || getBookMaxBookmarkPage(book),
+    );
+    if (!totalPages) {
+      return {
+        ok: false,
+        message: "Total pages unknown. Detect pages or enter an override.",
+        startPage,
+      };
+    }
+
+    if (startPage >= totalPages) {
+      return {
+        ok: true,
+        totalPages,
+        startPage,
+        remainingPages: 0,
+        readingDays: [],
+        pagesPerDay: 0,
+        pagesPerDayExact: 0,
+        projectedDate: "Done",
+        message: "This book is already at or beyond the final page.",
+      };
+    }
+
+    const targetMs = parseIsoMs(`${String(helper.targetDate || "")}T00:00:00`);
+    if (!Number.isFinite(targetMs)) {
+      return {
+        ok: false,
+        totalPages,
+        startPage,
+        message: "Choose a finish date.",
+      };
+    }
+
+    const todayMs = floorToDayTime(Date.now());
+    if (targetMs < todayMs) {
+      return {
+        ok: false,
+        totalPages,
+        startPage,
+        message: "Finish date is in the past.",
+      };
+    }
+
+    const weekdaySet = new Set(helper.weekdays || []);
+    if (!weekdaySet.size) {
+      return {
+        ok: false,
+        totalPages,
+        startPage,
+        message: "Select at least one reading weekday.",
+      };
+    }
+
+    const readingDays = [];
+    for (let at = todayMs; at <= targetMs; at += 86400000) {
+      const weekday = new Date(at).getDay();
+      if (!weekdaySet.has(weekday)) continue;
+      readingDays.push(at);
+    }
+
+    if (!readingDays.length) {
+      return {
+        ok: false,
+        totalPages,
+        startPage,
+        message: "No reading days found before the finish date.",
+      };
+    }
+
+    const remainingPages = Math.max(0, totalPages - startPage);
+    const pagesPerDayExact = remainingPages / readingDays.length;
+    const pagesPerDay = Math.max(1, Math.ceil(pagesPerDayExact));
+
+    let remaining = remainingPages;
+    let projectedAt = readingDays[readingDays.length - 1];
+    const weeklyLoads = {};
+    readingDays.forEach((dayMs) => {
+      const weekStart = new Date(dayMs);
+      const weekday = weekStart.getDay();
+      weekStart.setDate(weekStart.getDate() - weekday);
+      weekStart.setHours(0, 0, 0, 0);
+      const weekKey = toLocalDayKey(weekStart.getTime());
+
+      const amount = Math.min(remaining, pagesPerDay);
+      weeklyLoads[weekKey] = (weeklyLoads[weekKey] || 0) + amount;
+      remaining -= amount;
+      if (remaining <= 0) {
+        projectedAt = dayMs;
+      }
+    });
+
+    const weekEntries = Object.keys(weeklyLoads)
+      .sort((a, b) => (a < b ? -1 : 1))
+      .map((weekKey, index) => ({
+        label: `W${index + 1}`,
+        pages: Math.round(weeklyLoads[weekKey]),
+      }));
+
+    return {
+      ok: true,
+      totalPages,
+      startPage,
+      targetMs,
+      remainingPages,
+      readingDays,
+      pagesPerDay,
+      pagesPerDayExact,
+      projectedDate: formatDateInputValue(projectedAt),
+      canFinishByTarget: remaining <= 0 && projectedAt <= targetMs,
+      weekEntries,
+      message: "",
+    };
+  }
+
+  function buildBookReadingEvents(book) {
+    const events = [];
+    const bookmarks = Array.isArray(book.bookmarks) ? book.bookmarks : [];
+
+    bookmarks.forEach((bookmark) => {
+      const page = Math.max(1, parseInt(bookmark.pdfPage, 10) || 1);
+      const createdAt = parseIsoMs(bookmark.createdAt);
+      const updatedAt = parseIsoMs(bookmark.updatedAt);
+
+      if (Number.isFinite(createdAt)) {
+        events.push({
+          at: createdAt,
+          page,
+          type: "bookmark-created",
+        });
+      }
+
+      if (Number.isFinite(updatedAt) && updatedAt !== createdAt) {
+        events.push({
+          at: updatedAt,
+          page,
+          type: "bookmark-updated",
+        });
+      }
+
+      (Array.isArray(bookmark.history) ? bookmark.history : []).forEach((h) => {
+        const at = parseIsoMs(h && h.at);
+        if (!Number.isFinite(at)) return;
+        const historyPage =
+          (h && h.type === "reader-note"
+            ? parsePageFromHistoryNote(h.note)
+            : null) || null;
+        if (!historyPage) return;
+        events.push({
+          at,
+          page: historyPage,
+          type: "reader-note",
+        });
+      });
+    });
+
+    const seen = new Set();
+    return events
+      .sort((a, b) => a.at - b.at)
+      .filter((event) => {
+        const key = `${event.at}:${event.page}:${event.type}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+  }
+
+  function computePerBookStats(book, events) {
+    if (!events.length) {
+      return {
+        bookId: book.bookId,
+        title: book.title,
+        author: book.author || "Unknown author",
+        totalBookmarks: Array.isArray(book.bookmarks)
+          ? book.bookmarks.length
+          : 0,
+        eventCount: 0,
+        firstAt: null,
+        lastAt: null,
+        calendarDays: 0,
+        activeDays: 0,
+        pagesNet: 0,
+        avgPerDay: 0,
+        avgPerWeek: 0,
+        current7dPages: 0,
+        bestWeekPages: 0,
+        consistencyPct: 0,
+        insufficientData: true,
+        dayPages: {},
+      };
+    }
+
+    const dayPages = {};
+    let pagesNet = 0;
+    for (let i = 1; i < events.length; i += 1) {
+      const delta = events[i].page - events[i - 1].page;
+      if (delta <= 0) continue;
+      pagesNet += delta;
+      const key = toLocalDayKey(events[i].at);
+      dayPages[key] = (dayPages[key] || 0) + delta;
+    }
+
+    const firstAt = events[0].at;
+    const lastAt = events[events.length - 1].at;
+    const calendarDays = daysInclusiveFromTimes(firstAt, lastAt);
+    const activeDays = Object.keys(dayPages).filter(
+      (key) => dayPages[key] > 0,
+    ).length;
+    const avgPerDay = calendarDays > 0 ? pagesNet / calendarDays : 0;
+    const avgPerWeek = avgPerDay * 7;
+
+    const nowDay = floorToDayTime(Date.now());
+    let current7dPages = 0;
+    Object.keys(dayPages).forEach((key) => {
+      const at = parseIsoMs(`${key}T00:00:00`);
+      if (!Number.isFinite(at)) return;
+      if (nowDay - at <= 6 * 86400000) {
+        current7dPages += dayPages[key];
+      }
+    });
+
+    const weekPages = {};
+    Object.keys(dayPages).forEach((key) => {
+      const dt = new Date(`${key}T00:00:00`);
+      const weekAnchor = new Date(dt);
+      const day = weekAnchor.getDay();
+      const shift = day === 0 ? -6 : 1 - day;
+      weekAnchor.setDate(weekAnchor.getDate() + shift);
+      const weekKey = toLocalDayKey(weekAnchor.getTime());
+      weekPages[weekKey] = (weekPages[weekKey] || 0) + dayPages[key];
+    });
+    const bestWeekPages = Object.keys(weekPages).length
+      ? Math.max(...Object.values(weekPages))
+      : 0;
+
+    const consistencyPct =
+      calendarDays > 0 ? Math.round((activeDays / calendarDays) * 100) : 0;
+
+    return {
+      bookId: book.bookId,
+      title: book.title,
+      author: book.author || "Unknown author",
+      totalBookmarks: Array.isArray(book.bookmarks) ? book.bookmarks.length : 0,
+      eventCount: events.length,
+      firstAt,
+      lastAt,
+      calendarDays,
+      activeDays,
+      pagesNet,
+      avgPerDay,
+      avgPerWeek,
+      current7dPages,
+      bestWeekPages,
+      consistencyPct,
+      insufficientData: events.length < 2 || pagesNet <= 0,
+      dayPages,
+    };
+  }
+
+  function buildBooksAnalytics() {
+    const rangeDays = getBooksAnalyticsRangeDays();
+    const allBooks =
+      isPlainObject(state.books) && Array.isArray(state.books.items)
+        ? state.books.items
+        : [];
+
+    const now = Date.now();
+    const rangeStart =
+      rangeDays > 0 ? floorToDayTime(now) - (rangeDays - 1) * 86400000 : null;
+
+    const perBook = allBooks.map((book) => {
+      const allEvents = buildBookReadingEvents(book);
+      const events = rangeStart
+        ? allEvents.filter((event) => event.at >= rangeStart)
+        : allEvents;
+      return computePerBookStats(book, events);
+    });
+
+    const withProgress = perBook.filter((book) => book.pagesNet > 0);
+    const allDayPages = {};
+    const activityCounts = {};
+    let totalBookmarks = 0;
+    let totalEvents = 0;
+
+    perBook.forEach((book) => {
+      totalBookmarks += book.totalBookmarks;
+      totalEvents += book.eventCount;
+      Object.keys(book.dayPages).forEach((dayKey) => {
+        allDayPages[dayKey] =
+          (allDayPages[dayKey] || 0) + book.dayPages[dayKey];
+      });
+    });
+
+    const allBooksRaw =
+      isPlainObject(state.books) && Array.isArray(state.books.items)
+        ? state.books.items
+        : [];
+    allBooksRaw.forEach((book) => {
+      const events = buildBookReadingEvents(book);
+      events
+        .filter((event) => (rangeStart ? event.at >= rangeStart : true))
+        .forEach((event) => {
+          const key = toLocalDayKey(event.at);
+          activityCounts[key] = (activityCounts[key] || 0) + 1;
+        });
+    });
+
+    const totalPages = withProgress.reduce(
+      (sum, book) => sum + book.pagesNet,
+      0,
+    );
+    const firstAt = withProgress.length
+      ? Math.min(...withProgress.map((book) => book.firstAt))
+      : null;
+    const lastAt = withProgress.length
+      ? Math.max(...withProgress.map((book) => book.lastAt))
+      : null;
+    const overallDays =
+      Number.isFinite(firstAt) && Number.isFinite(lastAt)
+        ? daysInclusiveFromTimes(firstAt, lastAt)
+        : 0;
+
+    const overall = {
+      booksTracked: allBooks.length,
+      booksWithProgress: withProgress.length,
+      totalBookmarks,
+      totalEvents,
+      totalPages,
+      avgPerDay: overallDays > 0 ? totalPages / overallDays : 0,
+      avgPerWeek: overallDays > 0 ? (totalPages / overallDays) * 7 : 0,
+      activeDays: Object.keys(allDayPages).length,
+      calendarDays: overallDays,
+      topBook:
+        withProgress.length > 0
+          ? [...withProgress].sort((a, b) => b.avgPerDay - a.avgPerDay)[0]
+          : null,
+      mostConsistent:
+        withProgress.length > 0
+          ? [...withProgress].sort(
+              (a, b) => b.consistencyPct - a.consistencyPct,
+            )[0]
+          : null,
+    };
+
+    const trendWindowDays = rangeDays > 0 ? rangeDays : 90;
+    const trendStart = floorToDayTime(now) - (trendWindowDays - 1) * 86400000;
+    const trendLabels = [];
+    const trendValues = [];
+    const trendActivity = [];
+
+    for (let i = 0; i < trendWindowDays; i += 1) {
+      const at = trendStart + i * 86400000;
+      const key = toLocalDayKey(at);
+      trendLabels.push(formatShortDateLabel(at));
+      trendValues.push(round1(allDayPages[key] || 0));
+      trendActivity.push(activityCounts[key] || 0);
+    }
+
+    const heatWindowDays = Math.min(84, trendWindowDays);
+    const heatStart = floorToDayTime(now) - (heatWindowDays - 1) * 86400000;
+    const weekCount = Math.max(1, Math.ceil(heatWindowDays / 7));
+    const heatWeeks = Array.from({ length: weekCount }, (_, idx) => ({
+      label: `W${idx + 1}`,
+      weekdays: Array.from({ length: 7 }, () => 0),
+    }));
+    for (let i = 0; i < heatWindowDays; i += 1) {
+      const at = heatStart + i * 86400000;
+      const dt = new Date(at);
+      const weekday = dt.getDay();
+      const weekIndex = Math.floor(i / 7);
+      const key = toLocalDayKey(at);
+      heatWeeks[weekIndex].weekdays[weekday] += allDayPages[key] || 0;
+    }
+
+    const comparisonRows = [...withProgress]
+      .sort((a, b) => b.avgPerWeek - a.avgPerWeek)
+      .slice(0, 12);
+
+    return {
+      rangeDays,
+      rangeLabel: rangeDays === 0 ? "All time" : `Last ${rangeDays} days`,
+      perBook: [...perBook].sort((a, b) => b.avgPerDay - a.avgPerDay),
+      overall,
+      trendLabels,
+      trendValues,
+      trendActivity,
+      heatWeeks,
+      comparisonRows,
+    };
+  }
+
+  function renderBooksStatsOverview(analytics) {
+    const kpisEl = document.getElementById("booksStatsOverview");
+    const topEl = document.getElementById("booksStatsTopBook");
+    const byBookEl = document.getElementById("booksStatsByBook");
+    if (!kpisEl || !topEl || !byBookEl) return;
+
+    if (!analytics.perBook.length) {
+      kpisEl.innerHTML =
+        "<p class='books-stats-empty'>No books yet. Add a book and bookmark reading pages to unlock statistics.</p>";
+      topEl.innerHTML = "";
+      byBookEl.innerHTML = "";
+      return;
+    }
+
+    const overall = analytics.overall;
+    kpisEl.innerHTML = [
+      { label: "Range", value: analytics.rangeLabel },
+      {
+        label: "Books with progress",
+        value: `${overall.booksWithProgress}/${overall.booksTracked}`,
+      },
+      { label: "Avg pages/day", value: round1(overall.avgPerDay).toFixed(1) },
+      { label: "Avg pages/week", value: round1(overall.avgPerWeek).toFixed(1) },
+      {
+        label: "Total pages advanced",
+        value: String(Math.round(overall.totalPages)),
+      },
+      { label: "Bookmark events", value: String(overall.totalEvents) },
+    ]
+      .map(
+        (item) =>
+          `<article class='books-kpi-card'><p>${sanitize(item.label)}</p><h4>${sanitize(item.value)}</h4></article>`,
+      )
+      .join("");
+
+    if (overall.topBook) {
+      topEl.innerHTML = `<article class='books-top-book-card'><h4>Top Performing Book</h4><p class='books-top-book-title'>${sanitize(overall.topBook.title)}</p><p>${sanitize(overall.topBook.author)}</p><div class='books-top-book-meta'><span>${round1(overall.topBook.avgPerDay).toFixed(1)} pages/day</span><span>${round1(overall.topBook.avgPerWeek).toFixed(1)} pages/week</span><span>${Math.round(overall.topBook.pagesNet)} pages advanced</span></div></article>`;
+    } else {
+      topEl.innerHTML =
+        "<p class='books-stats-empty'>Need at least two bookmark events to estimate reading pace.</p>";
+    }
+
+    byBookEl.innerHTML = analytics.perBook
+      .map((book) => {
+        const confidence =
+          book.insufficientData || book.eventCount < 3 || book.calendarDays < 7
+            ? "<span class='books-low-confidence'>Low confidence</span>"
+            : "";
+        return `<article class='books-book-stat-card'><div class='books-book-stat-head'><h4>${sanitize(book.title)}</h4>${confidence}</div><p>${sanitize(book.author)}</p><div class='books-book-stat-grid'><span>Pages advanced: <strong>${Math.round(book.pagesNet)}</strong></span><span>Avg/day: <strong>${round1(book.avgPerDay).toFixed(1)}</strong></span><span>Avg/week: <strong>${round1(book.avgPerWeek).toFixed(1)}</strong></span><span>7d pages: <strong>${Math.round(book.current7dPages)}</strong></span><span>Best week: <strong>${Math.round(book.bestWeekPages)}</strong></span><span>Consistency: <strong>${book.consistencyPct}%</strong></span></div></article>`;
+      })
+      .join("");
+  }
+
+  function renderBooksAnalyticsKpis(analytics) {
+    const el = document.getElementById("booksAnalyticsKpis");
+    if (!el) return;
+    const overall = analytics.overall;
+    if (!analytics.perBook.length) {
+      el.innerHTML =
+        "<p class='books-stats-empty'>No book data available yet.</p>";
+      return;
+    }
+    el.innerHTML = [
+      { label: "Range", value: analytics.rangeLabel },
+      { label: "Pages/day", value: round1(overall.avgPerDay).toFixed(1) },
+      { label: "Pages/week", value: round1(overall.avgPerWeek).toFixed(1) },
+      {
+        label: "Most consistent",
+        value: overall.mostConsistent ? overall.mostConsistent.title : "-",
+      },
+    ]
+      .map(
+        (item) =>
+          `<article class='books-kpi-card'><p>${sanitize(item.label)}</p><h4>${sanitize(item.value)}</h4></article>`,
+      )
+      .join("");
+  }
+
+  function renderBooksMiniTrendChart(analytics) {
+    renderChart("booksMiniTrendChart", "booksMiniTrendChart", {
+      type: "line",
+      data: {
+        labels: analytics.trendLabels,
+        datasets: [
+          {
+            label: "Pages/day",
+            data: analytics.trendValues,
+            borderColor: "rgba(56, 189, 248, 0.92)",
+            backgroundColor: "rgba(56, 189, 248, 0.16)",
+            borderWidth: 2,
+            tension: 0.34,
+            fill: true,
+            pointRadius: 0,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: { beginAtZero: true, ticks: { maxTicksLimit: 5 } },
+          x: { ticks: { maxTicksLimit: 7 } },
+        },
+      },
+    });
+  }
+
+  function renderBooksMiniShareChart(analytics) {
+    const rows = [...analytics.perBook]
+      .filter((book) => book.pagesNet > 0)
+      .sort((a, b) => b.pagesNet - a.pagesNet)
+      .slice(0, 6);
+    const labels = rows.map((row) => row.title);
+    const values = rows.map((row) => Math.round(row.pagesNet));
+
+    renderChart("booksMiniBookShareChart", "booksMiniBookShareChart", {
+      type: "bar",
+      data: {
+        labels: labels.length ? labels : ["No data"],
+        datasets: [
+          {
+            data: labels.length ? values : [0],
+            backgroundColor: labels.length
+              ? values.map((value) =>
+                  getValueColor(value, Math.max(1, ...values), 0.86),
+                )
+              : ["rgba(148, 163, 184, 0.5)"],
+            borderRadius: 6,
+          },
+        ],
+      },
+      options: {
+        indexAxis: "y",
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { beginAtZero: true, ticks: { maxTicksLimit: 5 } },
+        },
+      },
+    });
+  }
+
+  function renderBooksVelocityTrendChart(analytics) {
+    renderChart("booksVelocityTrendChart", "booksVelocityTrendChart", {
+      type: "line",
+      data: {
+        labels: analytics.trendLabels,
+        datasets: [
+          {
+            label: "Pages advanced",
+            data: analytics.trendValues,
+            borderColor: "rgba(56, 189, 248, 0.95)",
+            backgroundColor: "rgba(56, 189, 248, 0.2)",
+            borderWidth: 2,
+            tension: 0.28,
+            fill: true,
+            pointRadius: 0,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: { beginAtZero: true, title: { display: true, text: "Pages/day" } },
+          x: { ticks: { maxTicksLimit: 10 } },
+        },
+      },
+    });
+  }
+
+  function renderBooksComparisonChart(analytics) {
+    const labels = analytics.comparisonRows.map((row) => row.title);
+    const avgDay = analytics.comparisonRows.map((row) => round1(row.avgPerDay));
+    const avgWeek = analytics.comparisonRows.map((row) =>
+      round1(row.avgPerWeek),
+    );
+
+    renderChart("booksPerBookComparisonChart", "booksPerBookComparisonChart", {
+      type: "bar",
+      data: {
+        labels: labels.length ? labels : ["No data"],
+        datasets: [
+          {
+            label: "Avg pages/day",
+            data: labels.length ? avgDay : [0],
+            backgroundColor: "rgba(34, 197, 94, 0.82)",
+            borderRadius: 6,
+          },
+          {
+            label: "Avg pages/week",
+            data: labels.length ? avgWeek : [0],
+            backgroundColor: "rgba(249, 115, 22, 0.78)",
+            borderRadius: 6,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { position: "bottom" } },
+        scales: {
+          y: { beginAtZero: true },
+        },
+      },
+    });
+  }
+
+  function renderBooksBookmarkActivityChart(analytics) {
+    renderChart("booksBookmarkActivityChart", "booksBookmarkActivityChart", {
+      type: "bar",
+      data: {
+        labels: analytics.trendLabels,
+        datasets: [
+          {
+            label: "Bookmark events",
+            data: analytics.trendActivity,
+            backgroundColor: "rgba(99, 102, 241, 0.78)",
+            borderRadius: 4,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: {
+            beginAtZero: true,
+            title: { display: true, text: "Events/day" },
+          },
+          x: { ticks: { maxTicksLimit: 10 } },
+        },
+      },
+    });
+  }
+
+  function renderBooksWeeklyHeatmap(analytics) {
+    const container = document.getElementById("booksWeeklyHeatmap");
+    if (!container) return;
+    if (!analytics.heatWeeks.length) {
+      container.innerHTML =
+        "<div class='heatmap-empty'>No reading data yet.</div>";
+      return;
+    }
+
+    const labels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const allCells = analytics.heatWeeks.flatMap((week) => week.weekdays);
+    const maxValue = Math.max(1, ...allCells);
+
+    let html = "<div></div>";
+    labels.forEach((label) => {
+      html += `<div class='heatmap-head'>${label}</div>`;
+    });
+
+    analytics.heatWeeks.forEach((week) => {
+      html += `<div class='heatmap-week-label'>${week.label}</div>`;
+      week.weekdays.forEach((value) => {
+        const ratio = value / maxValue;
+        html += `<div class='heatmap-cell' style='background:${getHeatColor(ratio)}' title='${Math.round(value)} pages'>${Math.round(value)}</div>`;
+      });
+    });
+
+    container.innerHTML = html;
+  }
+
+  function renderBooksAnalyticsDashboard(options = {}) {
+    const includeCharts = options.includeCharts !== false;
+    syncBooksRangeControls();
+    const analytics = buildBooksAnalytics();
+    renderBooksStatsOverview(analytics);
+    renderBooksAnalyticsKpis(analytics);
+    renderBooksMiniTrendChart(analytics);
+    renderBooksMiniShareChart(analytics);
+    if (!includeCharts) {
+      return;
+    }
+    renderBooksVelocityTrendChart(analytics);
+    renderBooksComparisonChart(analytics);
+    renderBooksBookmarkActivityChart(analytics);
+    renderBooksWeeklyHeatmap(analytics);
+  }
+
+  function renderBookFinisherPlanChart(plan) {
+    const labels =
+      plan && plan.ok ? plan.weekEntries.map((entry) => entry.label) : [];
+    const values =
+      plan && plan.ok ? plan.weekEntries.map((entry) => entry.pages) : [];
+    renderChart("booksFinisherPlanChart", "booksFinisherPlanChart", {
+      type: "bar",
+      data: {
+        labels: labels.length ? labels : ["No plan"],
+        datasets: [
+          {
+            label: "Pages",
+            data: values.length ? values : [0],
+            backgroundColor: values.length
+              ? values.map((value) =>
+                  getValueColor(value, Math.max(1, ...values), 0.84),
+                )
+              : ["rgba(148, 163, 184, 0.5)"],
+            borderRadius: 6,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label(context) {
+                return `${Math.round(context.parsed.y || 0)} pages`;
+              },
+            },
+          },
+        },
+        scales: {
+          y: { beginAtZero: true, ticks: { maxTicksLimit: 5 } },
+        },
+      },
+    });
+  }
+
+  async function renderBookFinisherHelper() {
+    const panel = document.getElementById("booksFinisherCard");
+    const bookSelect = document.getElementById("finisherBookSelect");
+    const targetInput = document.getElementById("finisherTargetDate");
+    const startInput = document.getElementById("finisherStartPage");
+    const totalInput = document.getElementById("finisherTotalPages");
+    const statusEl = document.getElementById("finisherStatusText");
+    const resultsEl = document.getElementById("finisherResultsPanel");
+    const autoBtn = document.getElementById("finisherUseAutoPagesBtn");
+    if (
+      !panel ||
+      !bookSelect ||
+      !targetInput ||
+      !startInput ||
+      !totalInput ||
+      !statusEl ||
+      !resultsEl ||
+      !autoBtn
+    ) {
+      return;
+    }
+
+    const helper = getOrInitBooksHelperState();
+    const books = Array.isArray(state.books && state.books.items)
+      ? state.books.items
+      : [];
+
+    if (!books.length) {
+      bookSelect.innerHTML = "<option value=''>No books yet</option>";
+      targetInput.value = "";
+      startInput.value = "";
+      totalInput.value = "";
+      statusEl.textContent = "Add at least one book to build a finish plan.";
+      resultsEl.innerHTML = "";
+      renderBookFinisherPlanChart(null);
+      return;
+    }
+
+    if (
+      !helper.selectedBookId ||
+      !books.some((book) => book.bookId === helper.selectedBookId)
+    ) {
+      const fallback = getSelectedFinisherBook();
+      helper.selectedBookId = fallback ? fallback.bookId : "";
+    }
+    const selectedBook = getSelectedFinisherBook();
+    if (!selectedBook) return;
+
+    if (!helper.targetDate) {
+      helper.targetDate = formatDateInputValue(
+        floorToDayTime(Date.now()) + 20 * 86400000,
+      );
+    }
+
+    if (!Number.isFinite(parseInt(helper.startPage, 10))) {
+      helper.startPage = getBookMaxBookmarkPage(selectedBook);
+    }
+
+    if (finisherState.loadingBookId === selectedBook.bookId) {
+      statusEl.textContent = "Detecting total pages from PDF...";
+    }
+
+    await detectBookTotalPages(selectedBook);
+
+    bookSelect.innerHTML = books
+      .map(
+        (book) =>
+          `<option value="${book.bookId}">${sanitize(book.title)}</option>`,
+      )
+      .join("");
+    bookSelect.value = selectedBook.bookId;
+
+    targetInput.value = helper.targetDate;
+    startInput.value = String(Math.max(1, parseInt(helper.startPage, 10) || 1));
+
+    const effectiveTotal = getEffectiveBookTotalPages(selectedBook);
+    totalInput.placeholder = effectiveTotal
+      ? `Auto: ${effectiveTotal}`
+      : "Auto not detected";
+    totalInput.value = Number.isFinite(
+      parseInt(selectedBook.totalPagesOverride, 10),
+    )
+      ? String(Math.max(1, parseInt(selectedBook.totalPagesOverride, 10)))
+      : "";
+    autoBtn.disabled = !Number.isFinite(
+      parseInt(selectedBook.totalPagesOverride, 10),
+    );
+
+    const weekdaySet = new Set(helper.weekdays || []);
+    document.querySelectorAll("[data-finisher-weekday]").forEach((input) => {
+      if (!(input instanceof HTMLInputElement)) return;
+      const value = parseInt(input.dataset.finisherWeekday, 10);
+      input.checked = weekdaySet.has(value);
+    });
+
+    const plan = computeBookFinisherPlan(selectedBook);
+    if (!plan.ok) {
+      statusEl.textContent =
+        finisherState.lastError || plan.message || "No plan available yet.";
+      resultsEl.innerHTML = "";
+      renderBookFinisherPlanChart(null);
+      return;
+    }
+
+    statusEl.textContent = plan.canFinishByTarget
+      ? "Plan ready. Stay on this pace to finish on time."
+      : "Plan is tight. Increase reading days or move the finish date.";
+
+    resultsEl.innerHTML = [
+      { label: "Start page", value: String(plan.startPage) },
+      { label: "Total pages", value: String(plan.totalPages) },
+      { label: "Remaining pages", value: String(plan.remainingPages) },
+      { label: "Reading days", value: String(plan.readingDays.length) },
+      {
+        label: "Needed per reading day",
+        value: `${Math.ceil(plan.pagesPerDay)} pages`,
+      },
+      {
+        label: "Average exact",
+        value: `${round1(plan.pagesPerDayExact).toFixed(1)} pages`,
+      },
+      {
+        label: "Projected finish",
+        value:
+          plan.projectedDate === "Done"
+            ? "Already done"
+            : String(plan.projectedDate),
+      },
+      {
+        label: "Target",
+        value: String(helper.targetDate),
+      },
+    ]
+      .map(
+        (item) =>
+          `<article class='books-finisher-result-card${plan.canFinishByTarget ? "" : " warning"}'><p>${sanitize(item.label)}</p><h4>${sanitize(item.value)}</h4></article>`,
+      )
+      .join("");
+
+    renderBookFinisherPlanChart(plan);
+  }
+
   function renderAnalyticsView() {
     syncAnalyticsModeControls();
     const weeklyData = buildWeeklyAnalytics(
@@ -3118,6 +4259,7 @@
       timeline,
     );
     renderWeeklyHeatmap("analyticsWeeklyHeatmap", weeklyData);
+    renderBooksAnalyticsDashboard({ includeCharts: true });
     renderMonthlyReview();
   }
 
@@ -5294,6 +6436,9 @@
       fileId,
       fileName: file.name,
       fileSize: file.size,
+      totalPagesDetected: null,
+      totalPagesDetectedAt: "",
+      totalPagesOverride: null,
       createdAt,
       updatedAt: createdAt,
       bookmarks: [],
@@ -5358,6 +6503,9 @@
         fileId: uid("file"),
         fileName: "missing.pdf",
         fileSize: 0,
+        totalPagesDetected: null,
+        totalPagesDetectedAt: "",
+        totalPagesOverride: null,
         createdAt: nowIso(),
         updatedAt: nowIso(),
         bookmarks: [],
@@ -5781,6 +6929,8 @@
     await refreshBookBlobStatus();
     await renderBooksList();
     renderBookmarksPanel();
+    await renderBookFinisherHelper();
+    renderBooksAnalyticsDashboard({ includeCharts: false });
     applyBookSummarySettingsToInputs();
   }
 
@@ -6684,6 +7834,99 @@
       }
       openBookmarkModal(state.books.activeBookId);
     });
+
+    document.querySelectorAll("[data-books-range]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        setBooksAnalyticsRange(btn.dataset.booksRange || "30");
+      });
+    });
+
+    const finisherBookSelect = document.getElementById("finisherBookSelect");
+    if (finisherBookSelect) {
+      finisherBookSelect.addEventListener("change", async (event) => {
+        const helper = getOrInitBooksHelperState();
+        helper.selectedBookId = String(event.target.value || "");
+        const book = getSelectedFinisherBook();
+        helper.startPage = book ? getBookMaxBookmarkPage(book) : 1;
+        saveState();
+        await renderBookFinisherHelper();
+      });
+    }
+
+    const finisherTargetDate = document.getElementById("finisherTargetDate");
+    if (finisherTargetDate) {
+      finisherTargetDate.addEventListener("change", async (event) => {
+        const helper = getOrInitBooksHelperState();
+        helper.targetDate = String(event.target.value || "");
+        saveState();
+        await renderBookFinisherHelper();
+      });
+    }
+
+    const finisherStartPage = document.getElementById("finisherStartPage");
+    if (finisherStartPage) {
+      finisherStartPage.addEventListener("change", async (event) => {
+        const helper = getOrInitBooksHelperState();
+        const next = parseInt(event.target.value, 10);
+        helper.startPage = Number.isFinite(next) && next >= 1 ? next : 1;
+        saveState();
+        await renderBookFinisherHelper();
+      });
+    }
+
+    const finisherTotalPages = document.getElementById("finisherTotalPages");
+    if (finisherTotalPages) {
+      finisherTotalPages.addEventListener("change", async (event) => {
+        const book = getSelectedFinisherBook();
+        if (!book) return;
+        const next = parseInt(event.target.value, 10);
+        book.totalPagesOverride =
+          Number.isFinite(next) && next >= 1 ? next : null;
+        book.updatedAt = nowIso();
+        saveState();
+        await renderBookFinisherHelper();
+      });
+    }
+
+    const finisherUseAutoPagesBtn = document.getElementById(
+      "finisherUseAutoPagesBtn",
+    );
+    if (finisherUseAutoPagesBtn) {
+      finisherUseAutoPagesBtn.addEventListener("click", async () => {
+        const book = getSelectedFinisherBook();
+        if (!book) return;
+        book.totalPagesOverride = null;
+        book.updatedAt = nowIso();
+        saveState();
+        await renderBookFinisherHelper();
+      });
+    }
+
+    document.querySelectorAll("[data-finisher-weekday]").forEach((checkbox) => {
+      checkbox.addEventListener("change", async () => {
+        const helper = getOrInitBooksHelperState();
+        helper.weekdays = Array.from(
+          document.querySelectorAll("[data-finisher-weekday]"),
+        )
+          .filter((node) => node instanceof HTMLInputElement && node.checked)
+          .map((node) => parseInt(node.dataset.finisherWeekday, 10))
+          .filter(
+            (value) => Number.isInteger(value) && value >= 0 && value <= 6,
+          )
+          .sort((a, b) => a - b);
+        saveState();
+        await renderBookFinisherHelper();
+      });
+    });
+
+    const finisherRecalculateBtn = document.getElementById(
+      "finisherRecalculateBtn",
+    );
+    if (finisherRecalculateBtn) {
+      finisherRecalculateBtn.addEventListener("click", async () => {
+        await renderBookFinisherHelper();
+      });
+    }
 
     window.addEventListener("error", (event) => {
       appendLogEntry({
