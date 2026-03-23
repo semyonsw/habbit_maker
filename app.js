@@ -133,6 +133,12 @@
   let booksBlobStatus = {};
   let topClockTimer = null;
   let lastAutoScrolledMonthKey = null;
+  let linkedHoverState = {
+    day: null,
+    week: null,
+    scope: null,
+    source: null,
+  };
   let secureSettings = {
     keyCiphertext: null,
     saltBase64: null,
@@ -1997,6 +2003,288 @@
     });
   }
 
+  function clearLinkedHoverHighlights() {
+    document
+      .querySelectorAll(
+        ".week-card.linked-week-active, .week-mini-bar.linked-capsule-active, th.day-col.linked-day-active, th.day-col.linked-week-active, td.day-cell.linked-day-active, td.day-cell.linked-week-active",
+      )
+      .forEach((element) => {
+        element.classList.remove(
+          "linked-week-active",
+          "linked-capsule-active",
+          "linked-day-active",
+        );
+      });
+  }
+
+  function ensureLinkedHoverTooltip() {
+    let tooltip = document.getElementById("linkedHoverTooltip");
+    if (tooltip) return tooltip;
+    tooltip = document.createElement("div");
+    tooltip.id = "linkedHoverTooltip";
+    tooltip.className = "linked-hover-tooltip";
+    tooltip.setAttribute("role", "status");
+    tooltip.setAttribute("aria-live", "polite");
+    document.body.appendChild(tooltip);
+    return tooltip;
+  }
+
+  function hideLinkedHoverTooltip() {
+    const tooltip = document.getElementById("linkedHoverTooltip");
+    if (!tooltip) return;
+    tooltip.classList.remove("visible");
+  }
+
+  function showLinkedHoverTooltip(text, point) {
+    if (!text || !point) return;
+    const tooltip = ensureLinkedHoverTooltip();
+    tooltip.textContent = text;
+    tooltip.style.left = `${Math.round(point.x)}px`;
+    tooltip.style.top = `${Math.round(point.y)}px`;
+    tooltip.classList.add("visible");
+  }
+
+  function updateLinkedHoverTooltipPositionFromMouse(event) {
+    const tooltip = document.getElementById("linkedHoverTooltip");
+    if (!tooltip || !tooltip.classList.contains("visible")) return;
+    tooltip.style.left = `${Math.round(event.clientX + 16)}px`;
+    tooltip.style.top = `${Math.round(event.clientY - 28)}px`;
+  }
+
+  function weekRangeFromIndex(week, totalDays) {
+    const maxWeek = Math.max(1, Math.min(5, Math.ceil(totalDays / 7)));
+    const normalizedWeek = Math.min(maxWeek, Math.max(1, week));
+    const start = (normalizedWeek - 1) * 7 + 1;
+    const end = Math.min(normalizedWeek * 7, totalDays);
+    return { week: normalizedWeek, start, end };
+  }
+
+  function weekFromDay(day, totalDays) {
+    if (!Number.isFinite(day) || day < 1 || day > totalDays) return null;
+    return weekRangeFromIndex(Math.ceil(day / 7), totalDays).week;
+  }
+
+  function activateLinkedDay(day, options = {}) {
+    const totalDays = daysInMonth(state.currentYear, state.currentMonth);
+    const normalizedDay = parseInt(day, 10);
+    if (!Number.isFinite(normalizedDay) || normalizedDay < 1) return;
+    if (normalizedDay > totalDays) return;
+
+    const week = weekFromDay(normalizedDay, totalDays);
+    if (!week) return;
+
+    clearLinkedHoverHighlights();
+
+    const weekCard = document.querySelector(`.week-card[data-week='${week}']`);
+    if (weekCard) {
+      weekCard.classList.add("linked-week-active");
+    }
+
+    const weekCapsule = document.querySelector(
+      `.week-mini-bar[data-day='${normalizedDay}']`,
+    );
+    if (weekCapsule) {
+      weekCapsule.classList.add("linked-capsule-active");
+    }
+
+    document
+      .querySelectorAll(`th.day-col[data-day='${normalizedDay}']`)
+      .forEach((header) => header.classList.add("linked-day-active"));
+
+    document
+      .querySelectorAll(`td.day-cell[data-day='${normalizedDay}']`)
+      .forEach((cell) => cell.classList.add("linked-day-active"));
+
+    linkedHoverState = {
+      day: normalizedDay,
+      week,
+      scope: "day",
+      source: options.source || "unknown",
+    };
+
+    if (options.event && options.event.clientX && options.event.clientY) {
+      showLinkedHoverTooltip(`Week ${week} • Day ${normalizedDay}`, {
+        x: options.event.clientX + 16,
+        y: options.event.clientY - 28,
+      });
+    } else if (options.anchorElement) {
+      const rect = options.anchorElement.getBoundingClientRect();
+      showLinkedHoverTooltip(`Week ${week} • Day ${normalizedDay}`, {
+        x: rect.left + rect.width / 2,
+        y: rect.top - 12,
+      });
+    }
+  }
+
+  function activateLinkedWeek(week, options = {}) {
+    const totalDays = daysInMonth(state.currentYear, state.currentMonth);
+    const parsedWeek = parseInt(week, 10);
+    if (!Number.isFinite(parsedWeek) || parsedWeek < 1) return;
+
+    const range = weekRangeFromIndex(parsedWeek, totalDays);
+    clearLinkedHoverHighlights();
+
+    const weekCard = document.querySelector(
+      `.week-card[data-week='${range.week}']`,
+    );
+    if (weekCard) {
+      weekCard.classList.add("linked-week-active");
+    }
+
+    for (let day = range.start; day <= range.end; day++) {
+      document
+        .querySelectorAll(`th.day-col[data-day='${day}']`)
+        .forEach((header) => header.classList.add("linked-week-active"));
+
+      document
+        .querySelectorAll(`td.day-cell[data-day='${day}']`)
+        .forEach((cell) => cell.classList.add("linked-week-active"));
+    }
+
+    linkedHoverState = {
+      day: null,
+      week: range.week,
+      scope: "week",
+      source: options.source || "unknown",
+    };
+
+    if (options.event && options.event.clientX && options.event.clientY) {
+      showLinkedHoverTooltip(
+        `Week ${range.week} • Days ${range.start}-${range.end}`,
+        { x: options.event.clientX + 16, y: options.event.clientY - 28 },
+      );
+    } else if (options.anchorElement) {
+      const rect = options.anchorElement.getBoundingClientRect();
+      showLinkedHoverTooltip(
+        `Week ${range.week} • Days ${range.start}-${range.end}`,
+        { x: rect.left + rect.width / 2, y: rect.top - 12 },
+      );
+    }
+  }
+
+  function clearLinkedHoverState() {
+    linkedHoverState = {
+      day: null,
+      week: null,
+      scope: null,
+      source: null,
+    };
+    clearLinkedHoverHighlights();
+    hideLinkedHoverTooltip();
+  }
+
+  function bindWeeklySummaryHoverInteractions(container) {
+    if (!container || container.dataset.linkedHoverBound === "true") return;
+
+    container.addEventListener("mouseover", (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+
+      const capsule = target.closest(".week-mini-bar[data-day]");
+      if (capsule) {
+        activateLinkedDay(parseInt(capsule.dataset.day, 10), {
+          source: "weekly",
+          event,
+        });
+        return;
+      }
+
+      const card = target.closest(".week-card[data-week]");
+      if (!card) return;
+      activateLinkedWeek(parseInt(card.dataset.week, 10), {
+        source: "weekly",
+        event,
+      });
+    });
+
+    container.addEventListener("mousemove", (event) => {
+      updateLinkedHoverTooltipPositionFromMouse(event);
+    });
+
+    container.addEventListener("mouseleave", () => {
+      if (linkedHoverState.source !== "weekly") return;
+      clearLinkedHoverState();
+    });
+
+    container.addEventListener("focusin", (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+
+      const capsule = target.closest(".week-mini-bar[data-day]");
+      if (capsule) {
+        activateLinkedDay(parseInt(capsule.dataset.day, 10), {
+          source: "weekly",
+          anchorElement: capsule,
+        });
+        return;
+      }
+
+      const card = target.closest(".week-card[data-week]");
+      if (!card) return;
+      activateLinkedWeek(parseInt(card.dataset.week, 10), {
+        source: "weekly",
+        anchorElement: card,
+      });
+    });
+
+    container.addEventListener("focusout", (event) => {
+      const next = event.relatedTarget;
+      if (next instanceof Node && container.contains(next)) return;
+      if (linkedHoverState.source !== "weekly") return;
+      clearLinkedHoverState();
+    });
+
+    container.dataset.linkedHoverBound = "true";
+  }
+
+  function bindDailyGridHoverInteractions(grid) {
+    if (!grid || grid.dataset.linkedHoverBound === "true") return;
+
+    grid.addEventListener("mouseover", (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const dayHost = target.closest(
+        "th.day-col[data-day], td.day-cell[data-day]",
+      );
+      if (!dayHost) return;
+      activateLinkedDay(parseInt(dayHost.dataset.day, 10), {
+        source: "grid",
+        event,
+      });
+    });
+
+    grid.addEventListener("mousemove", (event) => {
+      updateLinkedHoverTooltipPositionFromMouse(event);
+    });
+
+    grid.addEventListener("mouseleave", () => {
+      if (linkedHoverState.source !== "grid") return;
+      clearLinkedHoverState();
+    });
+
+    grid.addEventListener("focusin", (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const dayHost = target.closest(
+        "th.day-col[data-day], td.day-cell[data-day]",
+      );
+      if (!dayHost) return;
+      activateLinkedDay(parseInt(dayHost.dataset.day, 10), {
+        source: "grid",
+        anchorElement: dayHost,
+      });
+    });
+
+    grid.addEventListener("focusout", (event) => {
+      const next = event.relatedTarget;
+      if (next instanceof Node && grid.contains(next)) return;
+      if (linkedHoverState.source !== "grid") return;
+      clearLinkedHoverState();
+    });
+
+    grid.dataset.linkedHoverBound = "true";
+  }
+
   function renderWeeklySummaryCards() {
     const container = document.getElementById("weeklySummaryCards");
     if (!container) return;
@@ -2053,14 +2341,15 @@
       const bars = dayCompletionRates
         .map(
           (value, idx) =>
-            `<span class="week-mini-bar" style="--bar-pct:${value};--bar-fill-color:${getValueColor(value, 100, 0.9)};--bar-border-color:${getValueColor(value, 100, 0.42)}" title="Day ${start + idx}: ${value}%"></span>`,
+            `<span class="week-mini-bar" style="--bar-pct:${value};--bar-fill-color:${getValueColor(value, 100, 0.9)};--bar-border-color:${getValueColor(value, 100, 0.42)}" title="Day ${start + idx}: ${value}%" data-day="${start + idx}" data-week="${week}" tabindex="0" aria-label="Week ${week} day ${start + idx} completion ${value}%"></span>`,
         )
         .join("");
 
-      html += `<div class="week-card" style="--week-accent:${weekAccent}"><div class="week-card-top"><span class="week-card-title">Week ${week}</span><span class="week-range">${start}-${end}</span></div><div class="week-ring" style="--week-pct:${pct};--week-color:${weekColor};--week-shadow:${weekShadowColor}" aria-label="Week ${week} completion ${pct}%"><span class="week-pct">${pct}%</span></div><div class="week-meta">${done}/${possible} tasks</div><div class="week-mini-bars" aria-hidden="true">${bars}</div></div>`;
+      html += `<div class="week-card" style="--week-accent:${weekAccent}" data-week="${week}" tabindex="0"><div class="week-card-top"><span class="week-card-title">Week ${week}</span><span class="week-range">${start}-${end}</span></div><div class="week-ring" style="--week-pct:${pct};--week-color:${weekColor};--week-shadow:${weekShadowColor}" aria-label="Week ${week} completion ${pct}%"><span class="week-pct">${pct}%</span></div><div class="week-meta">${done}/${possible} tasks</div><div class="week-mini-bars">${bars}</div></div>`;
     }
 
     container.innerHTML = html;
+    bindWeeklySummaryHoverInteractions(container);
   }
 
   function renderDailyBarChart() {
@@ -2960,7 +3249,7 @@
         day,
       );
       const weekShadeColor = getWeekShadeColor(isoWeek);
-      html += `<th class='day-col ${isToday ? "today" : ""} ${isComplete ? "day-complete" : ""}' style='--week-accent:${weekShadeColor}' data-day='${day}'><span class='day-col-week'>W${isoWeek}</span><span class='day-col-day'>${day}</span></th>`;
+      html += `<th class='day-col ${isToday ? "today" : ""} ${isComplete ? "day-complete" : ""}' style='--week-accent:${weekShadeColor}' data-day='${day}' tabindex='0'><span class='day-col-week'>W${isoWeek}</span><span class='day-col-day'>${day}</span></th>`;
     }
     html += "</tr></thead><tbody>";
 
@@ -3055,6 +3344,8 @@
         openNoteModal(this.dataset.habit, parseInt(this.dataset.day, 10));
       });
     });
+
+    bindDailyGridHoverInteractions(grid);
 
     habits.forEach((h) => updateHabitStreak(h.id));
   }
@@ -5494,6 +5785,7 @@
   }
 
   function renderAll() {
+    clearLinkedHoverState();
     renderMonthHeader();
     renderSummary();
     renderWeeklySummaryCards();

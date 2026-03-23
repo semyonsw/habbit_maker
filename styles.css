@@ -514,6 +514,29 @@ body {
   flex-direction: column;
   align-items: stretch;
   gap: 10px;
+  transition:
+    transform var(--transition),
+    box-shadow var(--transition),
+    border-color var(--transition);
+}
+
+.week-card:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px rgba(123, 199, 236, 0.5),
+    0 0 20px rgba(88, 165, 209, 0.35),
+    var(--shadow-md);
+}
+
+.week-card.linked-week-active {
+  transform: translateY(-2px);
+  border-color: var(--week-accent, rgba(125, 180, 255, 0.8));
+  box-shadow:
+    0 0 0 1px var(--week-accent, rgba(125, 180, 255, 0.72)),
+    0 0 20px color-mix(in srgb, var(--week-accent, #7bc7ec) 55%, transparent),
+    0 0 30px rgba(88, 165, 209, 0.22),
+    var(--shadow-md);
+  animation: linkedPulse 1.3s ease-in-out infinite;
 }
 
 .week-card-title {
@@ -603,6 +626,26 @@ body {
   border: 1px solid var(--bar-border-color);
   background: rgba(18, 33, 57, 0.85);
   overflow: hidden;
+  transition:
+    transform var(--transition),
+    box-shadow var(--transition),
+    border-color var(--transition);
+}
+
+.week-mini-bar:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px rgba(123, 199, 236, 0.45),
+    0 0 12px rgba(88, 165, 209, 0.35);
+}
+
+.week-mini-bar.linked-capsule-active {
+  transform: translateY(-2px);
+  border-color: rgba(123, 199, 236, 0.95);
+  box-shadow:
+    0 0 0 1px rgba(123, 199, 236, 0.85),
+    0 0 16px rgba(88, 165, 209, 0.45),
+    0 0 24px rgba(88, 165, 209, 0.3);
 }
 
 .week-mini-bar::after {
@@ -897,6 +940,7 @@ body {
   font-size: 0.75rem;
   font-weight: 600;
   line-height: 1;
+  position: relative;
 }
 
 .habits-grid th.day-col.today {
@@ -1087,6 +1131,65 @@ body {
   background: rgba(22, 163, 74, 0.24);
 }
 
+.habits-grid th.day-col:focus-visible {
+  outline: none;
+  box-shadow:
+    inset 0 0 0 1px rgba(123, 199, 236, 0.7),
+    0 0 0 2px rgba(88, 165, 209, 0.25);
+}
+
+.habits-grid th.day-col.linked-day-active {
+  background: color-mix(in srgb, var(--week-accent, #7bc7ec) 42%, #0f1f39 58%);
+  color: #ecf7ff;
+  box-shadow:
+    inset 0 -1px 0 rgba(196, 232, 255, 0.65),
+    0 0 12px color-mix(in srgb, var(--week-accent, #7bc7ec) 56%, transparent),
+    0 0 24px rgba(88, 165, 209, 0.24);
+}
+
+.habits-grid th.day-col.linked-week-active {
+  background: color-mix(in srgb, var(--week-accent, #7bc7ec) 24%, #102340 76%);
+  box-shadow:
+    inset 0 -1px 0 rgba(196, 232, 255, 0.35),
+    0 0 10px rgba(88, 165, 209, 0.2);
+}
+
+.habits-grid th.day-col.linked-day-active .day-col-day::after {
+  content: "";
+  position: absolute;
+  left: -3px;
+  right: -3px;
+  bottom: -5px;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(123, 199, 236, 0.95) 35%,
+    rgba(123, 199, 236, 0.95) 65%,
+    transparent 100%
+  );
+  box-shadow: 0 0 12px rgba(88, 165, 209, 0.65);
+  animation: linkedConnectorSweep 0.95s ease-out;
+}
+
+.habits-grid td.day-cell.linked-day-active {
+  background: rgba(88, 165, 209, 0.2);
+  box-shadow:
+    inset 0 0 0 1px rgba(123, 199, 236, 0.35),
+    inset 0 10px 16px rgba(88, 165, 209, 0.1);
+}
+
+.habits-grid td.day-cell.linked-day-active .day-cell-content {
+  background: rgba(88, 165, 209, 0.24);
+  border-radius: 8px;
+}
+
+.habits-grid td.day-cell.linked-week-active {
+  background: rgba(88, 165, 209, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(88, 165, 209, 0.18);
+}
+
 .habits-grid tr.completion-row td {
   background: var(--purple-50);
   font-weight: 600;
@@ -1214,6 +1317,70 @@ body {
 .habit-check.today-check:checked {
   background: linear-gradient(135deg, #3e85b5, #58a5d1);
   border-color: #58a5d1;
+}
+
+.linked-hover-tooltip {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 120;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(4px) scale(0.98);
+  transition:
+    opacity var(--transition),
+    transform var(--transition);
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(10, 26, 47, 0.92);
+  border: 1px solid rgba(123, 199, 236, 0.45);
+  box-shadow:
+    0 0 0 1px rgba(123, 199, 236, 0.15),
+    0 0 12px rgba(88, 165, 209, 0.25);
+  color: #dff3ff;
+  font-size: 0.68rem;
+  letter-spacing: 0.35px;
+  white-space: nowrap;
+}
+
+.linked-hover-tooltip.visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+@keyframes linkedPulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 1px var(--week-accent, rgba(125, 180, 255, 0.72)),
+      0 0 16px color-mix(in srgb, var(--week-accent, #7bc7ec) 50%, transparent),
+      0 0 24px rgba(88, 165, 209, 0.2),
+      var(--shadow-md);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px var(--week-accent, rgba(125, 180, 255, 0.9)),
+      0 0 22px color-mix(in srgb, var(--week-accent, #7bc7ec) 65%, transparent),
+      0 0 30px rgba(88, 165, 209, 0.28),
+      var(--shadow-md);
+  }
+}
+
+@keyframes linkedConnectorSweep {
+  0% {
+    opacity: 0;
+    transform: scaleX(0.4);
+  }
+  100% {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+}
+
+@media (max-width: 860px) {
+  .linked-hover-tooltip {
+    display: none;
+  }
 }
 
 @keyframes checkPop {
