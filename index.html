@@ -150,6 +150,10 @@
             </svg>
             <span>Export</span>
           </button>
+          <label class="export-option" for="exportIncludePdfs">
+            <input type="checkbox" id="exportIncludePdfs" />
+            <span>Include PDFs in export</span>
+          </label>
           <button class="btn-import" id="btnImport" title="Import Data">
             <svg
               width="18"
@@ -165,6 +169,7 @@
             </svg>
             <span>Import</span>
           </button>
+          <p class="backup-status" id="backupStatus" aria-live="polite"></p>
           <input
             type="file"
             id="importFile"
@@ -252,98 +257,6 @@
               <table class="habits-grid" id="dailyHabitsGrid"></table>
             </div>
           </div>
-          <div class="charts-row">
-            <div class="chart-card">
-              <h3>Daily Habit Count</h3>
-              <canvas id="dailyBarChart"></canvas>
-            </div>
-            <div class="chart-card">
-              <h3>Habit Count by Category</h3>
-              <canvas id="categoryBarChart"></canvas>
-            </div>
-          </div>
-
-          <div class="analytics-mode-row">
-            <div class="analytics-mode-card">
-              <h3>Analytics Mode</h3>
-              <div class="analytics-mode-controls">
-                <label for="analyticsDisplayModeDashboard"
-                  >Show values as</label
-                >
-                <select id="analyticsDisplayModeDashboard">
-                  <option value="percent">Percentages</option>
-                  <option value="raw">Raw counts</option>
-                </select>
-              </div>
-            </div>
-          </div>
-
-          <div class="charts-row charts-row-analytics">
-            <div class="chart-card">
-              <h3>Weekly Completion Trend</h3>
-              <canvas id="weeklyTrendChart"></canvas>
-            </div>
-            <div class="chart-card">
-              <h3>Weekly Heatmap</h3>
-              <div class="weekly-heatmap" id="weeklyHeatmap"></div>
-            </div>
-          </div>
-
-          <div class="charts-row charts-row-analytics">
-            <div class="chart-card">
-              <h3>Weekly Category Stacks</h3>
-              <canvas id="weeklyCategoryStackedChart"></canvas>
-            </div>
-            <div class="chart-card">
-              <h3>Monthly Streak Leaderboard</h3>
-              <canvas id="monthlyStreakChart"></canvas>
-            </div>
-          </div>
-
-          <div class="charts-row charts-row-analytics">
-            <div class="chart-card">
-              <h3>Monthly Trend (12 Months)</h3>
-              <canvas id="monthlyTrendChart"></canvas>
-            </div>
-            <div class="chart-card">
-              <h3>Category Performance Over Time</h3>
-              <canvas id="monthlyCategoryTrendChart"></canvas>
-            </div>
-          </div>
-          <div class="monthly-review-card">
-            <div class="monthly-review-header">
-              <h3>Monthly Review</h3>
-              <button class="btn-primary" id="monthlyReviewSave" type="button">
-                Save Review
-              </button>
-            </div>
-            <div class="monthly-review-grid">
-              <div class="form-group">
-                <label for="monthlyWins">Wins</label>
-                <textarea
-                  id="monthlyWins"
-                  rows="3"
-                  placeholder="What went well this month?"
-                ></textarea>
-              </div>
-              <div class="form-group">
-                <label for="monthlyBlockers">Blockers</label>
-                <textarea
-                  id="monthlyBlockers"
-                  rows="3"
-                  placeholder="What got in your way?"
-                ></textarea>
-              </div>
-              <div class="form-group">
-                <label for="monthlyFocus">Focus for next month</label>
-                <textarea
-                  id="monthlyFocus"
-                  rows="3"
-                  placeholder="Where will you focus next?"
-                ></textarea>
-              </div>
-            </div>
-          </div>
         </section>
         <section class="view" id="view-books">
           <div class="books-header">
@@ -392,7 +305,7 @@
                 <p class="books-upload-status" id="bookUploadStatus">
                   No file uploaded yet.
                 </p>
-                <p class="books-help-text">Maximum PDF size: 40MB.</p>
+                <p class="books-help-text">Maximum PDF size: 70MB.</p>
                 <div class="books-ai-settings">
                   <h4>Summary AI Settings</h4>
                   <div class="form-group">
@@ -622,6 +535,17 @@
             </div>
           </div>
 
+          <div class="charts-row">
+            <div class="chart-card">
+              <h3>Daily Habit Count</h3>
+              <canvas id="dailyBarChart"></canvas>
+            </div>
+            <div class="chart-card">
+              <h3>Habit Count by Category</h3>
+              <canvas id="categoryBarChart"></canvas>
+            </div>
+          </div>
+
           <div class="charts-row charts-row-analytics">
             <div class="chart-card">
               <h3>Weekly Completion Trend</h3>
@@ -655,6 +579,41 @@
             <div class="chart-card">
               <h3>Category Performance Over Time</h3>
               <canvas id="analyticsMonthlyCategoryTrendChart"></canvas>
+            </div>
+          </div>
+
+          <div class="monthly-review-card">
+            <div class="monthly-review-header">
+              <h3>Monthly Review</h3>
+              <button class="btn-primary" id="monthlyReviewSave" type="button">
+                Save Review
+              </button>
+            </div>
+            <div class="monthly-review-grid">
+              <div class="form-group">
+                <label for="monthlyWins">Wins</label>
+                <textarea
+                  id="monthlyWins"
+                  rows="3"
+                  placeholder="What went well this month?"
+                ></textarea>
+              </div>
+              <div class="form-group">
+                <label for="monthlyBlockers">Blockers</label>
+                <textarea
+                  id="monthlyBlockers"
+                  rows="3"
+                  placeholder="What got in your way?"
+                ></textarea>
+              </div>
+              <div class="form-group">
+                <label for="monthlyFocus">Focus for next month</label>
+                <textarea
+                  id="monthlyFocus"
+                  rows="3"
+                  placeholder="Where will you focus next?"
+                ></textarea>
+              </div>
             </div>
           </div>
         </section>

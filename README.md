@@ -51,12 +51,12 @@ Who it is for:
 - Daily habit grid for the current month.
 - Categories with custom name, emoji, and color.
 - Weekly summary cards and monthly totals.
-- Notes for wins, blockers, and focus.
+- Monthly review notes for wins, blockers, and focus.
 - Dashboard and analytics charts.
 
 ### Books and PDF Workspace
 
-- Upload PDF files up to 40 MB each.
+- Upload PDF files up to 70 MB each.
 - Create bookmarks with page number and note text.
 - Open bookmarked pages in Reader Mode.
 - Page navigation and direct page jump.
@@ -115,18 +115,18 @@ http://localhost:8080
 4. Set monthly goals where needed.
 5. Return to Dashboard to see the month grid populated.
 
-### Tutorial 2: Track Daily Progress and Review Weekly Results
+### Tutorial 2: Track Daily Progress and Review Results
 
 1. Open Dashboard.
 2. Tick habit cells for each completed day.
 3. Watch summary cards update automatically.
-4. Add weekly review notes: wins, blockers, and focus.
-5. Open Analytics to compare category performance.
+4. Open Analytics and add monthly review notes: wins, blockers, and focus.
+5. Compare category performance in Analytics charts.
 
 ### Tutorial 3: Add a Book and Build Smart Bookmarks
 
 1. Open Books.
-2. Upload a PDF file (must be valid PDF, max 40 MB).
+2. Upload a PDF file (must be valid PDF, max 70 MB).
 3. Add bookmarks with real page numbers and concise notes.
 4. Open a bookmark in Reader Mode.
 5. Use page jump and dark mode when reading long documents.
@@ -145,10 +145,11 @@ Note: AI summary requires internet access and a valid Gemini key.
 ### Tutorial 5: Export and Import Your Data
 
 1. Use Export in the sidebar to save your current app state.
-2. Use Import to restore a saved JSON state.
-3. Re-upload PDF files after import on a different browser/device.
+2. Leave Include PDFs unchecked for a lightweight metadata backup.
+3. Enable Include PDFs when you need a full backup that can restore book binaries too.
+4. Use Import to restore a saved JSON backup.
 
-Reason: JSON export/import includes app metadata and state, while PDF binaries are stored separately in IndexedDB.
+Reason: metadata-only export stays smaller, while full export embeds PDF binaries from IndexedDB into JSON.
 
 ## Storage, Privacy, and Limits (EN)
 
@@ -167,7 +168,7 @@ Reason: JSON export/import includes app metadata and state, while PDF binaries a
 
 ### Implemented limits
 
-- Max PDF file size: `40 * 1024 * 1024` bytes (40 MB).
+- Max PDF file size: `70 * 1024 * 1024` bytes (70 MB).
 - Max bookmark history events: 200.
 - Max retained log records: 1000.
 
@@ -188,7 +189,7 @@ The repository includes auto-sync.sh for periodic git add/commit/push.
 ### PDF upload fails
 
 - Confirm file extension and MIME are PDF.
-- Confirm file size is not above 40 MB.
+- Confirm file size is not above 70 MB.
 - Confirm browser supports IndexedDB.
 
 ### Charts do not render
@@ -273,7 +274,7 @@ http://localhost:8080
 
 ### PDF և bookmark flow
 
-1. Books բաժնում upload արա PDF (մինչև 40MB)։
+1. Books բաժնում upload արա PDF (մինչև 70MB)։
 2. Ավելացրու bookmark՝ էջի համարով և կարճ note-ով։
 3. Բացիր Reader Mode և աշխատիր էջերի navigation-ով։
 4. Անհրաժեշտության դեպքում միացրու dark mode (full/text)։
@@ -287,14 +288,16 @@ http://localhost:8080
 
 ### Export / Import
 
-1. Export-ով պահիր քո state-ը JSON ֆայլում։
-2. Import-ով վերականգնիր state-ը։
-3. Այլ սարքում կամ բրաուզերում import-ից հետո նորից upload արա PDF-ները։
+1. Export-ով պահիր state-ը JSON ֆայլում։
+2. Եթե ուզում ես փոքր backup, պահիր Include PDFs ընտրանքը անջատված։
+3. Եթե պետք է ամբողջական backup, միացրու Include PDFs, որպեսզի PDF-ներն էլ ներառվեն։
+4. Import-ով վերականգնիր backup-ը։
 
 ## Project Structure
 
 ```text
 habbit_maker/
+|- .editorconfig
 |- app.js
 |- index.html
 |- styles.css
@@ -303,6 +306,7 @@ habbit_maker/
 |- CONTRIBUTING.md
 |- CODE_OF_CONDUCT.md
 |- SECURITY.md
+|- exported-data/
 `- LICENSE
 ```
 

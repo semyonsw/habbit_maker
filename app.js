@@ -24,7 +24,9 @@
     "December",
   ];
 
-  const MAX_PDF_FILE_SIZE_BYTES = 40 * 1024 * 1024;
+  const MAX_PDF_FILE_SIZE_MB = 70;
+  const MAX_PDF_FILE_SIZE_BYTES = MAX_PDF_FILE_SIZE_MB * 1024 * 1024;
+  const EMBEDDED_EXPORT_SIZE_WARN_BYTES = 50 * 1024 * 1024;
   const MAX_BOOKMARK_HISTORY = 200;
   const PDF_DB_NAME = "habitTracker_books_pdf_v1";
   const PDF_DB_VERSION = 1;
@@ -297,7 +299,7 @@
   }
 
   function syncAnalyticsModeControls() {
-    ["analyticsDisplayModeDashboard", "analyticsDisplayModeAnalytics"]
+    ["analyticsDisplayModeAnalytics"]
       .map((id) => document.getElementById(id))
       .filter(Boolean)
       .forEach((control) => {
@@ -309,7 +311,6 @@
     analyticsState.displayMode = mode === "raw" ? "raw" : "percent";
     persistAnalyticsPreferences();
     syncAnalyticsModeControls();
-    renderDashboardAnalytics();
     renderAnalyticsView();
   }
 
@@ -354,6 +355,15 @@
       out[i] = raw.charCodeAt(i);
     }
     return out;
+  }
+
+  function formatByteSize(bytes) {
+    const normalized = Number.isFinite(Number(bytes)) ? Number(bytes) : 0;
+    if (normalized < 1024) return `${Math.max(0, Math.round(normalized))} B`;
+    if (normalized < 1024 * 1024) {
+      return `${(normalized / 1024).toFixed(1)} KB`;
+    }
+    return `${(normalized / (1024 * 1024)).toFixed(1)} MB`;
   }
 
   function bytesFromString(input) {
@@ -2782,35 +2792,6 @@
     container.innerHTML = html;
   }
 
-  function renderDashboardAnalytics() {
-    syncAnalyticsModeControls();
-    const weeklyData = buildWeeklyAnalytics(
-      state.currentYear,
-      state.currentMonth,
-    );
-    const timeline = buildMonthlyTimeline(12);
-    const streakRows = getMonthStreakLeaderboard(10);
-
-    renderWeeklyTrendChart("weeklyTrendChart", "weeklyTrendChart", weeklyData);
-    renderWeeklyCategoryStackedChart(
-      "weeklyCategoryStackedChart",
-      "weeklyCategoryStackedChart",
-      weeklyData,
-    );
-    renderMonthlyTrendChart("monthlyTrendChart", "monthlyTrendChart", timeline);
-    renderMonthlyStreakChart(
-      "monthlyStreakChart",
-      "monthlyStreakChart",
-      streakRows,
-    );
-    renderMonthlyCategoryTrendChart(
-      "monthlyCategoryTrendChart",
-      "monthlyCategoryTrendChart",
-      timeline,
-    );
-    renderWeeklyHeatmap("weeklyHeatmap", weeklyData);
-  }
-
   function renderAnalyticsView() {
     syncAnalyticsModeControls();
     const weeklyData = buildWeeklyAnalytics(
@@ -2820,6 +2801,8 @@
     const timeline = buildMonthlyTimeline(12);
     const streakRows = getMonthStreakLeaderboard(14);
 
+    renderDailyBarChart();
+    renderCategoryBarChart();
     renderWeeklyTrendChart(
       "analyticsWeeklyTrendChart",
       "analyticsWeeklyTrendChart",
@@ -2846,6 +2829,7 @@
       timeline,
     );
     renderWeeklyHeatmap("analyticsWeeklyHeatmap", weeklyData);
+    renderMonthlyReview();
   }
 
   function updateHabitStreak(habitId) {
@@ -3059,9 +3043,6 @@
         saveState();
         renderSummary();
         renderWeeklySummaryCards();
-        renderDailyBarChart();
-        renderCategoryBarChart();
-        renderDashboardAnalytics();
         renderAnalyticsView();
         updateHabitStreak(habitId);
 
@@ -4997,8 +4978,13 @@
       return;
     }
     if (file.size > MAX_PDF_FILE_SIZE_BYTES) {
-      setBookUploadStatus("File is too large. Maximum size is 40MB.", "error");
-      alert("PDF file is too large. Maximum size is 40MB.");
+      setBookUploadStatus(
+        `File is too large. Maximum size is ${MAX_PDF_FILE_SIZE_MB}MB.`,
+        "error",
+      );
+      alert(
+        `PDF file is too large. Maximum size is ${MAX_PDF_FILE_SIZE_MB}MB.`,
+      );
       return;
     }
 
@@ -5511,11 +5497,7 @@
     renderMonthHeader();
     renderSummary();
     renderWeeklySummaryCards();
-    renderDailyBarChart();
-    renderCategoryBarChart();
-    renderDashboardAnalytics();
     renderDailyHabitsGrid();
-    renderMonthlyReview();
     renderManageView();
 
     if (
@@ -5525,20 +5507,172 @@
     }
   }
 
-  function exportData() {
-    alert(
-      "Export note: JSON backup includes habits + books metadata only. PDF binaries stored in IndexedDB are not embedded.",
+  function setBackupStatus(text, tone) {
+    const statusEl = document.getElementById("backupStatus");
+    if (!statusEl) return;
+    statusEl.textContent = String(text || "");
+    statusEl.classList.remove("pending", "success", "warn", "error");
+    if (["pending", "success", "warn", "error"].includes(String(tone))) {
+      statusEl.classList.add(String(tone));
+    }
+  }
+
+  function shouldExportIncludePdfs() {
+    const checkbox = document.getElementById("exportIncludePdfs");
+    return !!(checkbox && checkbox.checked);
+  }
+
+  async function collectEmbeddedPdfPayload() {
+    const pdfBlobs = {};
+    const books =
+      isPlainObject(state.books) && Array.isArray(state.books.items)
+        ? state.books.items
+        : [];
+    let embeddedCount = 0;
+    let missingCount = 0;
+    let failedCount = 0;
+    let totalBytes = 0;
+
+    for (const book of books) {
+      if (!isPlainObject(book) || typeof book.fileId !== "string") continue;
+      const fileId = book.fileId.trim();
+      if (!fileId) continue;
+
+      try {
+        const blob = await idbGetPdfBlob(fileId);
+        if (!blob) {
+          missingCount += 1;
+          continue;
+        }
+
+        const buffer = await blob.arrayBuffer();
+        const bytes = new Uint8Array(buffer);
+        pdfBlobs[fileId] = toBase64(bytes);
+        embeddedCount += 1;
+        totalBytes += Number.isFinite(Number(blob.size))
+          ? Number(blob.size)
+          : bytes.length;
+      } catch (error) {
+        failedCount += 1;
+        appendLogEntry({
+          level: "warn",
+          component: "backup",
+          operation: "collectEmbeddedPdfPayload",
+          message: "Skipping PDF while building export payload.",
+          error,
+          context: { fileId },
+        });
+      }
+    }
+
+    return { pdfBlobs, embeddedCount, missingCount, failedCount, totalBytes };
+  }
+
+  async function restoreEmbeddedPdfPayload(pdfBlobs) {
+    if (!isPlainObject(pdfBlobs)) {
+      return { restoredCount: 0, failedCount: 0 };
+    }
+
+    let restoredCount = 0;
+    let failedCount = 0;
+
+    for (const [fileIdRaw, encoded] of Object.entries(pdfBlobs)) {
+      const fileId = String(fileIdRaw || "").trim();
+      if (!fileId || typeof encoded !== "string" || !encoded.trim()) {
+        failedCount += 1;
+        continue;
+      }
+
+      try {
+        const bytes = fromBase64(encoded);
+        const blob = new Blob([bytes], { type: "application/pdf" });
+        await idbSavePdfBlob(fileId, blob);
+        restoredCount += 1;
+      } catch (error) {
+        failedCount += 1;
+        appendLogEntry({
+          level: "warn",
+          component: "backup",
+          operation: "restoreEmbeddedPdfPayload",
+          message: "Restoring embedded PDF failed.",
+          error,
+          context: { fileId },
+        });
+      }
+    }
+
+    return { restoredCount, failedCount };
+  }
+
+  async function exportData() {
+    const includePdfs = shouldExportIncludePdfs();
+    setBackupStatus(
+      includePdfs
+        ? "Preparing backup with embedded PDFs..."
+        : "Preparing metadata backup...",
+      "pending",
     );
 
-    const blob = new Blob([JSON.stringify(state, null, 2)], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `habit-tracker-backup-${monthKey(state.currentYear, state.currentMonth)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    try {
+      const exportedState = JSON.parse(JSON.stringify(state));
+      let payloadStats = {
+        pdfBlobs: {},
+        embeddedCount: 0,
+        missingCount: 0,
+        failedCount: 0,
+        totalBytes: 0,
+      };
+
+      if (includePdfs) {
+        payloadStats = await collectEmbeddedPdfPayload();
+        if (Object.keys(payloadStats.pdfBlobs).length > 0) {
+          exportedState.pdfBlobs = payloadStats.pdfBlobs;
+        }
+      }
+
+      const blob = new Blob([JSON.stringify(exportedState, null, 2)], {
+        type: "application/json",
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `habit-tracker-backup-${monthKey(state.currentYear, state.currentMonth)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      if (!includePdfs) {
+        setBackupStatus(
+          "Metadata backup exported. Enable Include PDFs for full backup.",
+          "success",
+        );
+        return;
+      }
+
+      const estimatedJsonBytes = Math.round(payloadStats.totalBytes * 1.34);
+      const info = `Embedded ${payloadStats.embeddedCount} PDF${payloadStats.embeddedCount === 1 ? "" : "s"} (~${formatByteSize(estimatedJsonBytes)}).`;
+      if (
+        estimatedJsonBytes >= EMBEDDED_EXPORT_SIZE_WARN_BYTES ||
+        payloadStats.failedCount > 0 ||
+        payloadStats.missingCount > 0
+      ) {
+        setBackupStatus(
+          `${info} ${payloadStats.missingCount ? `${payloadStats.missingCount} missing in IndexedDB.` : ""} ${payloadStats.failedCount ? `${payloadStats.failedCount} failed to embed.` : ""}`.trim(),
+          "warn",
+        );
+      } else {
+        setBackupStatus(`Full backup exported. ${info}`, "success");
+      }
+    } catch (error) {
+      appendLogEntry({
+        level: "error",
+        component: "backup",
+        operation: "exportData",
+        message: "Export failed.",
+        error,
+      });
+      setBackupStatus("Export failed. See logs for details.", "error");
+      alert("Export failed. See logs for details.");
+    }
   }
 
   function validateImportedState(imported) {
@@ -5628,12 +5762,29 @@
       }
     }
 
+    if (imported.pdfBlobs !== undefined) {
+      if (!isPlainObject(imported.pdfBlobs)) {
+        errors.push("pdfBlobs must be an object when provided.");
+      } else {
+        Object.entries(imported.pdfBlobs).forEach(([fileId, encoded], i) => {
+          if (typeof fileId !== "string" || !fileId.trim()) {
+            errors.push(`pdfBlobs entry ${i + 1} has an invalid fileId key.`);
+          }
+          if (typeof encoded !== "string" || !encoded.trim()) {
+            errors.push(
+              `pdfBlobs[${fileId || i}] must be a non-empty base64 string.`,
+            );
+          }
+        });
+      }
+    }
+
     return { ok: errors.length === 0, errors };
   }
 
   function importData(file) {
     const reader = new FileReader();
-    reader.onload = function (e) {
+    reader.onload = async function (e) {
       try {
         const imported = JSON.parse(e.target.result);
         const validation = validateImportedState(imported);
@@ -5643,15 +5794,36 @@
           );
           return;
         }
+
+        const embeddedPdfPayload =
+          imported.pdfBlobs !== undefined ? imported.pdfBlobs : null;
+        if (imported.pdfBlobs !== undefined) {
+          delete imported.pdfBlobs;
+        }
+
         state = imported;
         migrateState();
         ensureMonthData();
         saveState();
         renderAll();
-        renderBooksView();
-        alert(
-          "Import completed. Note: PDF binaries are not included in JSON and may need re-upload.",
-        );
+
+        const restoreStats =
+          await restoreEmbeddedPdfPayload(embeddedPdfPayload);
+        await refreshBookBlobStatus();
+        await renderBooksView();
+
+        if (restoreStats.restoredCount > 0) {
+          const tone = restoreStats.failedCount > 0 ? "warn" : "success";
+          setBackupStatus(
+            `Import completed. Restored ${restoreStats.restoredCount} embedded PDF${restoreStats.restoredCount === 1 ? "" : "s"}${restoreStats.failedCount ? `, ${restoreStats.failedCount} failed.` : "."}`,
+            tone,
+          );
+        } else {
+          setBackupStatus(
+            "Import completed. No embedded PDFs found; re-upload PDFs if needed.",
+            embeddedPdfPayload ? "warn" : "success",
+          );
+        }
       } catch (_) {
         alert("Failed to parse backup file.");
       }
@@ -6093,15 +6265,6 @@
       .getElementById("monthlyReviewSave")
       .addEventListener("click", saveMonthlyReview);
 
-    const dashboardMode = document.getElementById(
-      "analyticsDisplayModeDashboard",
-    );
-    if (dashboardMode) {
-      dashboardMode.addEventListener("change", (event) => {
-        setAnalyticsDisplayMode(event.target.value);
-      });
-    }
-
     const analyticsMode = document.getElementById(
       "analyticsDisplayModeAnalytics",
     );
@@ -6123,6 +6286,11 @@
           this.value = "";
         }
       });
+
+    setBackupStatus(
+      "Metadata-only export is default. Enable Include PDFs for full backup.",
+      "",
+    );
 
     document.getElementById("btnResetMonth").addEventListener("click", () => {
       openConfirm(
