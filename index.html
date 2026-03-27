@@ -1391,7 +1391,7 @@
     </div>
 
     <section id="readerMode" class="reader-mode" style="display: none">
-      <header class="reader-topbar">
+      <header class="reader-topbar" id="readerTopbar">
         <div>
           <h2 id="readerBookTitle">Reader</h2>
           <p id="readerStatusText">Loading PDF...</p>
@@ -1432,9 +1432,25 @@
             <option value="full">Full invert</option>
             <option value="text">Text-focused</option>
           </select>
+          <button
+            id="readerZoomIn"
+            class="btn-secondary"
+            type="button"
+            title="Zoom in"
+          >
+            +
+          </button>
+          <button
+            id="readerZoomOut"
+            class="btn-secondary"
+            type="button"
+            title="Zoom out"
+          >
+            -
+          </button>
         </div>
       </header>
-      <div class="reader-canvas-wrap">
+      <div class="reader-canvas-wrap" id="readerBookContainer">
         <canvas id="readerCanvas"></canvas>
       </div>
     </section>

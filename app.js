@@ -7493,19 +7493,57 @@
     );
     const darkToggle = document.getElementById("readerDarkToggle");
     const darkMode = document.getElementById("readerDarkMode");
+    const zoomIn = document.getElementById("readerZoomIn");
+    const zoomOut = document.getElementById("readerZoomOut");
+    const bookContainer = document.getElementById("readerBookContainer");
 
-    prev.addEventListener("click", () =>
-      renderReaderPage(readerState.currentPage - 1),
-    );
-    next.addEventListener("click", () =>
-      renderReaderPage(readerState.currentPage + 1),
-    );
+    // Zoom state
+    let zoomLevel = 1;
+    function applyZoom() {
+      bookContainer.style.transform = `scale(${zoomLevel})`;
+      bookContainer.style.transformOrigin = "top center";
+    }
+    zoomIn.addEventListener("click", () => {
+      zoomLevel = Math.min(zoomLevel + 0.1, 2.5);
+      applyZoom();
+      localStorage.setItem("readerZoomLevel", zoomLevel);
+    });
+    zoomOut.addEventListener("click", () => {
+      zoomLevel = Math.max(zoomLevel - 0.1, 0.5);
+      applyZoom();
+      localStorage.setItem("readerZoomLevel", zoomLevel);
+    });
+    // Load zoom from storage
+    const savedZoom = parseFloat(localStorage.getItem("readerZoomLevel"));
+    if (!isNaN(savedZoom)) {
+      zoomLevel = savedZoom;
+      applyZoom();
+    }
+
+    function scrollBookToTop() {
+      if (bookContainer) {
+        bookContainer.scrollTop = 0;
+        bookContainer.parentElement.scrollTop = 0;
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+    }
+
+    prev.addEventListener("click", () => {
+      renderReaderPage(readerState.currentPage - 1);
+      setTimeout(scrollBookToTop, 10);
+    });
+    next.addEventListener("click", () => {
+      renderReaderPage(readerState.currentPage + 1);
+      setTimeout(scrollBookToTop, 10);
+    });
     go.addEventListener("click", () => {
       renderReaderPage(parseInt(jump.value, 10) || 1);
+      setTimeout(scrollBookToTop, 10);
     });
     jump.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         renderReaderPage(parseInt(jump.value, 10) || 1);
+        setTimeout(scrollBookToTop, 10);
       }
     });
 
