@@ -2229,7 +2229,7 @@ body {
   border-bottom: 1px solid var(--gray-800);
   padding: 12px 24px;
   box-sizing: border-box;
-  padding-top: 80px;
+  padding-top: 0;
 }
 
 .reader-topbar h2 {
