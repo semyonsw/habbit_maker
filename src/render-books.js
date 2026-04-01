@@ -1,8 +1,20 @@
 "use strict";
 
 import { state } from "./state.js";
-import { chartInstances, booksBlobStatus, summaryModalState, finisherState } from "./state.js";
-import { sanitize, getHeatColor, monthKey, getValueColor, formatIsoForDisplay, formatRealBookPage } from "./utils.js";
+import {
+  chartInstances,
+  booksBlobStatus,
+  summaryModalState,
+  finisherState,
+} from "./state.js";
+import {
+  sanitize,
+  getHeatColor,
+  monthKey,
+  getValueColor,
+  formatIsoForDisplay,
+  formatRealBookPage,
+} from "./utils.js";
 import {
   getActiveBook,
   getBookById,
@@ -18,10 +30,18 @@ import {
   refreshBookBlobStatus,
   detectBookTotalPages,
 } from "./books.js";
-import { getBookmarkLastSummarizedPage, getReadySummariesFromBookmark, getLatestBookmarkSummary, floorToDayTime } from "./books.js";
+import {
+  getBookmarkLastSummarizedPage,
+  getReadySummariesFromBookmark,
+  getLatestBookmarkSummary,
+  floorToDayTime,
+} from "./books.js";
 import { saveState } from "./persistence.js";
 import { applyBookSummarySettingsToInputs } from "./encryption.js";
-import { getBooksAnalyticsRangeDays, syncBooksRangeControls } from "./preferences.js";
+import {
+  getBooksAnalyticsRangeDays,
+  syncBooksRangeControls,
+} from "./preferences.js";
 import { registerRenderer, callRenderer } from "./render-registry.js";
 
 export function renderBooksStatsOverview(analytics) {
@@ -103,7 +123,7 @@ export function renderBooksAnalyticsKpis(analytics) {
 }
 
 export function renderBooksMiniTrendChart(analytics) {
-  callRenderer("renderChart","booksMiniTrendChart", "booksMiniTrendChart", {
+  callRenderer("renderChart", "booksMiniTrendChart", "booksMiniTrendChart", {
     type: "line",
     data: {
       labels: analytics.trendLabels,
@@ -140,128 +160,146 @@ export function renderBooksMiniShareChart(analytics) {
   const labels = rows.map((row) => row.title);
   const values = rows.map((row) => Math.round(row.pagesNet));
 
-  callRenderer("renderChart","booksMiniBookShareChart", "booksMiniBookShareChart", {
-    type: "bar",
-    data: {
-      labels: labels.length ? labels : ["No data"],
-      datasets: [
-        {
-          data: labels.length ? values : [0],
-          backgroundColor: labels.length
-            ? values.map((value) =>
-                getValueColor(value, Math.max(1, ...values), 0.86),
-              )
-            : ["rgba(148, 163, 184, 0.5)"],
-          borderRadius: 6,
+  callRenderer(
+    "renderChart",
+    "booksMiniBookShareChart",
+    "booksMiniBookShareChart",
+    {
+      type: "bar",
+      data: {
+        labels: labels.length ? labels : ["No data"],
+        datasets: [
+          {
+            data: labels.length ? values : [0],
+            backgroundColor: labels.length
+              ? values.map((value) =>
+                  getValueColor(value, Math.max(1, ...values), 0.86),
+                )
+              : ["rgba(148, 163, 184, 0.5)"],
+            borderRadius: 6,
+          },
+        ],
+      },
+      options: {
+        indexAxis: "y",
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { beginAtZero: true, ticks: { maxTicksLimit: 5 } },
         },
-      ],
-    },
-    options: {
-      indexAxis: "y",
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
-      scales: {
-        x: { beginAtZero: true, ticks: { maxTicksLimit: 5 } },
       },
     },
-  });
+  );
 }
 
 export function renderBooksVelocityTrendChart(analytics) {
-  callRenderer("renderChart","booksVelocityTrendChart", "booksVelocityTrendChart", {
-    type: "line",
-    data: {
-      labels: analytics.trendLabels,
-      datasets: [
-        {
-          label: "Pages advanced",
-          data: analytics.trendValues,
-          borderColor: "rgba(56, 189, 248, 0.95)",
-          backgroundColor: "rgba(56, 189, 248, 0.2)",
-          borderWidth: 2,
-          tension: 0.28,
-          fill: true,
-          pointRadius: 0,
+  callRenderer(
+    "renderChart",
+    "booksVelocityTrendChart",
+    "booksVelocityTrendChart",
+    {
+      type: "line",
+      data: {
+        labels: analytics.trendLabels,
+        datasets: [
+          {
+            label: "Pages advanced",
+            data: analytics.trendValues,
+            borderColor: "rgba(56, 189, 248, 0.95)",
+            backgroundColor: "rgba(56, 189, 248, 0.2)",
+            borderWidth: 2,
+            tension: 0.28,
+            fill: true,
+            pointRadius: 0,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: { beginAtZero: true, title: { display: true, text: "Pages/day" } },
+          x: { ticks: { maxTicksLimit: 10 } },
         },
-      ],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
-      scales: {
-        y: { beginAtZero: true, title: { display: true, text: "Pages/day" } },
-        x: { ticks: { maxTicksLimit: 10 } },
       },
     },
-  });
+  );
 }
 
 export function renderBooksComparisonChart(analytics) {
   const labels = analytics.comparisonRows.map((row) => row.title);
   const avgDay = analytics.comparisonRows.map((row) => round1(row.avgPerDay));
-  const avgWeek = analytics.comparisonRows.map((row) =>
-    round1(row.avgPerWeek),
-  );
+  const avgWeek = analytics.comparisonRows.map((row) => round1(row.avgPerWeek));
 
-  callRenderer("renderChart","booksPerBookComparisonChart", "booksPerBookComparisonChart", {
-    type: "bar",
-    data: {
-      labels: labels.length ? labels : ["No data"],
-      datasets: [
-        {
-          label: "Avg pages/day",
-          data: labels.length ? avgDay : [0],
-          backgroundColor: "rgba(34, 197, 94, 0.82)",
-          borderRadius: 6,
+  callRenderer(
+    "renderChart",
+    "booksPerBookComparisonChart",
+    "booksPerBookComparisonChart",
+    {
+      type: "bar",
+      data: {
+        labels: labels.length ? labels : ["No data"],
+        datasets: [
+          {
+            label: "Avg pages/day",
+            data: labels.length ? avgDay : [0],
+            backgroundColor: "rgba(34, 197, 94, 0.82)",
+            borderRadius: 6,
+          },
+          {
+            label: "Avg pages/week",
+            data: labels.length ? avgWeek : [0],
+            backgroundColor: "rgba(249, 115, 22, 0.78)",
+            borderRadius: 6,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { position: "bottom" } },
+        scales: {
+          y: { beginAtZero: true },
         },
-        {
-          label: "Avg pages/week",
-          data: labels.length ? avgWeek : [0],
-          backgroundColor: "rgba(249, 115, 22, 0.78)",
-          borderRadius: 6,
-        },
-      ],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: { legend: { position: "bottom" } },
-      scales: {
-        y: { beginAtZero: true },
       },
     },
-  });
+  );
 }
 
 export function renderBooksBookmarkActivityChart(analytics) {
-  callRenderer("renderChart","booksBookmarkActivityChart", "booksBookmarkActivityChart", {
-    type: "bar",
-    data: {
-      labels: analytics.trendLabels,
-      datasets: [
-        {
-          label: "Bookmark events",
-          data: analytics.trendActivity,
-          backgroundColor: "rgba(99, 102, 241, 0.78)",
-          borderRadius: 4,
+  callRenderer(
+    "renderChart",
+    "booksBookmarkActivityChart",
+    "booksBookmarkActivityChart",
+    {
+      type: "bar",
+      data: {
+        labels: analytics.trendLabels,
+        datasets: [
+          {
+            label: "Bookmark events",
+            data: analytics.trendActivity,
+            backgroundColor: "rgba(99, 102, 241, 0.78)",
+            borderRadius: 4,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: {
+            beginAtZero: true,
+            title: { display: true, text: "Events/day" },
+          },
+          x: { ticks: { maxTicksLimit: 10 } },
         },
-      ],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
-      scales: {
-        y: {
-          beginAtZero: true,
-          title: { display: true, text: "Events/day" },
-        },
-        x: { ticks: { maxTicksLimit: 10 } },
       },
     },
-  });
+  );
 }
 
 export function renderBooksWeeklyHeatmap(analytics) {
@@ -311,45 +349,50 @@ export function renderBooksAnalyticsDashboard(options = {}) {
 }
 
 export function renderBookFinisherPlanChart(plan) {
-  const labels =
-    plan && plan.ok ? plan.weekEntries.map((entry) => entry.label) : [];
-  const values =
-    plan && plan.ok ? plan.weekEntries.map((entry) => entry.pages) : [];
-  callRenderer("renderChart","booksFinisherPlanChart", "booksFinisherPlanChart", {
-    type: "bar",
-    data: {
-      labels: labels.length ? labels : ["No plan"],
-      datasets: [
-        {
-          label: "Pages",
-          data: values.length ? values : [0],
-          backgroundColor: values.length
-            ? values.map((value) =>
-                getValueColor(value, Math.max(1, ...values), 0.84),
-              )
-            : ["rgba(148, 163, 184, 0.5)"],
-          borderRadius: 6,
-        },
-      ],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          callbacks: {
-            label(context) {
-              return `${Math.round(context.parsed.y || 0)} pages`;
+  const weekEntries =
+    plan && plan.ok && Array.isArray(plan.weekEntries) ? plan.weekEntries : [];
+  const labels = weekEntries.map((entry) => entry.label);
+  const values = weekEntries.map((entry) => entry.pages);
+  callRenderer(
+    "renderChart",
+    "booksFinisherPlanChart",
+    "booksFinisherPlanChart",
+    {
+      type: "bar",
+      data: {
+        labels: labels.length ? labels : ["No plan"],
+        datasets: [
+          {
+            label: "Pages",
+            data: values.length ? values : [0],
+            backgroundColor: values.length
+              ? values.map((value) =>
+                  getValueColor(value, Math.max(1, ...values), 0.84),
+                )
+              : ["rgba(148, 163, 184, 0.5)"],
+            borderRadius: 6,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label(context) {
+                return `${Math.round(context.parsed.y || 0)} pages`;
+              },
             },
           },
         },
-      },
-      scales: {
-        y: { beginAtZero: true, ticks: { maxTicksLimit: 5 } },
+        scales: {
+          y: { beginAtZero: true, ticks: { maxTicksLimit: 5 } },
+        },
       },
     },
-  });
+  );
 }
 
 export async function renderBookFinisherHelper() {
@@ -460,18 +503,24 @@ export async function renderBookFinisherHelper() {
     ? "Plan ready. Stay on this pace to finish on time."
     : "Plan is tight. Increase reading days or move the finish date.";
 
+  const readingDays = Array.isArray(plan.readingDays) ? plan.readingDays : [];
+  const pagesPerDay = Number.isFinite(plan.pagesPerDay) ? plan.pagesPerDay : 0;
+  const pagesPerDayExact = Number.isFinite(plan.pagesPerDayExact)
+    ? plan.pagesPerDayExact
+    : 0;
+
   resultsEl.innerHTML = [
     { label: "Start page", value: String(plan.startPage) },
     { label: "Total pages", value: String(plan.totalPages) },
     { label: "Remaining pages", value: String(plan.remainingPages) },
-    { label: "Reading days", value: String(plan.readingDays.length) },
+    { label: "Reading days", value: String(readingDays.length) },
     {
       label: "Needed per reading day",
-      value: `${Math.ceil(plan.pagesPerDay)} pages`,
+      value: `${Math.ceil(pagesPerDay)} pages`,
     },
     {
       label: "Average exact",
-      value: `${round1(plan.pagesPerDayExact).toFixed(1)} pages`,
+      value: `${round1(pagesPerDayExact).toFixed(1)} pages`,
     },
     {
       label: "Projected finish",
@@ -562,4 +611,7 @@ export async function renderBooksView() {
 registerRenderer("renderBooksView", renderBooksView);
 registerRenderer("renderBooksStatsOverview", renderBooksStatsOverview);
 registerRenderer("renderBookFinisherHelper", renderBookFinisherHelper);
-registerRenderer("renderBooksAnalyticsDashboard", renderBooksAnalyticsDashboard);
+registerRenderer(
+  "renderBooksAnalyticsDashboard",
+  renderBooksAnalyticsDashboard,
+);

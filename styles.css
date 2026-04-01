@@ -437,6 +437,7 @@ body {
   gap: 16px;
   margin-bottom: 24px;
   align-items: stretch;
+  overflow: visible;
 }
 
 .summary-card {
@@ -496,7 +497,7 @@ body {
   display: flex;
   gap: 12px;
   flex: 1;
-  overflow-x: auto;
+  overflow: visible;
   padding-bottom: 4px;
 }
 
@@ -3011,7 +3012,7 @@ body {
     flex-direction: column;
   }
   .weekly-summary-cards {
-    overflow-x: auto;
+    overflow: visible;
   }
   .monthly-review-grid {
     grid-template-columns: 1fr;

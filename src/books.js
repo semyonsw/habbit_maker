@@ -423,6 +423,7 @@ export function computeBookFinisherPlan(book) {
       startPage,
       remainingPages: 0,
       readingDays: [],
+      weekEntries: [],
       pagesPerDay: 0,
       pagesPerDayExact: 0,
       projectedDate: "Done",

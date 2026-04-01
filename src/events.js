@@ -1,6 +1,6 @@
 "use strict";
 
-import { globals } from "./state.js";
+import { state, globals } from "./state.js";
 import { monthKey, nowIso } from "./utils.js";
 import { navigateMonth, moveDailyHabit } from "./habits.js";
 import {
