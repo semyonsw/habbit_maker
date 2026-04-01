@@ -324,8 +324,9 @@ export function importData(file) {
           embeddedPdfPayload ? "warn" : "success",
         );
       }
-    } catch (_) {
-      alert("Failed to parse backup file.");
+    } catch (err) {
+      console.error("Import error:", err);
+      alert("Failed to import backup file.\n" + (err && err.message ? err.message : String(err)));
     }
   };
   reader.readAsText(file);

@@ -223,12 +223,10 @@ function activateLinkedDay(day, options = {}) {
     .querySelectorAll(`td.day-cell[data-day='${normalizedDay}']`)
     .forEach((cell) => cell.classList.add("linked-day-active"));
 
-  linkedHoverState = {
-    day: normalizedDay,
-    week,
-    scope: "day",
-    source: options.source || "unknown",
-  };
+  linkedHoverState.day = normalizedDay;
+  linkedHoverState.week = week;
+  linkedHoverState.scope = "day";
+  linkedHoverState.source = options.source || "unknown";
 
   if (options.event && options.event.clientX && options.event.clientY) {
     showLinkedHoverTooltip(`Week ${week} • Day ${normalizedDay}`, {
@@ -269,12 +267,10 @@ function activateLinkedWeek(week, options = {}) {
       .forEach((cell) => cell.classList.add("linked-week-active"));
   }
 
-  linkedHoverState = {
-    day: null,
-    week: range.week,
-    scope: "week",
-    source: options.source || "unknown",
-  };
+  linkedHoverState.day = null;
+  linkedHoverState.week = range.week;
+  linkedHoverState.scope = "week";
+  linkedHoverState.source = options.source || "unknown";
 
   if (options.event && options.event.clientX && options.event.clientY) {
     showLinkedHoverTooltip(
@@ -291,12 +287,10 @@ function activateLinkedWeek(week, options = {}) {
 }
 
 export function clearLinkedHoverState() {
-  linkedHoverState = {
-    day: null,
-    week: null,
-    scope: null,
-    source: null,
-  };
+  linkedHoverState.day = null;
+  linkedHoverState.week = null;
+  linkedHoverState.scope = null;
+  linkedHoverState.source = null;
   clearLinkedHoverHighlights();
   hideLinkedHoverTooltip();
 }
@@ -650,9 +644,9 @@ export function renderDailyHabitsGrid() {
   grid.innerHTML = html;
 
   if (!isCurrentMonthView) {
-    lastAutoScrolledMonthKey = null;
-  } else if (lastAutoScrolledMonthKey !== currentViewMonthKey) {
-    lastAutoScrolledMonthKey = currentViewMonthKey;
+    globals.lastAutoScrolledMonthKey = null;
+  } else if (globals.lastAutoScrolledMonthKey !== currentViewMonthKey) {
+    globals.lastAutoScrolledMonthKey = currentViewMonthKey;
     requestAnimationFrame(() => {
       const todayHeader = grid.querySelector("th.day-col.today");
       const wrapper = grid.closest(".habits-grid-wrapper");

@@ -1,7 +1,7 @@
 "use strict";
 
 import { state } from "./state.js";
-import { chartInstances, booksBlobStatus, summaryModalState } from "./state.js";
+import { chartInstances, booksBlobStatus, summaryModalState, finisherState } from "./state.js";
 import { sanitize, getHeatColor, monthKey, getValueColor, formatIsoForDisplay, formatRealBookPage } from "./utils.js";
 import {
   getActiveBook,

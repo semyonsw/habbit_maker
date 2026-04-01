@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head><title>Restore Backup</title></head>
+<body style="background:#111;color:#fff;font-family:sans-serif;padding:40px;text-align:center;">
+<h1>Restoring your backup...</h1>
+<p id="status">Loading backup file...</p>
+<script>
+(async function() {
+  const status = document.getElementById('status');
+  try {
+    // Clear any existing data first
+    localStorage.removeItem('habitTracker_v1');
+
+    const resp = await fetch('habit-tracker-backup-2026-03.json');
+    if (!resp.ok) {
+      status.textContent = 'ERROR: Could not fetch backup file (HTTP ' + resp.status + ')';
+      status.style.color = '#f44';
+      return;
+    }
+    const text = await resp.text();
+    status.textContent = 'Fetched ' + text.length + ' chars. Parsing...';
+
+    const data = JSON.parse(text);
+    status.textContent = 'Parsed OK. Keys: ' + Object.keys(data).join(', ') + '. Saving to localStorage...';
+
+    localStorage.setItem('habitTracker_v1', JSON.stringify(data));
+
+    // Verify
+    const verify = localStorage.getItem('habitTracker_v1');
+    if (!verify) {
+      status.textContent = 'ERROR: localStorage.setItem succeeded but getItem returned null!';
+      status.style.color = '#f44';
+      return;
+    }
+
+    status.textContent = 'Backup restored! (' + verify.length + ' chars in localStorage). Redirecting...';
+    status.style.color = '#4f4';
+    setTimeout(() => { window.location.href = 'index.html'; }, 2000);
+  } catch(e) {
+    status.textContent = 'ERROR: ' + e.message + '\n' + e.stack;
+    status.style.color = '#f44';
+  }
+})();
+</script>
+</body>
+</html>

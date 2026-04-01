@@ -403,6 +403,9 @@ export function loadState() {
     if (raw) {
       setState(JSON.parse(raw));
       migrateState();
+      const now = new Date();
+      state.currentYear = now.getFullYear();
+      state.currentMonth = now.getMonth();
       ensureMonthData();
       if (
         isPlainObject(state.books) &&

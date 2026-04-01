@@ -2,6 +2,7 @@
 
 import { state } from "./state.js";
 import { chartInstances } from "./state.js";
+import { MONTH_NAMES } from "./constants.js";
 import {
   daysInMonth,
   monthKey,

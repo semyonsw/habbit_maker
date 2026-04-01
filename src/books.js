@@ -1,6 +1,6 @@
 "use strict";
 
-import { MAX_PDF_FILE_SIZE_MB, MAX_PDF_FILE_SIZE_BYTES, MAX_BOOKMARK_HISTORY, ALL_WEEKDAYS, WEEKDAY_LABELS, PDFJS_WORKER_URL } from "./constants.js";
+import { MAX_PDF_FILE_SIZE_MB, MAX_PDF_FILE_SIZE_BYTES, MAX_BOOKMARK_HISTORY, ALL_WEEKDAYS, WEEKDAY_LABELS, PDFJS_WORKER_URL, MONTH_NAMES } from "./constants.js";
 import { state, booksBlobStatus, setBooksBlobStatus, finisherState, readerState, bookmarkModalState } from "./state.js";
 import { uid, nowIso, sanitize, isPlainObject, formatRealBookPage, formatByteSize, formatIsoForDisplay, daysInMonth, formatDateKey, clampNumber } from "./utils.js";
 import { appendLogEntry } from "./logging.js";
@@ -188,7 +188,7 @@ export async function refreshBookBlobStatus() {
       }
     }),
   );
-  booksBlobStatus = Object.fromEntries(entries);
+  setBooksBlobStatus(Object.fromEntries(entries));
 }
 
 export function setActiveBook(bookId) {

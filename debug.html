@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head><title>Debug</title></head>
+<body style="background:#111;color:#fff;font-family:monospace;padding:20px;white-space:pre-wrap;">
+<h2>localStorage Debug</h2>
+<div id="out"></div>
+<script>
+const out = document.getElementById('out');
+try {
+  const raw = localStorage.getItem('habitTracker_v1');
+  if (!raw) {
+    out.textContent = 'habitTracker_v1 is NULL - no data in localStorage!';
+  } else {
+    const data = JSON.parse(raw);
+    out.textContent = 'Data found! Length: ' + raw.length + ' chars\n\n';
+    out.textContent += 'Top keys: ' + Object.keys(data).join(', ') + '\n';
+    out.textContent += 'currentYear: ' + data.currentYear + '\n';
+    out.textContent += 'currentMonth: ' + data.currentMonth + '\n';
+    out.textContent += 'categories: ' + (data.categories ? data.categories.length + ' items' : 'MISSING') + '\n';
+    out.textContent += 'habits type: ' + typeof data.habits + '\n';
+    if (data.habits) {
+      out.textContent += 'habits.daily: ' + (Array.isArray(data.habits.daily) ? data.habits.daily.length + ' habits' : 'NOT AN ARRAY: ' + typeof data.habits.daily) + '\n';
+      if (Array.isArray(data.habits.daily) && data.habits.daily.length > 0) {
+        out.textContent += 'First habit: ' + JSON.stringify(data.habits.daily[0], null, 2).slice(0, 300) + '\n';
+      }
+    }
+    out.textContent += 'months: ' + (data.months ? Object.keys(data.months).join(', ') : 'MISSING') + '\n';
+    out.textContent += 'books: ' + (data.books ? 'present' : 'MISSING') + '\n';
+  }
+} catch(e) {
+  out.textContent = 'ERROR: ' + e.message;
+}
+</script>
+</body>
+</html>

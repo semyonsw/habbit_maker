@@ -1,6 +1,6 @@
 "use strict";
 
-import { ALL_WEEKDAYS, WEEKDAY_LABELS, MAX_BOOKMARK_HISTORY } from "./constants.js";
+import { ALL_WEEKDAYS, WEEKDAY_LABELS, MAX_BOOKMARK_HISTORY, MONTH_NAMES } from "./constants.js";
 import { state, globals, noteModalState, bookModalState, bookmarkModalState, historyEventModalState } from "./state.js";
 import { uid, nowIso, sanitize, isPlainObject, monthKey, formatDateKey, normalizeWeekdayArray, normalizeMonthDayArray } from "./utils.js";
 import { appendLogEntry } from "./logging.js";
