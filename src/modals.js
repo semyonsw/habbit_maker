@@ -23,12 +23,12 @@ export function closeModal(id) {
 export function openConfirm(title, message, callback) {
   document.getElementById("confirmTitle").textContent = title;
   document.getElementById("confirmMessage").textContent = message;
-  confirmCallback = callback;
+  globals.confirmCallback = callback;
   openModal("confirmModal");
 }
 
 export function openHabitModal(habitId) {
-  editingHabitId = habitId || null;
+  globals.editingHabitId = habitId || null;
 
   const title = document.getElementById("habitModalTitle");
   const name = document.getElementById("habitName");
@@ -44,8 +44,8 @@ export function openHabitModal(habitId) {
     )
     .join("");
 
-  if (editingHabitId) {
-    const habit = state.habits.daily.find((h) => h.id === editingHabitId);
+  if (globals.editingHabitId) {
+    const habit = state.habits.daily.find((h) => h.id === globals.editingHabitId);
     if (!habit) return;
     title.textContent = "Edit Habit";
     name.value = habit.name;
@@ -123,8 +123,8 @@ export function saveHabitModal() {
     );
   }
 
-  if (editingHabitId) {
-    const habit = state.habits.daily.find((h) => h.id === editingHabitId);
+  if (globals.editingHabitId) {
+    const habit = state.habits.daily.find((h) => h.id === globals.editingHabitId);
     if (habit) {
       habit.name = name;
       habit.categoryId = categoryId;
@@ -173,14 +173,14 @@ export function saveHabitModal() {
 }
 
 export function openCategoryModal(catId) {
-  editingCategoryId = catId || null;
+  globals.editingCategoryId = catId || null;
   const title = document.getElementById("categoryModalTitle");
   const name = document.getElementById("categoryName");
   const emoji = document.getElementById("categoryEmoji");
   const color = document.getElementById("categoryColor");
 
-  if (editingCategoryId) {
-    const cat = state.categories.find((c) => c.id === editingCategoryId);
+  if (globals.editingCategoryId) {
+    const cat = state.categories.find((c) => c.id === globals.editingCategoryId);
     if (!cat) return;
     title.textContent = "Edit Category";
     name.value = cat.name;
@@ -203,8 +203,8 @@ export function saveCategoryModal() {
   const emoji = document.getElementById("categoryEmoji").value || "⭐";
   const color = document.getElementById("categoryColor").value || "#3e85b5";
 
-  if (editingCategoryId) {
-    const cat = state.categories.find((c) => c.id === editingCategoryId);
+  if (globals.editingCategoryId) {
+    const cat = state.categories.find((c) => c.id === globals.editingCategoryId);
     if (cat) {
       cat.name = name;
       cat.emoji = emoji;
