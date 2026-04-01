@@ -98,37 +98,44 @@ git clone https://github.com/semyonsw/habbit_maker.git
 cd habbit_maker
 ```
 
-### 2. Start a local server
+### 2. Run the app
 
-You need a local server because the app uses JavaScript modules.
+#### Option A: Double-click `start.bat` (Windows, easiest)
+
+Just double-click `start.bat` in the project folder. It will:
+1. Start a local server on port 3000.
+2. Wait a couple of seconds for the server to be ready.
+3. Open `http://localhost:3000` in your default browser automatically.
+4. Keep the terminal open so you can see what is happening.
+5. Press any key in the terminal to stop the server when you are done.
+
+> **Tip:** You can create a desktop shortcut to `start.bat` so you can launch the app from your desktop without opening the project folder.
+
+> **Requirement:** Python must be installed on your system. You can download it from [python.org](https://www.python.org/downloads/).
+
+#### Option B: Start a server manually
+
+If you are on Mac, Linux, or prefer to run things from the terminal:
 
 **Python (Mac/Linux):**
 
 ```bash
-python3 -m http.server 8080
+python3 -m http.server 3000
 ```
 
-**Python (Windows):**
+**Python (Windows terminal):**
 
 ```bash
-py -m http.server 8080
+py -m http.server 3000
 ```
 
 **Node.js (any platform):**
 
 ```bash
-npx serve .
+npx serve . -l 3000
 ```
 
-### 3. Open in your browser
-
-Go to:
-
-```
-http://localhost:8080
-```
-
-That's it. The app is ready to use.
+Then open `http://localhost:3000` in your browser.
 
 ---
 
@@ -153,7 +160,7 @@ That's it. The app is ready to use.
 
 1. Open the **Books** tab.
 2. Click "Add Book" and upload a PDF file.
-3. Add bookmarks: pick a page number and write a short note about what's there.
+3. Add bookmarks: pick a page number and write a short note about what is there.
 4. Click a bookmark to open it in **Reader Mode**. You can navigate pages, jump to a specific page, and turn on dark mode.
 5. Use the **Book Finisher Helper** to calculate how many pages per day you need to finish the book by a specific date.
 
@@ -213,6 +220,11 @@ The repository includes `auto-sync.sh` for automatic git add, commit, and push o
 
 ## Troubleshooting
 
+### The app does not load after double-clicking `start.bat`
+
+- Make sure Python is installed. Open a terminal and run `py --version`. If it says "not recognized", install Python from [python.org](https://www.python.org/downloads/).
+- If port 3000 is already in use, close the other program using it, or edit `start.bat` and change `3000` to another number like `8080`.
+
 ### PDF upload does not work
 
 - Make sure the file is actually a PDF (correct extension and type).
@@ -258,6 +270,7 @@ The repository includes `auto-sync.sh` for automatic git add, commit, and push o
 habbit_maker/
 |-- index.html              Main app page
 |-- styles.css              All styles
+|-- start.bat               Double-click to start the app (Windows)
 |-- debug.html              Debug/diagnostics page
 |-- restore.html            Data restore page
 |-- auto-sync.sh            Auto git sync script
@@ -309,19 +322,15 @@ git clone https://github.com/semyonsw/habbit_maker.git
 cd habbit_maker
 ```
 
-2. Gortsarqir local server.
+2. Windows-um krknakit sxmir `start.bat` fayli vra. Ayn kkancharkvi servery yev kbatsi browsery avtomatkoren.
+
+3. Kam gortsarqir local server dzernarkoren:
 
 ```bash
-python3 -m http.server 8080
+py -m http.server 3000
 ```
 
-Windows-i hamar:
-
-```bash
-py -m http.server 8080
-```
-
-3. Batsir havelvatsn: `http://localhost:8080`
+4. Batsir havelvatsn: `http://localhost:3000`
 
 ### Sovorytneri flow
 

@@ -13,6 +13,10 @@ Thumbs.db
 # Local exports/backups
 *.bak
 *.backup
+habit-tracker-backup-*.json
+
+# Windows shortcuts
+*.lnk
 
 # Environment files
 .env
