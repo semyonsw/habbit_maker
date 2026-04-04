@@ -26,6 +26,10 @@
       href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700;900&family=Inter:wght@300;400;500;600;700&display=swap"
       rel="stylesheet"
     />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css"
+    />
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <link rel="stylesheet" href="styles.css" />
     <link
@@ -362,31 +366,16 @@
                       ></div>
                     </div>
                   </div>
-                  <div class="books-ai-grid">
-                    <div class="form-group">
-                      <label for="summaryChunkCharsInput"
-                        >Chunk size (chars)</label
-                      >
-                      <input
-                        id="summaryChunkCharsInput"
-                        type="number"
-                        min="4000"
-                        max="30000"
-                        value="12000"
-                      />
-                    </div>
-                    <div class="form-group">
-                      <label for="summaryMaxPagesInput"
-                        >Max pages per run</label
-                      >
-                      <input
-                        id="summaryMaxPagesInput"
-                        type="number"
-                        min="20"
-                        max="1000"
-                        value="120"
-                      />
-                    </div>
+                  <div class="form-group">
+                    <label for="summaryLanguageInput">Summary Language</label>
+                    <select
+                      id="summaryLanguageInput"
+                      aria-label="Summary language"
+                    >
+                      <option value="English" selected>English</option>
+                      <option value="Armenian">Armenian</option>
+                      <option value="Russian">Russian</option>
+                    </select>
                   </div>
                   <div class="form-group books-ai-toggle-row">
                     <label for="summaryRememberApiKeyToggle"
@@ -1488,17 +1477,33 @@
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
     <script>
-      window.onerror = function(msg, src, line, col, err) {
-        var d = document.createElement('div');
-        d.style.cssText = 'position:fixed;top:0;left:0;right:0;background:red;color:white;padding:12px;z-index:99999;font-family:monospace;font-size:13px;white-space:pre-wrap;max-height:50vh;overflow:auto;';
-        d.textContent = 'JS ERROR: ' + msg + '\nFile: ' + src + ':' + line + ':' + col + '\n' + (err && err.stack ? err.stack : '');
+      window.onerror = function (msg, src, line, col, err) {
+        var d = document.createElement("div");
+        d.style.cssText =
+          "position:fixed;top:0;left:0;right:0;background:red;color:white;padding:12px;z-index:99999;font-family:monospace;font-size:13px;white-space:pre-wrap;max-height:50vh;overflow:auto;";
+        d.textContent =
+          "JS ERROR: " +
+          msg +
+          "\nFile: " +
+          src +
+          ":" +
+          line +
+          ":" +
+          col +
+          "\n" +
+          (err && err.stack ? err.stack : "");
         document.body.prepend(d);
       };
-      window.addEventListener('unhandledrejection', function(e) {
-        var d = document.createElement('div');
-        d.style.cssText = 'position:fixed;top:0;left:0;right:0;background:red;color:white;padding:12px;z-index:99999;font-family:monospace;font-size:13px;white-space:pre-wrap;max-height:50vh;overflow:auto;';
-        d.textContent = 'UNHANDLED PROMISE: ' + (e.reason && e.reason.stack ? e.reason.stack : e.reason);
+      window.addEventListener("unhandledrejection", function (e) {
+        var d = document.createElement("div");
+        d.style.cssText =
+          "position:fixed;top:0;left:0;right:0;background:red;color:white;padding:12px;z-index:99999;font-family:monospace;font-size:13px;white-space:pre-wrap;max-height:50vh;overflow:auto;";
+        d.textContent =
+          "UNHANDLED PROMISE: " +
+          (e.reason && e.reason.stack ? e.reason.stack : e.reason);
         document.body.prepend(d);
       });
     </script>

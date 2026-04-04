@@ -2,7 +2,13 @@
 
 import { PDFJS_WORKER_URL, GEMINI_API_BASE_URL } from "./constants.js";
 import { state, summaryModalState } from "./state.js";
-import { sanitize, isPlainObject, uid, formatIsoForDisplay } from "./utils.js";
+import {
+  sanitize,
+  isPlainObject,
+  uid,
+  formatIsoForDisplay,
+  nowIso,
+} from "./utils.js";
 import { appendLogEntry, maybeAutoDownloadLogs } from "./logging.js";
 import { idbGetPdfBlob } from "./idb.js";
 import { ensurePdfJsLibLoaded } from "./pdf-reader.js";
@@ -24,6 +30,352 @@ import {
 } from "./books.js";
 import { openModal, closeModal } from "./modals.js";
 import { registerRenderer, callRenderer } from "./render-registry.js";
+
+const SUMMARY_DYNAMIC_CHUNK_MIN = 5000;
+const SUMMARY_DYNAMIC_CHUNK_MAX = 26000;
+const SUMMARY_DYNAMIC_PAGES_MIN = 35;
+const SUMMARY_DYNAMIC_PAGES_MAX = 320;
+const MATHJAX_FALLBACK_URL =
+  "https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js";
+const SUMMARY_PENDING_ID = "__summary_pending__";
+let mathJaxLoadPromise = null;
+
+function clampNumber(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function resolveSummaryModelProfile(model) {
+  const normalized = String(model || "").toLowerCase();
+  if (normalized.includes("pro")) {
+    return {
+      baseChunkChars: 17000,
+      baseMaxPagesPerRun: 240,
+      label: "pro",
+    };
+  }
+  if (normalized.includes("lite")) {
+    return {
+      baseChunkChars: 9000,
+      baseMaxPagesPerRun: 100,
+      label: "lite",
+    };
+  }
+  if (normalized.includes("flash")) {
+    return {
+      baseChunkChars: 13000,
+      baseMaxPagesPerRun: 160,
+      label: "flash",
+    };
+  }
+  return {
+    baseChunkChars: 12000,
+    baseMaxPagesPerRun: 140,
+    label: "default",
+  };
+}
+
+export function computeDynamicSummaryLimits({
+  model,
+  plannedPages,
+  totalBookPages,
+  fileSizeBytes,
+}) {
+  const profile = resolveSummaryModelProfile(model);
+  const safePlannedPages = Math.max(1, parseInt(plannedPages, 10) || 1);
+  const safeTotalBookPages = Math.max(
+    safePlannedPages,
+    parseInt(totalBookPages, 10) || safePlannedPages,
+  );
+  const sizeMb = Math.max(0, Number(fileSizeBytes) / (1024 * 1024) || 0);
+
+  let chunkMultiplier = 1;
+  if (safePlannedPages > 220) chunkMultiplier -= 0.28;
+  else if (safePlannedPages > 130) chunkMultiplier -= 0.18;
+  else if (safePlannedPages > 80) chunkMultiplier -= 0.09;
+  else if (safePlannedPages < 30) chunkMultiplier += 0.1;
+
+  if (safeTotalBookPages > 500) chunkMultiplier -= 0.08;
+  if (sizeMb > 55) chunkMultiplier -= 0.08;
+  else if (sizeMb < 12) chunkMultiplier += 0.04;
+
+  const chunkChars = clampNumber(
+    Math.round(profile.baseChunkChars * chunkMultiplier),
+    SUMMARY_DYNAMIC_CHUNK_MIN,
+    SUMMARY_DYNAMIC_CHUNK_MAX,
+  );
+
+  let pageBudget = profile.baseMaxPagesPerRun;
+  if (safePlannedPages > 240) pageBudget -= 60;
+  else if (safePlannedPages > 140) pageBudget -= 35;
+  else if (safePlannedPages < 45) pageBudget += 20;
+  if (sizeMb > 55) pageBudget -= 18;
+
+  const maxPagesPerRun = clampNumber(
+    pageBudget,
+    SUMMARY_DYNAMIC_PAGES_MIN,
+    SUMMARY_DYNAMIC_PAGES_MAX,
+  );
+
+  return {
+    chunkChars,
+    maxPagesPerRun,
+    profile: profile.label,
+  };
+}
+
+function escapeSelectorValue(value) {
+  const source = String(value || "");
+  if (window.CSS && typeof window.CSS.escape === "function") {
+    return window.CSS.escape(source);
+  }
+  return source.replace(/([\\"'])/g, "\\$1");
+}
+
+function getSummarizeButton(bookId, bookmarkId) {
+  const safeBook = escapeSelectorValue(bookId);
+  const safeBookmark = escapeSelectorValue(bookmarkId);
+  return document.querySelector(
+    `.bookmark-summarize-btn[data-summary-book-id="${safeBook}"][data-summary-bookmark-id="${safeBookmark}"]`,
+  );
+}
+
+function setSummarizeButtonLoading(bookId, bookmarkId, isLoading) {
+  const button = getSummarizeButton(bookId, bookmarkId);
+  if (!button) return;
+
+  if (!button.dataset.labelDefault) {
+    button.dataset.labelDefault =
+      button.textContent || "Summarize up to Bookmark";
+  }
+
+  if (isLoading) {
+    button.classList.add("is-loading");
+    button.disabled = true;
+    button.setAttribute("aria-busy", "true");
+    button.textContent = "Summarizing...";
+    return;
+  }
+
+  button.classList.remove("is-loading");
+  button.disabled = false;
+  button.setAttribute("aria-busy", "false");
+  button.textContent =
+    button.dataset.labelDefault || "Summarize up to Bookmark";
+}
+
+function normalizeMathEscapesInDelimitedText(source) {
+  const input = String(source || "");
+  if (!input.includes("\\\\")) return input;
+
+  let output = input
+    .replace(/\$\$([\s\S]*?)\$\$/g, (match, content) => {
+      return `$$${content.replace(/\\\\(?=[A-Za-z])/g, "\\")}$$`;
+    })
+    .replace(/\\\(([\s\S]*?)\\\)/g, (match, content) => {
+      return `\\(${content.replace(/\\\\(?=[A-Za-z])/g, "\\")}\\)`;
+    })
+    .replace(/\\\[([\s\S]*?)\\\]/g, (match, content) => {
+      return `\\[${content.replace(/\\\\(?=[A-Za-z])/g, "\\")}\\]`;
+    });
+
+  output = output.replace(
+    /(^|[^$])\$([^$\n]+?)\$(?!\$)/g,
+    (match, prefix, content) => {
+      return `${prefix}$${content.replace(/\\\\(?=[A-Za-z])/g, "\\")}$`;
+    },
+  );
+
+  return output;
+}
+
+function normalizeMathEscapesInElementTextNodes(rootElement) {
+  if (!rootElement) return;
+  const skippedTagNames = new Set([
+    "CODE",
+    "PRE",
+    "SCRIPT",
+    "STYLE",
+    "TEXTAREA",
+  ]);
+  const walker = document.createTreeWalker(rootElement, NodeFilter.SHOW_TEXT);
+
+  let current = walker.nextNode();
+  while (current) {
+    const parentElement = current.parentElement;
+    const shouldSkip =
+      !parentElement ||
+      skippedTagNames.has(parentElement.tagName) ||
+      !!parentElement.closest("code, pre, script, style, textarea");
+
+    if (!shouldSkip) {
+      const normalized = normalizeMathEscapesInDelimitedText(
+        current.textContent || "",
+      );
+      if (normalized !== current.textContent) {
+        current.textContent = normalized;
+      }
+    }
+
+    current = walker.nextNode();
+  }
+}
+
+function elementHasRawMathDelimiters(element) {
+  if (!element) return false;
+  const text = String(element.textContent || "");
+  if (!text.trim()) return false;
+  return (
+    /\$\$[\s\S]+?\$\$/.test(text) ||
+    /(^|[^$])\$[^$\n]+\$(?!\$)/.test(text) ||
+    /\\\([\s\S]+?\\\)/.test(text) ||
+    /\\\[[\s\S]+?\\\]/.test(text)
+  );
+}
+
+function ensureMathJaxFallbackLoaded() {
+  if (window.MathJax && typeof window.MathJax.typesetPromise === "function") {
+    return Promise.resolve(window.MathJax);
+  }
+
+  if (mathJaxLoadPromise) {
+    return mathJaxLoadPromise;
+  }
+
+  mathJaxLoadPromise = new Promise((resolve) => {
+    if (!window.MathJax || typeof window.MathJax !== "object") {
+      window.MathJax = {
+        tex: {
+          inlineMath: [
+            ["$", "$"],
+            ["\\(", "\\)"],
+          ],
+          displayMath: [
+            ["$$", "$$"],
+            ["\\[", "\\]"],
+          ],
+        },
+        options: {
+          skipHtmlTags: [
+            "script",
+            "noscript",
+            "style",
+            "textarea",
+            "pre",
+            "code",
+          ],
+        },
+      };
+    }
+
+    const existingScript = document.querySelector(
+      "script[data-summary-mathjax='1']",
+    );
+    if (existingScript) {
+      existingScript.addEventListener(
+        "load",
+        () => {
+          const startupPromise =
+            window.MathJax &&
+            window.MathJax.startup &&
+            window.MathJax.startup.promise;
+          if (startupPromise && typeof startupPromise.then === "function") {
+            startupPromise
+              .then(() => resolve(window.MathJax))
+              .catch(() => resolve(null));
+            return;
+          }
+          resolve(window.MathJax || null);
+        },
+        { once: true },
+      );
+      existingScript.addEventListener("error", () => resolve(null), {
+        once: true,
+      });
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = MATHJAX_FALLBACK_URL;
+    script.async = true;
+    script.dataset.summaryMathjax = "1";
+    script.addEventListener(
+      "load",
+      () => {
+        const startupPromise =
+          window.MathJax &&
+          window.MathJax.startup &&
+          window.MathJax.startup.promise;
+        if (startupPromise && typeof startupPromise.then === "function") {
+          startupPromise
+            .then(() => resolve(window.MathJax))
+            .catch(() => resolve(null));
+          return;
+        }
+        resolve(window.MathJax || null);
+      },
+      { once: true },
+    );
+    script.addEventListener("error", () => resolve(null), { once: true });
+    document.head.appendChild(script);
+  });
+
+  return mathJaxLoadPromise;
+}
+
+async function renderSummaryMath(element) {
+  if (!element) return;
+  normalizeMathEscapesInElementTextNodes(element);
+
+  if (typeof window.renderMathInElement === "function") {
+    try {
+      window.renderMathInElement(element, {
+        delimiters: [
+          { left: "$$", right: "$$", display: true },
+          { left: "\\[", right: "\\]", display: true },
+          { left: "$", right: "$", display: false },
+          { left: "\\(", right: "\\)", display: false },
+        ],
+        throwOnError: false,
+        strict: "ignore",
+      });
+    } catch (error) {
+      appendLogEntry({
+        level: "warn",
+        component: "ai-summary",
+        operation: "renderSummaryMath.katex",
+        message: "KaTeX rendering encountered an issue.",
+        error,
+      });
+    }
+  }
+
+  if (!elementHasRawMathDelimiters(element)) {
+    return;
+  }
+
+  const mathJax = await ensureMathJaxFallbackLoaded();
+  if (!mathJax || typeof mathJax.typesetPromise !== "function") {
+    appendLogEntry({
+      level: "warn",
+      component: "ai-summary",
+      operation: "renderSummaryMath.mathjax-load",
+      message: "MathJax fallback could not be loaded.",
+    });
+    return;
+  }
+
+  try {
+    await mathJax.typesetPromise([element]);
+  } catch (error) {
+    appendLogEntry({
+      level: "warn",
+      component: "ai-summary",
+      operation: "renderSummaryMath.mathjax-typeset",
+      message: "MathJax fallback typesetting failed.",
+      error,
+    });
+  }
+}
 
 export function chunkTextForSummary(text, maxChars) {
   const clean = String(text || "")
@@ -178,6 +530,7 @@ export function buildIncrementalChunkPrompt({
   endPage,
   chunkIndex,
   totalChunks,
+  summaryLanguage,
 }) {
   return [
     "You are a concise reading assistant.",
@@ -188,12 +541,18 @@ export function buildIncrementalChunkPrompt({
     "## Important Events or Arguments",
     "## Notable Insights or Takeaways",
     "Use short bullet points.",
+    resolveSummaryLanguageInstruction(summaryLanguage),
     "Text to summarize:",
     text,
   ].join("\n\n");
 }
 
-export function buildChunkMergePrompt({ chunkSummaries, startPage, endPage }) {
+export function buildChunkMergePrompt({
+  chunkSummaries,
+  startPage,
+  endPage,
+  summaryLanguage,
+}) {
   return [
     "You are consolidating partial summaries of one continuous reading segment.",
     `Create one clean summary for pages ${startPage}-${endPage}.`,
@@ -202,6 +561,7 @@ export function buildChunkMergePrompt({ chunkSummaries, startPage, endPage }) {
     "## Key Concepts",
     "## Important Events or Arguments",
     "## Notable Insights or Takeaways",
+    resolveSummaryLanguageInstruction(summaryLanguage),
     "Partial summaries:",
     chunkSummaries
       .map((chunk, idx) => `Chunk ${idx + 1}:\n${chunk}`)
@@ -213,6 +573,7 @@ export function buildFinalMergePrompt({
   previousSummary,
   incrementalSummary,
   currentBookmarkPage,
+  summaryLanguage,
 }) {
   return [
     "You are updating a running book summary.",
@@ -222,11 +583,23 @@ export function buildFinalMergePrompt({
     "## Key Concepts",
     "## Important Events or Arguments",
     "## Notable Insights or Takeaways",
+    resolveSummaryLanguageInstruction(summaryLanguage),
     "Previous summary context:",
     previousSummary,
     "New incremental summary:",
     incrementalSummary,
   ].join("\n\n");
+}
+
+function resolveSummaryLanguageInstruction(summaryLanguage) {
+  const candidate = String(summaryLanguage || "").trim();
+  if (candidate === "Armenian") {
+    return "Write the entire response in Armenian.";
+  }
+  if (candidate === "Russian") {
+    return "Write the entire response in Russian.";
+  }
+  return "Write the entire response in English.";
 }
 
 export function parseGeminiResponseText(payload) {
@@ -260,10 +633,15 @@ export async function callGeminiGenerateText({ apiKey, model, prompt }) {
   const endpoint = `${GEMINI_API_BASE_URL}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
   const retries = 1;
   const startedAt = performance.now();
+  const timeoutMs = clampNumber(
+    90000 + Math.round(String(prompt || "").length / 24),
+    90000,
+    180000,
+  );
 
   for (let attempt = 0; attempt <= retries; attempt += 1) {
     const controller = new AbortController();
-    const timeoutHandle = setTimeout(() => controller.abort(), 90000);
+    const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
       const response = await fetch(endpoint, {
@@ -337,6 +715,7 @@ export async function summarizeSegmentWithChunking({
   apiKey,
   model,
   chunkChars,
+  summaryLanguage,
   onChunkProgress,
 }) {
   const chunks = chunkTextForSummary(text, chunkChars);
@@ -354,6 +733,7 @@ export async function summarizeSegmentWithChunking({
       endPage,
       chunkIndex: idx + 1,
       totalChunks,
+      summaryLanguage,
     });
 
     const chunkSummary = await callGeminiGenerateText({
@@ -375,6 +755,7 @@ export async function summarizeSegmentWithChunking({
     chunkSummaries,
     startPage,
     endPage,
+    summaryLanguage,
   });
   const merged = await callGeminiGenerateText({
     apiKey,
@@ -394,6 +775,7 @@ export async function mergeWithPreviousSummary({
   apiKey,
   model,
   consolidateMode,
+  summaryLanguage,
 }) {
   const prev = String(previousSummary || "").trim();
   const inc = String(incrementalSummary || "").trim();
@@ -407,6 +789,7 @@ export async function mergeWithPreviousSummary({
     previousSummary: prev.slice(0, 14000),
     incrementalSummary: inc,
     currentBookmarkPage,
+    summaryLanguage,
   });
 
   return callGeminiGenerateText({ apiKey, model, prompt });
@@ -422,10 +805,7 @@ export function formatDuration(durationMs) {
 export function formatSummaryInlineMarkdown(input) {
   const escaped = sanitize(String(input || "")).replace(/\r/g, "");
   const withCode = escaped.replace(/`([^`]+)`/g, "<code>$1</code>");
-  const withBold = withCode.replace(
-    /\*\*([^*]+)\*\*/g,
-    "<strong>$1</strong>",
-  );
+  const withBold = withCode.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
   return withBold
     .replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, "$1<em>$2</em>")
     .replace(/(^|[^_])_([^_\n]+)_(?!_)/g, "$1<em>$2</em>");
@@ -512,9 +892,7 @@ export function normalizeSummaryMarkdown(content) {
   let source = String(content || "").trim();
   if (!source) return "";
 
-  const fencedBlock = source.match(
-    /^```(?:markdown|md)?\s*([\s\S]*?)\s*```$/i,
-  );
+  const fencedBlock = source.match(/^```(?:markdown|md)?\s*([\s\S]*?)\s*```$/i);
   if (fencedBlock) {
     source = String(fencedBlock[1] || "").trim();
   }
@@ -526,6 +904,8 @@ export function normalizeSummaryMarkdown(content) {
     .replace(/\\([*_`#>[\]\-])/g, "$1")
     .replace(/\r\n?/g, "\n")
     .trim();
+
+  source = normalizeMathEscapesInDelimitedText(source);
 
   return source;
 }
@@ -543,6 +923,23 @@ export function renderSummaryContentHtml(content) {
   }
 
   return renderSummaryContentHtmlFallback(source);
+}
+
+function renderSummaryLoadingHtml(pendingRun, statusText) {
+  const hasRange =
+    pendingRun &&
+    Number.isFinite(Number(pendingRun.startPage)) &&
+    Number.isFinite(Number(pendingRun.endPage));
+  const rangeText = hasRange
+    ? `Pages ${pendingRun.startPage}-${pendingRun.endPage}`
+    : "Preparing page range...";
+  const modeLabel =
+    pendingRun && pendingRun.modeLabel
+      ? String(pendingRun.modeLabel)
+      : "Generating";
+  const details = String(statusText || "Building your summary now...");
+
+  return `<div class='summary-loading-state' role='status' aria-live='polite' aria-busy='true'><div class='summary-loading-spinner' aria-hidden='true'></div><p class='summary-loading-title'>${sanitize(modeLabel)} summary in progress</p><p class='summary-loading-subtitle'>${sanitize(rangeText)}</p><p class='summary-loading-subtitle'>${sanitize(details)}</p></div>`;
 }
 
 export function renderSummaryModal() {
@@ -595,9 +992,26 @@ export function renderSummaryModal() {
     summaryModalState.externalSummary ||
     getLatestBookmarkSummary(bookmark) ||
     getLatestSummaryUpToPageFromBook(book, bookmark.pdfPage);
+  const pendingRun = summaryModalState.pendingRun;
+  const isPendingSelected = summaryModalState.isRunning && pendingRun;
 
-  if (selectedSummary && selectedSummary.content) {
+  if (isPendingSelected) {
+    bodyEl.innerHTML = renderSummaryLoadingHtml(
+      pendingRun,
+      summaryModalState.statusText,
+    );
+    copyBtn.disabled = true;
+  } else if (selectedSummary && selectedSummary.content) {
     bodyEl.innerHTML = renderSummaryContentHtml(selectedSummary.content);
+    renderSummaryMath(bodyEl).catch((error) => {
+      appendLogEntry({
+        level: "warn",
+        component: "ai-summary",
+        operation: "renderSummaryModal.renderSummaryMath",
+        message: "Summary math rendering promise failed.",
+        error,
+      });
+    });
     copyBtn.disabled = false;
   } else {
     bodyEl.innerHTML =
@@ -606,7 +1020,21 @@ export function renderSummaryModal() {
   }
 
   const entries = Array.isArray(bookmark.summaries) ? bookmark.summaries : [];
-  historyEl.innerHTML = entries.length
+  const pendingHistoryHtml = isPendingSelected
+    ? (() => {
+        const pendingRange =
+          Number.isFinite(Number(pendingRun.startPage)) &&
+          Number.isFinite(Number(pendingRun.endPage))
+            ? `p${pendingRun.startPage}-${pendingRun.endPage}`
+            : "preparing";
+        const pendingTime = pendingRun.createdAt
+          ? formatIsoForDisplay(pendingRun.createdAt)
+          : "now";
+        return `<li class='summary-history-item active running'><button class='summary-history-btn running' type='button' disabled aria-disabled='true'>Running · ${sanitize(pendingRange)} · ${sanitize(pendingTime)}</button></li>`;
+      })()
+    : "";
+
+  const savedHistoryHtml = entries.length
     ? entries
         .map((entry) => {
           const stateLabel =
@@ -624,19 +1052,28 @@ export function renderSummaryModal() {
         .join("")
     : "<li class='summary-history-item'>No saved summaries for this bookmark.</li>";
 
+  historyEl.innerHTML = `${pendingHistoryHtml}${savedHistoryHtml}`;
+
   const hasAnySummary = !!getLatestBookmarkSummary(bookmark);
   regenBtn.disabled = summaryModalState.isRunning || !hasAnySummary;
   rebuildBtn.disabled = summaryModalState.isRunning;
 }
 
-export function openSummaryModal(bookId, bookmarkId) {
+export function openSummaryModal(bookId, bookmarkId, options = {}) {
+  const preserveRunning = options && options.preserveRunning === true;
+  const preservePending = options && options.preservePending === true;
   summaryModalState.bookId = bookId;
   summaryModalState.bookmarkId = bookmarkId;
   summaryModalState.selectedSummaryId = null;
   summaryModalState.statusText = "Ready.";
   summaryModalState.detectionText = "";
   summaryModalState.externalSummary = null;
-  summaryModalState.isRunning = false;
+  summaryModalState.isRunning = preserveRunning
+    ? summaryModalState.isRunning
+    : false;
+  summaryModalState.pendingRun = preservePending
+    ? summaryModalState.pendingRun
+    : null;
   renderSummaryModal();
   openModal("summaryModal");
 }
@@ -650,11 +1087,18 @@ export function closeSummaryModal() {
     detectionText: "",
     externalSummary: null,
     isRunning: false,
+    pendingRun: null,
   });
   closeModal("summaryModal");
 }
 
 export function selectSummaryForModal(bookId, bookmarkId, summaryId) {
+  if (summaryModalState.isRunning && summaryModalState.pendingRun) {
+    summaryModalState.selectedSummaryId = SUMMARY_PENDING_ID;
+    renderSummaryModal();
+    return;
+  }
+
   if (
     summaryModalState.bookId !== bookId ||
     summaryModalState.bookmarkId !== bookmarkId
@@ -698,141 +1142,213 @@ export async function copySelectedSummaryToClipboard() {
   }
 }
 
+function resolveCurrentSummaryTargets(bookId, bookmarkId) {
+  const nextBook = getBookById(bookId);
+  const nextBookmark = nextBook ? getBookmarkById(nextBook, bookmarkId) : null;
+  return { book: nextBook, bookmark: nextBookmark };
+}
+
 export async function runBookmarkSummary(bookId, bookmarkId, runMode) {
-  const book = getBookById(bookId);
-  const bookmark = book ? getBookmarkById(book, bookmarkId) : null;
-  if (!book || !bookmark) {
-    alert("Bookmark not found.");
+  if (summaryModalState.isRunning) {
+    summaryModalState.statusText = "Summary already in progress. Please wait.";
+    renderSummaryModal();
     return;
   }
 
-  const settings = getBookAiSettings();
-  const runtimeApiKey = getApiKeyForSummary();
-  if (!runtimeApiKey) {
-    alert(
-      "Unlock your saved Gemini API key in Books > Summary AI Settings first.",
-    );
-    return;
-  }
-  if (!String(settings.model || "").trim()) {
-    alert("Select a Gemini model in Summary AI Settings.");
-    return;
-  }
-
-  openSummaryModal(bookId, bookmarkId);
   summaryModalState.isRunning = true;
+  setSummarizeButtonLoading(bookId, bookmarkId, true);
 
-  const currentBookmarkPage = Math.max(
-    1,
-    parseInt(bookmark.pdfPage, 10) || 1,
-  );
   const startedAt = performance.now();
   const runId = uid("sumrun");
-
+  let settings = null;
+  let attemptDescriptor = "full";
   let startPage = 1;
-  let endPage = currentBookmarkPage;
+  let endPage = 1;
   let isIncremental = false;
   let basedOnSummaryId = null;
   let previousSummaryContent = "";
-  let attemptDescriptor = "full";
-
-  const latestBookmarkSummary = getLatestBookmarkSummary(bookmark);
-
-  if (runMode === "regenerate-latest") {
-    if (!latestBookmarkSummary) {
-      summaryModalState.isRunning = false;
-      summaryModalState.statusText =
-        "No summary available to regenerate yet.";
-      renderSummaryModal();
-      return;
-    }
-    startPage = Math.max(
-      1,
-      parseInt(latestBookmarkSummary.startPage, 10) || 1,
-    );
-    endPage = Math.max(
-      startPage,
-      parseInt(latestBookmarkSummary.endPage, 10) || startPage,
-    );
-    isIncremental = latestBookmarkSummary.isIncremental === true;
-    basedOnSummaryId = latestBookmarkSummary.basedOnSummaryId;
-    attemptDescriptor = "regenerate-latest-segment";
-    summaryModalState.detectionText = `Regenerating pages ${startPage}-${endPage}.`;
-  } else if (runMode === "rebuild-full") {
-    startPage = 1;
-    endPage = currentBookmarkPage;
-    isIncremental = false;
-    basedOnSummaryId = null;
-    attemptDescriptor = "rebuild-full";
-    summaryModalState.detectionText = `Full rebuild for pages 1-${endPage}.`;
-  } else {
-    const detection = resolveIncrementalRange(book, currentBookmarkPage);
-    if (detection.mode === "reuse") {
-      summaryModalState.isRunning = false;
-      summaryModalState.externalSummary = detection.relevantSummary;
-      summaryModalState.detectionText = `Already summarized through page ${detection.lastSummarizedPage}. No new pages to process.`;
-      summaryModalState.statusText = detection.relevantSummary
-        ? "Showing the most relevant existing summary."
-        : "No relevant prior summary found for this exact page.";
-      if (
-        detection.relevantSummary &&
-        detection.relevantSummary.bookmarkId === bookmark.bookmarkId
-      ) {
-        summaryModalState.selectedSummaryId =
-          detection.relevantSummary.summaryId;
-      }
-      renderSummaryModal();
-      return;
-    }
-
-    startPage = detection.startPage;
-    endPage = detection.endPage;
-    basedOnSummaryId = detection.relevantSummary
-      ? detection.relevantSummary.summaryId
-      : null;
-    previousSummaryContent = detection.relevantSummary
-      ? String(detection.relevantSummary.content || "")
-      : "";
-    isIncremental = detection.mode === "incremental";
-    attemptDescriptor = detection.mode;
-    summaryModalState.detectionText =
-      detection.mode === "incremental"
-        ? `Incremental run: pages ${startPage}-${endPage} (previously summarized through ${detection.lastSummarizedPage}).`
-        : `No previous summary found. Running full summary pages 1-${endPage}.`;
-  }
-
-  const plannedPages = endPage - startPage + 1;
-  if (plannedPages > settings.maxPagesPerRun) {
-    const proceed = window.confirm(
-      `This run will process ${plannedPages} pages (limit is ${settings.maxPagesPerRun}). Continue?`,
-    );
-    if (!proceed) {
-      summaryModalState.isRunning = false;
-      summaryModalState.statusText = "Summary run canceled.";
-      renderSummaryModal();
-      return;
-    }
-  }
-
-  renderSummaryModal();
-  appendLogEntry({
-    level: "info",
-    component: "ai-summary",
-    operation: "runBookmarkSummary",
-    message: "Summary run started.",
-    runId,
-    context: {
-      runMode,
-      attemptDescriptor,
-      bookId,
-      bookmarkId,
-      startPage,
-      endPage,
-      model: settings.model,
-    },
-  });
+  let runtimeLimits = null;
+  let shouldRenderModal = false;
 
   try {
+    const currentTargets = resolveCurrentSummaryTargets(bookId, bookmarkId);
+    const book = currentTargets.book;
+    const bookmark = currentTargets.bookmark;
+    if (!book || !bookmark) {
+      alert("Bookmark not found.");
+      return;
+    }
+
+    settings = getBookAiSettings();
+    const runtimeApiKey = getApiKeyForSummary();
+    if (!runtimeApiKey) {
+      alert(
+        "Unlock your saved Gemini API key in Books > Summary AI Settings first.",
+      );
+      return;
+    }
+    if (!String(settings.model || "").trim()) {
+      alert("Select a Gemini model in Summary AI Settings.");
+      return;
+    }
+
+    openSummaryModal(bookId, bookmarkId, { preserveRunning: true });
+    shouldRenderModal = true;
+    summaryModalState.pendingRun = {
+      summaryId: SUMMARY_PENDING_ID,
+      startPage: null,
+      endPage: null,
+      modeLabel: "Preparing",
+      createdAt: nowIso(),
+    };
+    summaryModalState.selectedSummaryId = SUMMARY_PENDING_ID;
+    summaryModalState.externalSummary = null;
+    summaryModalState.statusText = "Preparing summary run...";
+    renderSummaryModal();
+
+    const currentBookmarkPage = Math.max(
+      1,
+      parseInt(bookmark.pdfPage, 10) || 1,
+    );
+
+    const latestBookmarkSummary = getLatestBookmarkSummary(bookmark);
+
+    if (runMode === "regenerate-latest") {
+      if (!latestBookmarkSummary) {
+        summaryModalState.pendingRun = null;
+        summaryModalState.selectedSummaryId = null;
+        summaryModalState.statusText =
+          "No summary available to regenerate yet.";
+        renderSummaryModal();
+        return;
+      }
+      startPage = Math.max(
+        1,
+        parseInt(latestBookmarkSummary.startPage, 10) || 1,
+      );
+      endPage = Math.max(
+        startPage,
+        parseInt(latestBookmarkSummary.endPage, 10) || startPage,
+      );
+      isIncremental = latestBookmarkSummary.isIncremental === true;
+      basedOnSummaryId = latestBookmarkSummary.basedOnSummaryId;
+      attemptDescriptor = "regenerate-latest-segment";
+      summaryModalState.detectionText = `Regenerating pages ${startPage}-${endPage}.`;
+    } else if (runMode === "rebuild-full") {
+      startPage = 1;
+      endPage = currentBookmarkPage;
+      isIncremental = false;
+      basedOnSummaryId = null;
+      attemptDescriptor = "rebuild-full";
+      summaryModalState.detectionText = `Full rebuild for pages 1-${endPage}.`;
+    } else {
+      const detection = resolveIncrementalRange(book, currentBookmarkPage);
+      if (detection.mode === "reuse") {
+        summaryModalState.pendingRun = null;
+        summaryModalState.selectedSummaryId = null;
+        summaryModalState.externalSummary = detection.relevantSummary;
+        summaryModalState.detectionText = `Already summarized through page ${detection.lastSummarizedPage}. No new pages to process.`;
+        summaryModalState.statusText = detection.relevantSummary
+          ? "Showing the most relevant existing summary."
+          : "No relevant prior summary found for this exact page.";
+        if (
+          detection.relevantSummary &&
+          detection.relevantSummary.bookmarkId === bookmark.bookmarkId
+        ) {
+          summaryModalState.selectedSummaryId =
+            detection.relevantSummary.summaryId;
+        }
+        renderSummaryModal();
+        return;
+      }
+
+      startPage = detection.startPage;
+      endPage = detection.endPage;
+      basedOnSummaryId = detection.relevantSummary
+        ? detection.relevantSummary.summaryId
+        : null;
+      previousSummaryContent = detection.relevantSummary
+        ? String(detection.relevantSummary.content || "")
+        : "";
+      isIncremental = detection.mode === "incremental";
+      attemptDescriptor = detection.mode;
+      summaryModalState.detectionText =
+        detection.mode === "incremental"
+          ? `Incremental run: pages ${startPage}-${endPage} (previously summarized through ${detection.lastSummarizedPage}).`
+          : `No previous summary found. Running full summary pages 1-${endPage}.`;
+    }
+
+    summaryModalState.pendingRun = {
+      ...summaryModalState.pendingRun,
+      summaryId: SUMMARY_PENDING_ID,
+      startPage,
+      endPage,
+      modeLabel:
+        attemptDescriptor === "rebuild-full"
+          ? "Rebuild"
+          : attemptDescriptor === "regenerate-latest-segment"
+            ? "Regenerate"
+            : attemptDescriptor === "incremental"
+              ? "Incremental"
+              : "Full",
+      createdAt:
+        summaryModalState.pendingRun && summaryModalState.pendingRun.createdAt
+          ? summaryModalState.pendingRun.createdAt
+          : nowIso(),
+    };
+    summaryModalState.selectedSummaryId = SUMMARY_PENDING_ID;
+    summaryModalState.externalSummary = null;
+    summaryModalState.statusText = "Preparing summary run...";
+    renderSummaryModal();
+
+    const plannedPages = endPage - startPage + 1;
+    const totalBookPages = Math.max(
+      endPage,
+      parseInt(book.totalPagesOverride || book.totalPagesDetected, 10) ||
+        endPage,
+    );
+    runtimeLimits = computeDynamicSummaryLimits({
+      model: settings.model,
+      plannedPages,
+      totalBookPages,
+      fileSizeBytes: book.fileSize,
+    });
+
+    if (plannedPages > runtimeLimits.maxPagesPerRun) {
+      const proceed = window.confirm(
+        `This run will process ${plannedPages} pages (recommended ${runtimeLimits.maxPagesPerRun} for ${runtimeLimits.profile} profile). Continue?`,
+      );
+      if (!proceed) {
+        summaryModalState.pendingRun = null;
+        summaryModalState.selectedSummaryId = null;
+        summaryModalState.statusText = "Summary run canceled.";
+        renderSummaryModal();
+        return;
+      }
+    }
+
+    renderSummaryModal();
+    appendLogEntry({
+      level: "info",
+      component: "ai-summary",
+      operation: "runBookmarkSummary",
+      message: "Summary run started.",
+      runId,
+      context: {
+        runMode,
+        attemptDescriptor,
+        bookId,
+        bookmarkId,
+        startPage,
+        endPage,
+        model: settings.model,
+        summaryLanguage: settings.summaryLanguage,
+        dynamicChunkChars: runtimeLimits.chunkChars,
+        dynamicPageBudget: runtimeLimits.maxPagesPerRun,
+        dynamicProfile: runtimeLimits.profile,
+      },
+    });
+
     summaryModalState.statusText = `Extracting pages ${startPage}-${endPage}...`;
     renderSummaryModal();
 
@@ -846,6 +1362,16 @@ export async function runBookmarkSummary(bookId, bookmarkId, runMode) {
       },
     );
 
+    if (
+      !String(extracted.text || "")
+        .replace(/\s+/g, "")
+        .trim()
+    ) {
+      throw new Error(
+        `No extractable text found in pages ${extracted.startPage}-${extracted.endPage}.`,
+      );
+    }
+
     startPage = extracted.startPage;
     endPage = extracted.endPage;
 
@@ -858,7 +1384,8 @@ export async function runBookmarkSummary(bookId, bookmarkId, runMode) {
       endPage,
       apiKey: runtimeApiKey,
       model: settings.model,
-      chunkChars: settings.chunkChars,
+      summaryLanguage: settings.summaryLanguage,
+      chunkChars: runtimeLimits.chunkChars,
       onChunkProgress: ({ current, total }) => {
         summaryModalState.statusText = `Summarizing chunk ${current}/${total}...`;
         renderSummaryModal();
@@ -877,25 +1404,41 @@ export async function runBookmarkSummary(bookId, bookmarkId, runMode) {
       apiKey: runtimeApiKey,
       model: settings.model,
       consolidateMode: settings.consolidateMode,
+      summaryLanguage: settings.summaryLanguage,
     });
+
+    const latestTargets = resolveCurrentSummaryTargets(bookId, bookmarkId);
+    if (!latestTargets.book || !latestTargets.bookmark) {
+      throw new Error(
+        "The target bookmark was removed while summary generation was running.",
+      );
+    }
 
     const durationMs = performance.now() - startedAt;
-    const saved = appendBookmarkSummaryRecord(book, bookmark, {
-      model: settings.model,
-      startPage,
-      endPage,
-      isIncremental,
-      basedOnSummaryId,
-      status: "ready",
-      content: mergedSummary,
-      chunkMeta: {
-        chunkCount: segmentSummary.chunkCount,
-        mode: attemptDescriptor,
-        incrementalOnlySummary: segmentSummary.summary,
+    const saved = appendBookmarkSummaryRecord(
+      latestTargets.book,
+      latestTargets.bookmark,
+      {
+        model: settings.model,
+        startPage,
+        endPage,
+        isIncremental,
+        basedOnSummaryId,
+        status: "ready",
+        content: mergedSummary,
+        chunkMeta: {
+          chunkCount: segmentSummary.chunkCount,
+          mode: attemptDescriptor,
+          summaryLanguage: settings.summaryLanguage,
+          incrementalOnlySummary: segmentSummary.summary,
+          chunkChars: runtimeLimits.chunkChars,
+          dynamicProfile: runtimeLimits.profile,
+        },
+        durationMs,
       },
-      durationMs,
-    });
+    );
 
+    summaryModalState.pendingRun = null;
     summaryModalState.selectedSummaryId = saved.summaryId;
     summaryModalState.externalSummary = null;
     summaryModalState.statusText = `Summary saved for pages ${startPage}-${endPage} in ${formatDuration(durationMs)}.`;
@@ -915,27 +1458,37 @@ export async function runBookmarkSummary(bookId, bookmarkId, runMode) {
         durationMs: Math.round(durationMs),
         chunkCount: segmentSummary.chunkCount,
         model: settings.model,
+        summaryLanguage: settings.summaryLanguage,
+        dynamicChunkChars: runtimeLimits.chunkChars,
       },
     });
   } catch (error) {
     const failedDurationMs = performance.now() - startedAt;
-    appendBookmarkSummaryRecord(book, bookmark, {
-      model: settings.model,
-      startPage,
-      endPage,
-      isIncremental,
-      basedOnSummaryId,
-      status: "failed",
-      content: "",
-      chunkMeta: {
-        mode: attemptDescriptor,
-      },
-      durationMs: failedDurationMs,
-      error: String(error && error.message ? error.message : error),
-    });
+    const latestTargets = resolveCurrentSummaryTargets(bookId, bookmarkId);
 
+    if (latestTargets.book && latestTargets.bookmark && settings) {
+      appendBookmarkSummaryRecord(latestTargets.book, latestTargets.bookmark, {
+        model: settings.model,
+        startPage,
+        endPage,
+        isIncremental,
+        basedOnSummaryId,
+        status: "failed",
+        content: "",
+        chunkMeta: {
+          mode: attemptDescriptor,
+          summaryLanguage: settings.summaryLanguage,
+          chunkChars: runtimeLimits ? runtimeLimits.chunkChars : null,
+          dynamicProfile: runtimeLimits ? runtimeLimits.profile : null,
+        },
+        durationMs: failedDurationMs,
+        error: String(error && error.message ? error.message : error),
+      });
+      callRenderer("renderBooksView");
+    }
+
+    summaryModalState.pendingRun = null;
     summaryModalState.statusText = `Summary failed: ${String(error && error.message ? error.message : error)}`;
-    callRenderer("renderBooksView");
     renderSummaryModal();
     appendLogEntry({
       level: "error",
@@ -951,14 +1504,18 @@ export async function runBookmarkSummary(bookId, bookmarkId, runMode) {
         bookmarkId,
         startPage,
         endPage,
-        model: settings.model,
+        model: settings ? settings.model : "",
         durationMs: Math.round(failedDurationMs),
       },
     });
     maybeAutoDownloadLogs("summary-run-failed");
   } finally {
     summaryModalState.isRunning = false;
-    renderSummaryModal();
+    summaryModalState.pendingRun = null;
+    setSummarizeButtonLoading(bookId, bookmarkId, false);
+    if (shouldRenderModal) {
+      renderSummaryModal();
+    }
   }
 }
 

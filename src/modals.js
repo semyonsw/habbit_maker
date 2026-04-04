@@ -1,23 +1,78 @@
 "use strict";
 
-import { ALL_WEEKDAYS, WEEKDAY_LABELS, MAX_BOOKMARK_HISTORY, MONTH_NAMES } from "./constants.js";
-import { state, globals, noteModalState, bookModalState, bookmarkModalState, historyEventModalState } from "./state.js";
-import { uid, nowIso, sanitize, isPlainObject, monthKey, formatDateKey, normalizeWeekdayArray, normalizeMonthDayArray } from "./utils.js";
+import {
+  ALL_WEEKDAYS,
+  WEEKDAY_LABELS,
+  MAX_BOOKMARK_HISTORY,
+  MONTH_NAMES,
+} from "./constants.js";
+import {
+  state,
+  globals,
+  noteModalState,
+  bookModalState,
+  bookmarkModalState,
+  historyEventModalState,
+} from "./state.js";
+import {
+  uid,
+  nowIso,
+  sanitize,
+  isPlainObject,
+  monthKey,
+  formatDateKey,
+  normalizeWeekdayArray,
+  normalizeMonthDayArray,
+} from "./utils.js";
 import { appendLogEntry } from "./logging.js";
-import { saveState, getCurrentMonthData, getCategoryById, getHabitEmoji } from "./persistence.js";
-import { getHabitScheduleMode, renderHabitScheduleSelectors, updateHabitScheduleTypeUI, getCheckedValuesFromContainer, updateHabitOrder, getPossibleActiveDaysInMonth } from "./habits.js";
-import { getBookById, getActiveBook, getBookmarkById, addBookmarkHistoryEvent, refreshBookBlobStatus } from "./books.js";
+import {
+  saveState,
+  getCurrentMonthData,
+  getCategoryById,
+  getHabitEmoji,
+} from "./persistence.js";
+import {
+  getHabitScheduleMode,
+  renderHabitScheduleSelectors,
+  updateHabitScheduleTypeUI,
+  getCheckedValuesFromContainer,
+  updateHabitOrder,
+  getPossibleActiveDaysInMonth,
+} from "./habits.js";
+import {
+  getBookById,
+  getActiveBook,
+  getBookmarkById,
+  addBookmarkHistoryEvent,
+  refreshBookBlobStatus,
+  clearBookCoverPreview,
+} from "./books.js";
 import { idbSavePdfBlob, idbDeletePdfBlob } from "./idb.js";
 import { callRenderer, registerRenderer } from "./render-registry.js";
 
 export function openModal(id) {
   const el = document.getElementById(id);
-  if (el) el.classList.add("open");
+  if (!el) return;
+  el.classList.add("open");
+  requestAnimationFrame(() => {
+    const firstInput = el.querySelector(
+      ".modal-body input:not([type='hidden']):not([disabled]), .modal-body textarea:not([disabled]), .modal-body select:not([disabled])",
+    );
+    const firstFocusable =
+      firstInput ||
+      el.querySelector(
+        "input:not([type='hidden']):not([disabled]), textarea:not([disabled]), select:not([disabled]), button:not([disabled]), [href], [tabindex]:not([tabindex='-1'])",
+      );
+    if (firstFocusable instanceof HTMLElement) {
+      firstFocusable.focus({ preventScroll: true });
+    }
+  });
 }
 
 export function closeModal(id) {
   const el = document.getElementById(id);
-  if (el) el.classList.remove("open");
+  if (!el) return;
+  el.classList.remove("open");
 }
 
 export function openConfirm(title, message, callback) {
@@ -45,7 +100,9 @@ export function openHabitModal(habitId) {
     .join("");
 
   if (globals.editingHabitId) {
-    const habit = state.habits.daily.find((h) => h.id === globals.editingHabitId);
+    const habit = state.habits.daily.find(
+      (h) => h.id === globals.editingHabitId,
+    );
     if (!habit) return;
     title.textContent = "Edit Habit";
     name.value = habit.name;
@@ -124,7 +181,9 @@ export function saveHabitModal() {
   }
 
   if (globals.editingHabitId) {
-    const habit = state.habits.daily.find((h) => h.id === globals.editingHabitId);
+    const habit = state.habits.daily.find(
+      (h) => h.id === globals.editingHabitId,
+    );
     if (habit) {
       habit.name = name;
       habit.categoryId = categoryId;
@@ -157,9 +216,7 @@ export function saveHabitModal() {
         scheduleMode === "specific_month_days" ? activeMonthDays : [],
       excludedWeekdays:
         scheduleMode === "specific_weekdays"
-          ? ALL_WEEKDAYS.filter(
-              (weekday) => !activeWeekdays.includes(weekday),
-            )
+          ? ALL_WEEKDAYS.filter((weekday) => !activeWeekdays.includes(weekday))
           : [],
       emoji,
       order: state.habits.daily.length,
@@ -180,7 +237,9 @@ export function openCategoryModal(catId) {
   const color = document.getElementById("categoryColor");
 
   if (globals.editingCategoryId) {
-    const cat = state.categories.find((c) => c.id === globals.editingCategoryId);
+    const cat = state.categories.find(
+      (c) => c.id === globals.editingCategoryId,
+    );
     if (!cat) return;
     title.textContent = "Edit Category";
     name.value = cat.name;
@@ -204,7 +263,9 @@ export function saveCategoryModal() {
   const color = document.getElementById("categoryColor").value || "#3e85b5";
 
   if (globals.editingCategoryId) {
-    const cat = state.categories.find((c) => c.id === globals.editingCategoryId);
+    const cat = state.categories.find(
+      (c) => c.id === globals.editingCategoryId,
+    );
     if (cat) {
       cat.name = name;
       cat.emoji = emoji;
@@ -327,9 +388,8 @@ export async function deleteBook(bookId) {
     "Delete Book",
     `Delete \"${book.title}\" and all its bookmarks?`,
     async () => {
-      state.books.items = state.books.items.filter(
-        (b) => b.bookId !== bookId,
-      );
+      clearBookCoverPreview(bookId);
+      state.books.items = state.books.items.filter((b) => b.bookId !== bookId);
       if (state.books.activeBookId === bookId) {
         state.books.activeBookId = state.books.items[0]
           ? state.books.items[0].bookId
@@ -421,9 +481,7 @@ export function saveBookmark() {
     alert("PDF page is required and must be 1 or greater.");
     return;
   }
-  const realPageRaw = document
-    .getElementById("bookmarkRealPage")
-    .value.trim();
+  const realPageRaw = document.getElementById("bookmarkRealPage").value.trim();
   let realPage = null;
   if (realPageRaw) {
     const parsedRealPage = parseInt(realPageRaw, 10);
@@ -477,9 +535,7 @@ export function deleteBookmark(bookId, bookmarkId) {
   if (!bm) return;
 
   openConfirm("Delete Bookmark", `Delete bookmark \"${bm.label}\"?`, () => {
-    book.bookmarks = book.bookmarks.filter(
-      (b) => b.bookmarkId !== bookmarkId,
-    );
+    book.bookmarks = book.bookmarks.filter((b) => b.bookmarkId !== bookmarkId);
     book.updatedAt = nowIso();
     saveState();
     callRenderer("renderBooksView");
@@ -507,9 +563,7 @@ export function openHistoryEventModal(bookId, bookmarkId, eventId) {
   document.getElementById("historyEventType").value = String(
     event.type || "updated",
   );
-  document.getElementById("historyEventNote").value = String(
-    event.note || "",
-  );
+  document.getElementById("historyEventNote").value = String(event.note || "");
   openModal("historyEventModal");
 }
 
@@ -559,9 +613,7 @@ export function deleteHistoryEvent(bookId, bookmarkId, eventId) {
     "Delete History Event",
     `Delete history event \"${event.type}\"?`,
     () => {
-      bookmark.history = bookmark.history.filter(
-        (h) => h.eventId !== eventId,
-      );
+      bookmark.history = bookmark.history.filter((h) => h.eventId !== eventId);
       bookmark.updatedAt = nowIso();
       book.updatedAt = bookmark.updatedAt;
       book.bookmarks.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));

@@ -7,8 +7,6 @@ import {
   MAX_BOOKMARK_HISTORY,
   DEFAULT_CATEGORIES,
   DEFAULT_DAILY_HABITS,
-  SUMMARY_MAX_CHARS_PER_CHUNK_DEFAULT,
-  SUMMARY_MAX_PAGES_PER_RUN_DEFAULT,
 } from "./constants.js";
 import { state, setState, globals } from "./state.js";
 import {
@@ -20,7 +18,18 @@ import {
   normalizeMonthDayArray,
 } from "./utils.js";
 import { appendLogEntry } from "./logging.js";
-import { hasStoredEncryptedApiKey, ensureModelAllowed, _bindSaveState } from "./encryption.js";
+import {
+  hasStoredEncryptedApiKey,
+  ensureModelAllowed,
+  _bindSaveState,
+} from "./encryption.js";
+
+function ensureSummaryLanguageAllowed(value) {
+  const candidate = String(value || "").trim();
+  if (candidate === "Armenian") return "Armenian";
+  if (candidate === "Russian") return "Russian";
+  return "English";
+}
 
 export function getDefaultMonthData() {
   return {
@@ -68,14 +77,11 @@ export function ensureBooksShape(input) {
     input.books.ai.apiKeyLastUpdated || "",
   );
   input.books.ai.model = ensureModelAllowed(input.books.ai.model);
-  const normalizedChunkChars = parseInt(input.books.ai.chunkChars, 10);
-  input.books.ai.chunkChars = Number.isFinite(normalizedChunkChars)
-    ? Math.min(30000, Math.max(4000, normalizedChunkChars))
-    : SUMMARY_MAX_CHARS_PER_CHUNK_DEFAULT;
-  const normalizedMaxPages = parseInt(input.books.ai.maxPagesPerRun, 10);
-  input.books.ai.maxPagesPerRun = Number.isFinite(normalizedMaxPages)
-    ? Math.min(1000, Math.max(20, normalizedMaxPages))
-    : SUMMARY_MAX_PAGES_PER_RUN_DEFAULT;
+  input.books.ai.summaryLanguage = ensureSummaryLanguageAllowed(
+    input.books.ai.summaryLanguage,
+  );
+  delete input.books.ai.chunkChars;
+  delete input.books.ai.maxPagesPerRun;
   input.books.ai.consolidateMode =
     input.books.ai.consolidateMode === false ? false : true;
 
@@ -86,8 +92,7 @@ export function ensureBooksShape(input) {
       const updatedAt = String(book.updatedAt || createdAt);
       const cleanBook = {
         bookId: String(book.bookId),
-        title:
-          String(book.title || "Untitled Book").trim() || "Untitled Book",
+        title: String(book.title || "Untitled Book").trim() || "Untitled Book",
         author: book.author ? String(book.author) : "",
         fileId: String(book.fileId || uid("file")),
         fileName: String(book.fileName || "unknown.pdf"),
@@ -110,9 +115,7 @@ export function ensureBooksShape(input) {
         bookmarks: [],
       };
 
-      const rawBookmarks = Array.isArray(book.bookmarks)
-        ? book.bookmarks
-        : [];
+      const rawBookmarks = Array.isArray(book.bookmarks) ? book.bookmarks : [];
       cleanBook.bookmarks = rawBookmarks
         .filter(
           (bm) =>
@@ -256,8 +259,7 @@ export function getDefaultState() {
         apiKeySaved: false,
         apiKeyLastUpdated: "",
         model: "gemini-2.5-flash",
-        chunkChars: SUMMARY_MAX_CHARS_PER_CHUNK_DEFAULT,
-        maxPagesPerRun: SUMMARY_MAX_PAGES_PER_RUN_DEFAULT,
+        summaryLanguage: "English",
         consolidateMode: true,
       },
     },
@@ -322,8 +324,7 @@ export function migrateState() {
       habit.activeWeekdays = activeWeekdays.length
         ? activeWeekdays
         : [...ALL_WEEKDAYS];
-      mode =
-        habit.activeWeekdays.length === 7 ? "fixed" : "specific_weekdays";
+      mode = habit.activeWeekdays.length === 7 ? "fixed" : "specific_weekdays";
     }
 
     if (mode !== "specific_weekdays" && mode !== "specific_month_days") {
@@ -413,7 +414,8 @@ export function loadState() {
         typeof state.books.ai.apiKey === "string" &&
         state.books.ai.apiKey.trim().length
       ) {
-        globals.legacyPlaintextApiKeyForMigration = state.books.ai.apiKey.trim();
+        globals.legacyPlaintextApiKeyForMigration =
+          state.books.ai.apiKey.trim();
         appendLogEntry({
           level: "warn",
           component: "secure-settings",

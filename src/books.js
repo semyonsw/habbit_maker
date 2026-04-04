@@ -1,14 +1,47 @@
 "use strict";
 
-import { MAX_PDF_FILE_SIZE_MB, MAX_PDF_FILE_SIZE_BYTES, MAX_BOOKMARK_HISTORY, ALL_WEEKDAYS, WEEKDAY_LABELS, PDFJS_WORKER_URL, MONTH_NAMES } from "./constants.js";
-import { state, booksBlobStatus, setBooksBlobStatus, finisherState, readerState, bookmarkModalState } from "./state.js";
-import { uid, nowIso, sanitize, isPlainObject, formatRealBookPage, formatByteSize, formatIsoForDisplay, daysInMonth, formatDateKey, clampNumber } from "./utils.js";
+import {
+  MAX_PDF_FILE_SIZE_MB,
+  MAX_PDF_FILE_SIZE_BYTES,
+  MAX_BOOKMARK_HISTORY,
+  ALL_WEEKDAYS,
+  WEEKDAY_LABELS,
+  PDFJS_WORKER_URL,
+  MONTH_NAMES,
+} from "./constants.js";
+import {
+  state,
+  booksBlobStatus,
+  setBooksBlobStatus,
+  finisherState,
+  readerState,
+  bookmarkModalState,
+} from "./state.js";
+import {
+  uid,
+  nowIso,
+  sanitize,
+  isPlainObject,
+  formatRealBookPage,
+  formatByteSize,
+  formatIsoForDisplay,
+  daysInMonth,
+  formatDateKey,
+  clampNumber,
+} from "./utils.js";
 import { appendLogEntry } from "./logging.js";
 import { idbGetPdfBlob, idbSavePdfBlob, idbDeletePdfBlob } from "./idb.js";
 import { saveState } from "./persistence.js";
 import { getBooksAnalyticsRangeDays } from "./preferences.js";
 import { callRenderer } from "./render-registry.js";
-import { ensurePdfJsLibLoaded } from "./pdf-reader.js";
+import {
+  ensurePdfJsLibLoaded,
+  renderPdfPagePreviewDataUrl,
+} from "./pdf-reader.js";
+
+const bookCoverPreviewCache = new Map();
+const bookCoverPreviewTasks = new Map();
+const bookCoverPreviewFailed = new Set();
 
 export function getBookById(bookId) {
   return state.books.items.find((b) => b.bookId === bookId) || null;
@@ -16,6 +49,93 @@ export function getBookById(bookId) {
 
 export function getActiveBook() {
   return getBookById(state.books.activeBookId);
+}
+
+export function getBookCoverPreview(bookId) {
+  const value = bookCoverPreviewCache.get(String(bookId || ""));
+  return typeof value === "string" && value.trim().length ? value : null;
+}
+
+export function clearBookCoverPreview(bookId) {
+  const safeBookId = String(bookId || "");
+  if (!safeBookId) return;
+  bookCoverPreviewCache.delete(safeBookId);
+  bookCoverPreviewTasks.delete(safeBookId);
+  bookCoverPreviewFailed.delete(safeBookId);
+}
+
+export async function ensureBookCoverPreview(bookId) {
+  const safeBookId = String(bookId || "");
+  if (!safeBookId) return null;
+  if (bookCoverPreviewCache.has(safeBookId)) {
+    return getBookCoverPreview(safeBookId);
+  }
+  if (bookCoverPreviewFailed.has(safeBookId)) {
+    return null;
+  }
+  if (bookCoverPreviewTasks.has(safeBookId)) {
+    return bookCoverPreviewTasks.get(safeBookId);
+  }
+
+  const task = (async () => {
+    const book = getBookById(safeBookId);
+    if (!book || !book.fileId) return null;
+
+    let pdfDoc = null;
+    try {
+      const blob = await idbGetPdfBlob(book.fileId);
+      if (!blob) {
+        bookCoverPreviewFailed.add(safeBookId);
+        return null;
+      }
+
+      const pdfjsLib = await ensurePdfJsLibLoaded();
+      if (!pdfjsLib) {
+        bookCoverPreviewFailed.add(safeBookId);
+        return null;
+      }
+
+      pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_URL;
+      const pdfData = await blob.arrayBuffer();
+      const loadingTask = pdfjsLib.getDocument({ data: pdfData });
+      pdfDoc = await loadingTask.promise;
+
+      const previewDataUrl = await renderPdfPagePreviewDataUrl(pdfDoc, {
+        pageNumber: 1,
+        maxWidth: 170,
+        quality: 0.74,
+      });
+
+      if (!previewDataUrl) {
+        bookCoverPreviewFailed.add(safeBookId);
+        return null;
+      }
+
+      bookCoverPreviewCache.set(safeBookId, previewDataUrl);
+      return previewDataUrl;
+    } catch (error) {
+      bookCoverPreviewFailed.add(safeBookId);
+      appendLogEntry({
+        level: "warn",
+        component: "books",
+        operation: "ensureBookCoverPreview",
+        message: "Failed to generate book cover preview.",
+        error,
+        context: { bookId: safeBookId },
+      });
+      return null;
+    } finally {
+      if (pdfDoc && typeof pdfDoc.destroy === "function") {
+        try {
+          await pdfDoc.destroy();
+        } catch (_) {}
+      }
+      bookCoverPreviewTasks.delete(safeBookId);
+    }
+  })();
+
+  bookCoverPreviewTasks.set(safeBookId, task);
+  return task;
 }
 
 export function getBookmarkById(book, bookmarkId) {
@@ -272,9 +392,7 @@ export function formatDateInputValue(dateLike) {
 }
 
 export function getBookMaxBookmarkPage(book) {
-  const bookmarks = Array.isArray(book && book.bookmarks)
-    ? book.bookmarks
-    : [];
+  const bookmarks = Array.isArray(book && book.bookmarks) ? book.bookmarks : [];
   if (!bookmarks.length) return 1;
   return Math.max(
     1,
@@ -329,9 +447,7 @@ export function getSelectedFinisherBook() {
     : [];
   if (!books.length) return null;
   if (helper.selectedBookId) {
-    const matched = books.find(
-      (book) => book.bookId === helper.selectedBookId,
-    );
+    const matched = books.find((book) => book.bookId === helper.selectedBookId);
     if (matched) return matched;
   }
   if (state.books.activeBookId) {
@@ -580,9 +696,7 @@ export function computePerBookStats(book, events) {
       bookId: book.bookId,
       title: book.title,
       author: book.author || "Unknown author",
-      totalBookmarks: Array.isArray(book.bookmarks)
-        ? book.bookmarks.length
-        : 0,
+      totalBookmarks: Array.isArray(book.bookmarks) ? book.bookmarks.length : 0,
       eventCount: 0,
       firstAt: null,
       lastAt: null,
@@ -695,8 +809,7 @@ export function buildBooksAnalytics() {
     totalBookmarks += book.totalBookmarks;
     totalEvents += book.eventCount;
     Object.keys(book.dayPages).forEach((dayKey) => {
-      allDayPages[dayKey] =
-        (allDayPages[dayKey] || 0) + book.dayPages[dayKey];
+      allDayPages[dayKey] = (allDayPages[dayKey] || 0) + book.dayPages[dayKey];
     });
   });
 
@@ -714,10 +827,7 @@ export function buildBooksAnalytics() {
       });
   });
 
-  const totalPages = withProgress.reduce(
-    (sum, book) => sum + book.pagesNet,
-    0,
-  );
+  const totalPages = withProgress.reduce((sum, book) => sum + book.pagesNet, 0);
   const firstAt = withProgress.length
     ? Math.min(...withProgress.map((book) => book.firstAt))
     : null;
@@ -840,9 +950,7 @@ export async function saveBookFromUpload() {
       `File is too large. Maximum size is ${MAX_PDF_FILE_SIZE_MB}MB.`,
       "error",
     );
-    alert(
-      `PDF file is too large. Maximum size is ${MAX_PDF_FILE_SIZE_MB}MB.`,
-    );
+    alert(`PDF file is too large. Maximum size is ${MAX_PDF_FILE_SIZE_MB}MB.`);
     return;
   }
 
@@ -905,9 +1013,7 @@ export function addBookmarkOnCurrentReaderPage() {
 
   const page = Math.max(1, parseInt(readerState.currentPage, 10) || 1);
   const sourceBookmark = readerState.sourceBookmarkId
-    ? book.bookmarks.find(
-        (b) => b.bookmarkId === readerState.sourceBookmarkId,
-      )
+    ? book.bookmarks.find((b) => b.bookmarkId === readerState.sourceBookmarkId)
     : null;
   const openedFromSameBookmarkPage =
     !!sourceBookmark && page === readerState.sourcePage;
@@ -920,7 +1026,9 @@ export function addBookmarkOnCurrentReaderPage() {
   }
 
   if (!Array.isArray(book.bookmarks) || book.bookmarks.length === 0) {
-    callRenderer("openBookmarkModal", book.bookId, null, { prefillPdfPage: page });
+    callRenderer("openBookmarkModal", book.bookId, null, {
+      prefillPdfPage: page,
+    });
     return;
   }
 
@@ -929,7 +1037,9 @@ export function addBookmarkOnCurrentReaderPage() {
   );
 
   if (!useExisting) {
-    callRenderer("openBookmarkModal", book.bookId, null, { prefillPdfPage: page });
+    callRenderer("openBookmarkModal", book.bookId, null, {
+      prefillPdfPage: page,
+    });
     return;
   }
 
@@ -947,11 +1057,7 @@ export function addBookmarkOnCurrentReaderPage() {
     return;
   }
   const index = parseInt(picked, 10) - 1;
-  if (
-    !Number.isInteger(index) ||
-    index < 0 ||
-    index >= book.bookmarks.length
-  ) {
+  if (!Number.isInteger(index) || index < 0 || index >= book.bookmarks.length) {
     alert("Invalid bookmark selection.");
     return;
   }
@@ -969,4 +1075,3 @@ export function openBookmarkInNewTab(bookId, page, bookmarkId) {
   const url = `${window.location.pathname}?reader=1&book=${encodeURIComponent(bookId)}&page=${encodeURIComponent(page)}${bookmarkPart}`;
   window.open(url, "_blank", "noopener");
 }
-

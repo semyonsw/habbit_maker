@@ -22,9 +22,7 @@ import { callRenderer } from "./render-registry.js";
 
 export function loadScriptTag(url) {
   return new Promise((resolve, reject) => {
-    const existing = document.querySelector(
-      `script[data-pdfjs-url="${url}"]`,
-    );
+    const existing = document.querySelector(`script[data-pdfjs-url="${url}"]`);
 
     if (existing) {
       if (existing.dataset.loaded === "1") {
@@ -80,15 +78,62 @@ export async function ensurePdfJsLibLoaded() {
       continue;
     }
 
-    if (
-      window.pdfjsLib &&
-      typeof window.pdfjsLib.getDocument === "function"
-    ) {
+    if (window.pdfjsLib && typeof window.pdfjsLib.getDocument === "function") {
       return window.pdfjsLib;
     }
   }
 
   return null;
+}
+
+export async function renderPdfPagePreviewDataUrl(pdfDoc, options = {}) {
+  if (!pdfDoc || typeof pdfDoc.getPage !== "function") {
+    return null;
+  }
+
+  const pageNumber = Math.max(1, parseInt(options.pageNumber, 10) || 1);
+  const maxWidth = Math.max(120, parseInt(options.maxWidth, 10) || 180);
+  const qualityRaw = Number(options.quality);
+  const quality = Number.isFinite(qualityRaw)
+    ? Math.min(0.95, Math.max(0.35, qualityRaw))
+    : 0.76;
+
+  try {
+    const safePage = Math.min(pageNumber, Math.max(1, pdfDoc.numPages || 1));
+    const page = await pdfDoc.getPage(safePage);
+    const baseViewport = page.getViewport({ scale: 1 });
+    const cssScale = Math.max(0.1, maxWidth / Math.max(1, baseViewport.width));
+    const viewport = page.getViewport({ scale: cssScale });
+    const outputScale = Math.min(window.devicePixelRatio || 1, 2);
+
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d", { alpha: false });
+    if (!ctx) return null;
+
+    canvas.width = Math.max(1, Math.floor(viewport.width * outputScale));
+    canvas.height = Math.max(1, Math.floor(viewport.height * outputScale));
+
+    const renderTask = page.render({
+      canvasContext: ctx,
+      viewport,
+      transform: [outputScale, 0, 0, outputScale, 0, 0],
+    });
+    await renderTask.promise;
+
+    const preview = canvas.toDataURL("image/jpeg", quality);
+    canvas.width = 0;
+    canvas.height = 0;
+    return preview;
+  } catch (error) {
+    appendLogEntry({
+      level: "warn",
+      component: "pdf-reader",
+      operation: "renderPdfPagePreviewDataUrl",
+      message: "Failed to render PDF preview image.",
+      error,
+    });
+    return null;
+  }
 }
 
 export async function initReaderMode() {
@@ -209,9 +254,7 @@ export function bindReaderEvents() {
   const next = document.getElementById("readerNextPage");
   const go = document.getElementById("readerGoPage");
   const jump = document.getElementById("readerJumpPage");
-  const addBookmarkOnPage = document.getElementById(
-    "readerAddBookmarkOnPage",
-  );
+  const addBookmarkOnPage = document.getElementById("readerAddBookmarkOnPage");
   const darkToggle = document.getElementById("readerDarkToggle");
   const darkMode = document.getElementById("readerDarkMode");
   const zoomIn = document.getElementById("readerZoomIn");
@@ -293,4 +336,3 @@ export function bindReaderEvents() {
     readerState.resizeHandlerBound = true;
   }
 }
-

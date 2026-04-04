@@ -2,11 +2,74 @@
 
 import { MONTH_NAMES, WEEKDAY_LABELS, ALL_WEEKDAYS } from "./constants.js";
 import { state, chartInstances, linkedHoverState, globals } from "./state.js";
-import { sanitize, daysInMonth, monthKey, formatDateKey, getValueColor, getWeekShadeColor, getIsoWeekNumber } from "./utils.js";
-import { getCurrentMonthData, getCategoryById, getHabitEmoji, saveState } from "./persistence.js";
-import { getSortedDailyHabits, isHabitTrackedOnDate, getPossibleActiveDaysInMonth, getHabitScheduleMode } from "./habits.js";
-import { getMetricValue, getMetricLabel, syncAnalyticsModeControls } from "./preferences.js";
+import {
+  sanitize,
+  daysInMonth,
+  monthKey,
+  formatDateKey,
+  getValueColor,
+  getWeekShadeColor,
+  getIsoWeekNumber,
+} from "./utils.js";
+import {
+  getCurrentMonthData,
+  getCategoryById,
+  getHabitEmoji,
+  saveState,
+} from "./persistence.js";
+import {
+  getSortedDailyHabits,
+  isHabitTrackedOnDate,
+  getPossibleActiveDaysInMonth,
+  getHabitScheduleMode,
+} from "./habits.js";
+import {
+  getMetricValue,
+  getMetricLabel,
+  syncAnalyticsModeControls,
+} from "./preferences.js";
 import { registerRenderer, callRenderer } from "./render-registry.js";
+
+let activeDailyHabitActionsMenuId = null;
+let isDailyHabitActionsMenuBound = false;
+
+const HABIT_NAME_COL_WIDTH_KEY = "habitNameColWidthPx";
+const HABIT_NAME_COL_MIN_PX = 120;
+const HABIT_NAME_COL_MAX_PX = 520;
+const HABIT_NAME_COL_DEFAULT_PX = 260;
+
+function clampHabitNameColWidth(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return HABIT_NAME_COL_DEFAULT_PX;
+  return Math.max(
+    HABIT_NAME_COL_MIN_PX,
+    Math.min(HABIT_NAME_COL_MAX_PX, Math.round(numeric)),
+  );
+}
+
+function loadHabitNameColWidth() {
+  try {
+    const raw = localStorage.getItem(HABIT_NAME_COL_WIDTH_KEY);
+    if (!raw) return HABIT_NAME_COL_DEFAULT_PX;
+    return clampHabitNameColWidth(parseInt(raw, 10));
+  } catch (_) {
+    return HABIT_NAME_COL_DEFAULT_PX;
+  }
+}
+
+function saveHabitNameColWidth(value) {
+  const safeWidth = clampHabitNameColWidth(value);
+  try {
+    localStorage.setItem(HABIT_NAME_COL_WIDTH_KEY, String(safeWidth));
+  } catch (_) {}
+}
+
+function applyHabitNameColWidth(grid, value) {
+  if (!(grid instanceof HTMLElement)) return HABIT_NAME_COL_DEFAULT_PX;
+  const safeWidth = clampHabitNameColWidth(value);
+  grid.style.setProperty("--habit-name-col-width", `${safeWidth}px`);
+  return safeWidth;
+}
 
 export function switchView(viewId) {
   document
@@ -407,6 +470,174 @@ function bindDailyGridHoverInteractions(grid) {
   grid.dataset.linkedHoverBound = "true";
 }
 
+function closeDailyHabitActionsMenus() {
+  document.querySelectorAll(".habit-actions-menu-wrap.open").forEach((wrap) => {
+    wrap.classList.remove("open");
+    const toggle = wrap.querySelector(".habit-actions-toggle");
+    if (toggle) {
+      toggle.setAttribute("aria-expanded", "false");
+    }
+    const menu = wrap.querySelector(".habit-actions-menu");
+    if (menu instanceof HTMLElement) {
+      menu.hidden = true;
+    }
+  });
+  activeDailyHabitActionsMenuId = null;
+}
+
+function openDailyHabitActionsMenu(habitId) {
+  const safeHabitId = String(habitId || "");
+  if (!safeHabitId) return;
+  closeDailyHabitActionsMenus();
+
+  const wrap = Array.from(
+    document.querySelectorAll(
+      ".habit-actions-menu-wrap[data-habit-actions-wrap]",
+    ),
+  ).find((node) => String(node.dataset.habitActionsWrap || "") === safeHabitId);
+  if (!wrap) return;
+
+  const menu = wrap.querySelector(".habit-actions-menu");
+  if (menu instanceof HTMLElement) {
+    menu.hidden = false;
+  }
+
+  wrap.classList.add("open");
+  const toggle = wrap.querySelector(".habit-actions-toggle");
+  if (toggle) {
+    toggle.setAttribute("aria-expanded", "true");
+  }
+  activeDailyHabitActionsMenuId = safeHabitId;
+}
+
+function bindHabitNameColumnResizer(grid) {
+  if (!(grid instanceof HTMLElement)) return;
+  if (grid.dataset.habitColResizerBound === "true") return;
+
+  const onPointerDown = (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const handle = target.closest(".habit-col-resizer");
+    if (!handle) return;
+
+    event.preventDefault();
+    closeDailyHabitActionsMenus();
+
+    const nameHeader = grid.querySelector("th.habit-name-col");
+    if (!(nameHeader instanceof HTMLElement)) return;
+
+    const startWidth = clampHabitNameColWidth(
+      nameHeader.getBoundingClientRect().width,
+    );
+    const startX = event.clientX;
+
+    document.body.classList.add("is-resizing-habit-col");
+
+    const onPointerMove = (moveEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      applyHabitNameColWidth(grid, startWidth + deltaX);
+    };
+
+    const onPointerUp = () => {
+      document.body.classList.remove("is-resizing-habit-col");
+      const applied = parseInt(
+        grid.style.getPropertyValue("--habit-name-col-width"),
+        10,
+      );
+      saveHabitNameColWidth(applied);
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerUp);
+    };
+
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerUp);
+  };
+
+  grid.addEventListener("pointerdown", onPointerDown);
+  grid.dataset.habitColResizerBound = "true";
+}
+
+function runDailyHabitAction(habitId, action) {
+  const app = window.HabitApp;
+  if (!app) return;
+
+  if (action === "up" || action === "down") {
+    if (typeof app.moveHabit === "function") {
+      app.moveHabit(habitId, action);
+    }
+    return;
+  }
+
+  if (action === "edit") {
+    if (typeof app.editHabit === "function") {
+      app.editHabit(habitId);
+    }
+    return;
+  }
+
+  if (action === "delete" && typeof app.deleteHabit === "function") {
+    app.deleteHabit(habitId);
+  }
+}
+
+function bindDailyHabitActionsMenuInteractions(grid) {
+  if (!grid || isDailyHabitActionsMenuBound) return;
+
+  grid.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+
+    const toggle = target.closest(
+      ".habit-actions-toggle[data-habit-actions-toggle]",
+    );
+    if (toggle) {
+      event.preventDefault();
+      event.stopPropagation();
+      const habitId = String(toggle.dataset.habitActionsToggle || "");
+      if (!habitId) return;
+      if (activeDailyHabitActionsMenuId === habitId) {
+        closeDailyHabitActionsMenus();
+      } else {
+        openDailyHabitActionsMenu(habitId);
+      }
+      return;
+    }
+
+    const actionBtn = target.closest(
+      ".habit-action-menu-btn[data-habit-action][data-habit-id]",
+    );
+    if (!actionBtn) return;
+    event.preventDefault();
+    event.stopPropagation();
+
+    const habitId = String(actionBtn.dataset.habitId || "");
+    const action = String(actionBtn.dataset.habitAction || "");
+    closeDailyHabitActionsMenus();
+    runDailyHabitAction(habitId, action);
+  });
+
+  document.addEventListener("pointerdown", (event) => {
+    if (!activeDailyHabitActionsMenuId) return;
+    const target = event.target;
+    if (!(target instanceof Element)) {
+      closeDailyHabitActionsMenus();
+      return;
+    }
+    if (target.closest(".habit-actions-menu-wrap")) return;
+    closeDailyHabitActionsMenus();
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (!activeDailyHabitActionsMenuId) return;
+    if (event.key !== "Escape") return;
+    closeDailyHabitActionsMenus();
+  });
+
+  isDailyHabitActionsMenuBound = true;
+}
+
 export function renderWeeklySummaryCards() {
   const container = document.getElementById("weeklySummaryCards");
   if (!container) return;
@@ -513,12 +744,7 @@ function updateHabitStreak(habitId) {
     const md = getCurrentMonthData();
     for (let day = totalDays; day >= 1; day--) {
       if (
-        !isHabitTrackedOnDate(
-          habit,
-          state.currentYear,
-          state.currentMonth,
-          day,
-        )
+        !isHabitTrackedOnDate(habit, state.currentYear, state.currentMonth, day)
       ) {
         continue;
       }
@@ -536,6 +762,7 @@ function updateHabitStreak(habitId) {
 export function renderDailyHabitsGrid() {
   const grid = document.getElementById("dailyHabitsGrid");
   if (!grid) return;
+  activeDailyHabitActionsMenuId = null;
 
   const monthData = getCurrentMonthData();
   const habits = getSortedDailyHabits();
@@ -553,12 +780,7 @@ export function renderDailyHabitsGrid() {
 
     habits.forEach((habit) => {
       if (
-        !isHabitTrackedOnDate(
-          habit,
-          state.currentYear,
-          state.currentMonth,
-          day,
-        )
+        !isHabitTrackedOnDate(habit, state.currentYear, state.currentMonth, day)
       ) {
         return;
       }
@@ -592,7 +814,7 @@ export function renderDailyHabitsGrid() {
   }
 
   let html =
-    "<thead><tr><th class='habit-name-col'>Habits</th><th class='category-col'>Category</th><th class='goal-col'>Goal</th>";
+    "<thead><tr><th class='habit-name-col'><span>Habits</span><button class='habit-col-resizer' type='button' aria-label='Resize habits column' title='Drag to resize habits column'></button></th><th class='category-col'>Category</th><th class='goal-col'>Goal</th>";
   for (let day = 1; day <= totalDays; day++) {
     const isToday = day === todayDay;
     const isComplete = completedDays[day];
@@ -608,19 +830,15 @@ export function renderDailyHabitsGrid() {
 
   habits.forEach((habit, idx) => {
     const cat = getCategoryById(habit.categoryId);
-    const catName = cat ? `${cat.emoji} ${sanitize(cat.name)}` : "-";
+    const catEmoji = cat ? sanitize(cat.emoji || "🗂️") : "➖";
+    const catName = cat ? sanitize(cat.name || "Category") : "No category";
     const emoji = sanitize(getHabitEmoji(habit));
-    html += `<tr><td class='habit-name-cell'>${emoji} ${sanitize(habit.name)} <span class='streak-badge' data-streak-habit='${habit.id}'>Current 0d | Best 0d</span><span class='habit-actions'><button class='habit-action-btn' onclick="HabitApp.moveHabit('${habit.id}', 'up')" ${idx === 0 ? "disabled" : ""} title='Move up'>Up</button><button class='habit-action-btn' onclick="HabitApp.moveHabit('${habit.id}', 'down')" ${idx === habits.length - 1 ? "disabled" : ""} title='Move down'>Down</button><button class='habit-action-btn' onclick="HabitApp.editHabit('${habit.id}')">Edit</button><button class='habit-action-btn delete' onclick="HabitApp.deleteHabit('${habit.id}')">Delete</button></span></td><td class='category-cell'>${catName}</td><td class='goal-cell'>${habit.monthGoal}</td>`;
+    html += `<tr><td class='habit-name-cell'><span class='habit-title'>${emoji} ${sanitize(habit.name)}</span><span class='streak-badge' data-streak-habit='${habit.id}'>Current 0d | Best 0d</span><span class='habit-actions-menu-wrap' data-habit-actions-wrap='${habit.id}'><button class='habit-actions-toggle' type='button' data-habit-actions-toggle='${habit.id}' aria-haspopup='menu' aria-expanded='false' title='Habit actions'>⋯</button><span class='habit-actions-menu' data-habit-actions-menu='${habit.id}' role='menu' hidden><button class='habit-action-menu-btn' type='button' data-habit-id='${habit.id}' data-habit-action='up' role='menuitem' ${idx === 0 ? "disabled" : ""}>Move up</button><button class='habit-action-menu-btn' type='button' data-habit-id='${habit.id}' data-habit-action='down' role='menuitem' ${idx === habits.length - 1 ? "disabled" : ""}>Move down</button><button class='habit-action-menu-btn' type='button' data-habit-id='${habit.id}' data-habit-action='edit' role='menuitem'>Edit</button><button class='habit-action-menu-btn delete' type='button' data-habit-id='${habit.id}' data-habit-action='delete' role='menuitem'>Delete</button></span></span></td><td class='category-cell'><span class='category-emoji-only' title='${catName}' aria-label='${catName}'>${catEmoji}</span></td><td class='goal-cell'>${habit.monthGoal}</td>`;
     for (let day = 1; day <= totalDays; day++) {
       const isToday = day === todayDay;
       const isComplete = completedDays[day];
       if (
-        !isHabitTrackedOnDate(
-          habit,
-          state.currentYear,
-          state.currentMonth,
-          day,
-        )
+        !isHabitTrackedOnDate(habit, state.currentYear, state.currentMonth, day)
       ) {
         html += `<td class='day-cell day-cell-off ${isToday ? "today-col" : ""} ${isComplete ? "day-complete" : ""}' data-day='${day}'><span class='off-day-mark'>OFF</span></td>`;
         continue;
@@ -642,6 +860,7 @@ export function renderDailyHabitsGrid() {
 
   html += "</tbody>";
   grid.innerHTML = html;
+  applyHabitNameColWidth(grid, loadHabitNameColWidth());
 
   if (!isCurrentMonthView) {
     globals.lastAutoScrolledMonthKey = null;
@@ -694,9 +913,16 @@ export function renderDailyHabitsGrid() {
 
   grid.querySelectorAll(".note-btn").forEach((btn) => {
     btn.addEventListener("click", function () {
-      callRenderer("openNoteModal", this.dataset.habit, parseInt(this.dataset.day, 10));
+      callRenderer(
+        "openNoteModal",
+        this.dataset.habit,
+        parseInt(this.dataset.day, 10),
+      );
     });
   });
+
+  bindDailyHabitActionsMenuInteractions(grid);
+  bindHabitNameColumnResizer(grid);
 
   bindDailyGridHoverInteractions(grid);
 
@@ -707,8 +933,7 @@ function renderCategoriesList() {
   const list = document.getElementById("categoriesList");
   if (!list) return;
   if (state.categories.length === 0) {
-    list.innerHTML =
-      "<div class='empty-state'><p>No categories yet.</p></div>";
+    list.innerHTML = "<div class='empty-state'><p>No categories yet.</p></div>";
     return;
   }
 
@@ -755,9 +980,7 @@ export function renderAll() {
   renderDailyHabitsGrid();
   renderManageView();
 
-  if (
-    document.getElementById("view-analytics")?.classList.contains("active")
-  ) {
+  if (document.getElementById("view-analytics")?.classList.contains("active")) {
     callRenderer("renderAnalyticsView");
   }
 }

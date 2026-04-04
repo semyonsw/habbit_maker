@@ -4,8 +4,6 @@ import {
   SECURE_SETTINGS_KEY,
   API_KEY_CACHE_KEY,
   GEMINI_MODELS,
-  SUMMARY_MAX_CHARS_PER_CHUNK_DEFAULT,
-  SUMMARY_MAX_PAGES_PER_RUN_DEFAULT,
 } from "./constants.js";
 import { state, secureSettings, runtimeSecrets, globals } from "./state.js";
 import {
@@ -26,9 +24,7 @@ export function loadSecureSettings() {
     if (!isPlainObject(parsed)) return;
     Object.assign(secureSettings, {
       keyCiphertext:
-        typeof parsed.keyCiphertext === "string"
-          ? parsed.keyCiphertext
-          : null,
+        typeof parsed.keyCiphertext === "string" ? parsed.keyCiphertext : null,
       saltBase64:
         typeof parsed.saltBase64 === "string" ? parsed.saltBase64 : null,
       ivBase64: typeof parsed.ivBase64 === "string" ? parsed.ivBase64 : null,
@@ -280,7 +276,9 @@ export async function tryUnlockOnStartup() {
 }
 
 export async function maybeMigrateLegacyApiKey() {
-  const legacyKey = String(globals.legacyPlaintextApiKeyForMigration || "").trim();
+  const legacyKey = String(
+    globals.legacyPlaintextApiKeyForMigration || "",
+  ).trim();
   if (!legacyKey) return;
 
   globals.legacyPlaintextApiKeyForMigration = "";
@@ -299,10 +297,7 @@ export async function maybeMigrateLegacyApiKey() {
     return;
   }
 
-  const confirmPassphrase = window.prompt(
-    "Confirm migration passphrase:",
-    "",
-  );
+  const confirmPassphrase = window.prompt("Confirm migration passphrase:", "");
   if (passphrase !== confirmPassphrase) {
     appendLogEntry({
       level: "warn",
@@ -375,6 +370,13 @@ export function ensureModelAllowed(value) {
   return "gemini-2.5-flash";
 }
 
+export function ensureSummaryLanguageAllowed(value) {
+  const candidate = String(value || "").trim();
+  if (candidate === "Armenian") return "Armenian";
+  if (candidate === "Russian") return "Russian";
+  return "English";
+}
+
 export function getBookAiSettings() {
   if (!isPlainObject(state.books.ai)) {
     state.books.ai = {
@@ -384,8 +386,7 @@ export function getBookAiSettings() {
       apiKeyLastUpdated: "",
       rememberOnDevice: false,
       model: "gemini-2.5-flash",
-      chunkChars: SUMMARY_MAX_CHARS_PER_CHUNK_DEFAULT,
-      maxPagesPerRun: SUMMARY_MAX_PAGES_PER_RUN_DEFAULT,
+      summaryLanguage: "English",
       consolidateMode: true,
     };
   }
@@ -394,6 +395,11 @@ export function getBookAiSettings() {
   state.books.ai.apiKeySaved = hasStoredEncryptedApiKey();
   state.books.ai.rememberOnDevice = state.books.ai.rememberOnDevice === true;
   state.books.ai.model = ensureModelAllowed(state.books.ai.model);
+  state.books.ai.summaryLanguage = ensureSummaryLanguageAllowed(
+    state.books.ai.summaryLanguage,
+  );
+  delete state.books.ai.chunkChars;
+  delete state.books.ai.maxPagesPerRun;
   return state.books.ai;
 }
 
@@ -402,33 +408,25 @@ let saveStateImported = () => {
   const { STORAGE_KEY: key } = { STORAGE_KEY: "habitTracker_v1" };
   localStorage.setItem(key, JSON.stringify(state));
 };
-export function _bindSaveState(fn) { saveStateImported = fn; }
+export function _bindSaveState(fn) {
+  saveStateImported = fn;
+}
 
 export function applyBookSummarySettingsToInputs() {
   const settings = getBookAiSettings();
   const keyInput = document.getElementById("summaryApiKeyInput");
   const modelInput = document.getElementById("summaryModelInput");
-  const chunkCharsInput = document.getElementById("summaryChunkCharsInput");
-  const maxPagesInput = document.getElementById("summaryMaxPagesInput");
-  const rememberToggle = document.getElementById(
-    "summaryRememberApiKeyToggle",
-  );
-  const consolidateToggle = document.getElementById(
-    "summaryConsolidateToggle",
-  );
+  const languageInput = document.getElementById("summaryLanguageInput");
+  const rememberToggle = document.getElementById("summaryRememberApiKeyToggle");
+  const consolidateToggle = document.getElementById("summaryConsolidateToggle");
 
   if (keyInput) keyInput.value = "";
   if (modelInput) {
     modelInput.value = ensureModelAllowed(settings.model);
   }
-  if (chunkCharsInput) {
-    chunkCharsInput.value = String(
-      settings.chunkChars || SUMMARY_MAX_CHARS_PER_CHUNK_DEFAULT,
-    );
-  }
-  if (maxPagesInput) {
-    maxPagesInput.value = String(
-      settings.maxPagesPerRun || SUMMARY_MAX_PAGES_PER_RUN_DEFAULT,
+  if (languageInput) {
+    languageInput.value = ensureSummaryLanguageAllowed(
+      settings.summaryLanguage,
     );
   }
   if (rememberToggle) {
@@ -444,35 +442,17 @@ export async function saveBookSummarySettingsFromInputs() {
   const settings = getBookAiSettings();
   const keyInput = document.getElementById("summaryApiKeyInput");
   const modelInput = document.getElementById("summaryModelInput");
-  const chunkCharsInput = document.getElementById("summaryChunkCharsInput");
-  const maxPagesInput = document.getElementById("summaryMaxPagesInput");
-  const rememberToggle = document.getElementById(
-    "summaryRememberApiKeyToggle",
-  );
-  const consolidateToggle = document.getElementById(
-    "summaryConsolidateToggle",
-  );
+  const languageInput = document.getElementById("summaryLanguageInput");
+  const rememberToggle = document.getElementById("summaryRememberApiKeyToggle");
+  const consolidateToggle = document.getElementById("summaryConsolidateToggle");
 
   const enteredKey = keyInput ? String(keyInput.value || "").trim() : "";
   settings.model = ensureModelAllowed(
     modelInput ? String(modelInput.value || "") : "",
   );
-
-  const chunkChars = parseInt(
-    chunkCharsInput ? chunkCharsInput.value : "",
-    10,
+  settings.summaryLanguage = ensureSummaryLanguageAllowed(
+    languageInput ? String(languageInput.value || "") : "",
   );
-  settings.chunkChars = Number.isFinite(chunkChars)
-    ? Math.min(30000, Math.max(4000, chunkChars))
-    : SUMMARY_MAX_CHARS_PER_CHUNK_DEFAULT;
-
-  const maxPagesPerRun = parseInt(
-    maxPagesInput ? maxPagesInput.value : "",
-    10,
-  );
-  settings.maxPagesPerRun = Number.isFinite(maxPagesPerRun)
-    ? Math.min(1000, Math.max(20, maxPagesPerRun))
-    : SUMMARY_MAX_PAGES_PER_RUN_DEFAULT;
 
   settings.rememberOnDevice = rememberToggle ? rememberToggle.checked : false;
 
@@ -528,9 +508,7 @@ export async function saveBookSummarySettingsFromInputs() {
   saveStateImported();
   applyBookSummarySettingsToInputs();
   if (enteredKey) {
-    alert(
-      "Summary AI settings saved. API key is encrypted and stored safely.",
-    );
+    alert("Summary AI settings saved. API key is encrypted and stored safely.");
   } else {
     alert("Summary AI settings saved.");
   }

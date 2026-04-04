@@ -1,10 +1,14 @@
 "use strict";
 
 export let state = null;
-export function setState(s) { state = s; }
+export function setState(s) {
+  state = s;
+}
 
 export let chartInstances = {};
-export function setChartInstances(c) { chartInstances = c; }
+export function setChartInstances(c) {
+  chartInstances = c;
+}
 
 export const globals = {
   sidebarCollapsed: false,
@@ -19,7 +23,10 @@ export const globals = {
 
 export const noteModalState = { habitId: null, day: null };
 export const bookModalState = { editingBookId: null };
-export const bookmarkModalState = { editingBookId: null, editingBookmarkId: null };
+export const bookmarkModalState = {
+  editingBookId: null,
+  editingBookmarkId: null,
+};
 export const historyEventModalState = {
   editingBookId: null,
   editingBookmarkId: null,
@@ -33,13 +40,18 @@ export const summaryModalState = {
   detectionText: "",
   externalSummary: null,
   isRunning: false,
+  pendingRun: null,
 };
 
 export let idbPromise = null;
-export function setIdbPromise(p) { idbPromise = p; }
+export function setIdbPromise(p) {
+  idbPromise = p;
+}
 
 export let booksBlobStatus = {};
-export function setBooksBlobStatus(s) { booksBlobStatus = s; }
+export function setBooksBlobStatus(s) {
+  booksBlobStatus = s;
+}
 
 export const linkedHoverState = {
   day: null,
@@ -62,7 +74,9 @@ export const runtimeSecrets = {
 };
 
 export let appLogs = [];
-export function setAppLogs(logs) { appLogs = logs; }
+export function setAppLogs(logs) {
+  appLogs = logs;
+}
 
 export const summaryModelPickerState = {
   isOpen: false,

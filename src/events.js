@@ -21,7 +21,11 @@ import {
   openConfirm,
   saveMonthlyReview,
 } from "./modals.js";
-import { setSidebarCollapsed, isDesktopViewport, applySidebarCollapseState } from "./layout.js";
+import {
+  setSidebarCollapsed,
+  isDesktopViewport,
+  applySidebarCollapseState,
+} from "./layout.js";
 import {
   handleBookFileInputChange,
   saveBookFromUpload,
@@ -32,11 +36,30 @@ import {
 } from "./books.js";
 import { exportData, importData, setBackupStatus } from "./data-io.js";
 import { bindLogsControls } from "./render-logs.js";
-import { bindSummaryModelPicker, setSummaryModelValue, closeSummaryModelDropdown } from "./model-picker.js";
-import { saveBookSummarySettingsFromInputs, applyBookSummarySettingsToInputs, unlockStoredApiKeyInteractive, wipeStoredApiKey } from "./encryption.js";
-import { updateHabitScheduleTypeUI, renderHabitScheduleSelectors } from "./habits.js";
-import { setBooksAnalyticsRange, setAnalyticsDisplayMode } from "./preferences.js";
-import { getDefaultMonthData, saveState, getDefaultState } from "./persistence.js";
+import {
+  bindSummaryModelPicker,
+  setSummaryModelValue,
+  closeSummaryModelDropdown,
+} from "./model-picker.js";
+import {
+  saveBookSummarySettingsFromInputs,
+  applyBookSummarySettingsToInputs,
+  unlockStoredApiKeyInteractive,
+  wipeStoredApiKey,
+} from "./encryption.js";
+import {
+  updateHabitScheduleTypeUI,
+  renderHabitScheduleSelectors,
+} from "./habits.js";
+import {
+  setBooksAnalyticsRange,
+  setAnalyticsDisplayMode,
+} from "./preferences.js";
+import {
+  getDefaultMonthData,
+  saveState,
+  getDefaultState,
+} from "./persistence.js";
 import { callRenderer } from "./render-registry.js";
 import {
   closeSummaryModal,
@@ -48,7 +71,9 @@ import { appendLogEntry } from "./logging.js";
 
 export function bindEvents() {
   document.querySelectorAll(".nav-tab").forEach((tab) => {
-    tab.addEventListener("click", () => callRenderer("switchView", tab.dataset.view));
+    tab.addEventListener("click", () =>
+      callRenderer("switchView", tab.dataset.view),
+    );
   });
 
   document
@@ -209,9 +234,26 @@ export function bindEvents() {
     .getElementById("confirmCancel")
     .addEventListener("click", () => closeModal("confirmModal"));
   document.getElementById("confirmOk").addEventListener("click", () => {
+    const confirmButton = document.getElementById("confirmOk");
+    confirmButton.disabled = true;
+    confirmButton.classList.add("is-loading");
+    const callback = globals.confirmCallback;
     closeModal("confirmModal");
-    if (globals.confirmCallback) globals.confirmCallback();
-    globals.confirmCallback = null;
+    Promise.resolve(typeof callback === "function" ? callback() : null)
+      .catch((error) => {
+        appendLogEntry({
+          level: "error",
+          component: "confirm-modal",
+          operation: "confirmOk.click",
+          message: "Confirmation callback failed.",
+          error,
+        });
+      })
+      .finally(() => {
+        globals.confirmCallback = null;
+        confirmButton.disabled = false;
+        confirmButton.classList.remove("is-loading");
+      });
   });
 
   document
@@ -231,14 +273,12 @@ export function bindEvents() {
   document.getElementById("btnImport").addEventListener("click", () => {
     document.getElementById("importFile").click();
   });
-  document
-    .getElementById("importFile")
-    .addEventListener("change", function () {
-      if (this.files && this.files[0]) {
-        importData(this.files[0]);
-        this.value = "";
-      }
-    });
+  document.getElementById("importFile").addEventListener("change", function () {
+    if (this.files && this.files[0]) {
+      importData(this.files[0]);
+      this.value = "";
+    }
+  });
 
   setBackupStatus(
     "Metadata-only export is default. Enable Include PDFs for full backup.",
@@ -271,11 +311,9 @@ export function bindEvents() {
     );
   });
 
-  document
-    .getElementById("mobileMenuToggle")
-    .addEventListener("click", () => {
-      document.querySelector(".sidebar").classList.toggle("open");
-    });
+  document.getElementById("mobileMenuToggle").addEventListener("click", () => {
+    document.querySelector(".sidebar").classList.toggle("open");
+  });
 
   document
     .getElementById("sidebarCollapseToggle")
@@ -308,9 +346,12 @@ export function bindEvents() {
 
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
-      document
-        .querySelectorAll(".modal-overlay.open")
-        .forEach((m) => m.classList.remove("open"));
+      const openModals = Array.from(
+        document.querySelectorAll(".modal-overlay.open"),
+      );
+      if (!openModals.length) return;
+      const topModal = openModals[openModals.length - 1];
+      topModal.classList.remove("open");
     }
   });
 
@@ -421,9 +462,7 @@ export function bindEvents() {
       )
         .filter((node) => node instanceof HTMLInputElement && node.checked)
         .map((node) => parseInt(node.dataset.finisherWeekday, 10))
-        .filter(
-          (value) => Number.isInteger(value) && value >= 0 && value <= 6,
-        )
+        .filter((value) => Number.isInteger(value) && value >= 0 && value <= 6)
         .sort((a, b) => a - b);
       saveState();
       await callRenderer("renderBookFinisherHelper");
