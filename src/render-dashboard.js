@@ -33,42 +33,94 @@ import { registerRenderer, callRenderer } from "./render-registry.js";
 let activeDailyHabitActionsMenuId = null;
 let isDailyHabitActionsMenuBound = false;
 
-const HABIT_NAME_COL_WIDTH_KEY = "habitNameColWidthPx";
+const HABIT_PANEL_WIDTH_KEY = "habitPanelWidthPx";
+const LEGACY_HABIT_NAME_COL_WIDTH_KEY = "habitNameColWidthPx";
 const HABIT_NAME_COL_MIN_PX = 120;
 const HABIT_NAME_COL_MAX_PX = 520;
 const HABIT_NAME_COL_DEFAULT_PX = 260;
+const HABIT_PANEL_MIN_PX = HABIT_NAME_COL_MIN_PX;
+const HABIT_PANEL_MAX_PX = HABIT_NAME_COL_MAX_PX;
+const HABIT_PANEL_DEFAULT_PX = HABIT_NAME_COL_DEFAULT_PX;
+const HABIT_PANEL_COMPACT_THRESHOLD_PX = 220;
 
-function clampHabitNameColWidth(value) {
+function clampHabitPanelWidth(value) {
   const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return HABIT_NAME_COL_DEFAULT_PX;
+  if (!Number.isFinite(numeric)) return HABIT_PANEL_DEFAULT_PX;
   return Math.max(
-    HABIT_NAME_COL_MIN_PX,
-    Math.min(HABIT_NAME_COL_MAX_PX, Math.round(numeric)),
+    HABIT_PANEL_MIN_PX,
+    Math.min(HABIT_PANEL_MAX_PX, Math.round(numeric)),
   );
 }
 
-function loadHabitNameColWidth() {
+function loadHabitPanelWidth() {
   try {
-    const raw = localStorage.getItem(HABIT_NAME_COL_WIDTH_KEY);
-    if (!raw) return HABIT_NAME_COL_DEFAULT_PX;
-    return clampHabitNameColWidth(parseInt(raw, 10));
+    const panelRaw = localStorage.getItem(HABIT_PANEL_WIDTH_KEY);
+    if (panelRaw) {
+      return clampHabitPanelWidth(parseInt(panelRaw, 10));
+    }
+    const legacyNameRaw = localStorage.getItem(LEGACY_HABIT_NAME_COL_WIDTH_KEY);
+    if (legacyNameRaw) {
+      return clampHabitPanelWidth(parseInt(legacyNameRaw, 10));
+    }
   } catch (_) {
-    return HABIT_NAME_COL_DEFAULT_PX;
+    return HABIT_PANEL_DEFAULT_PX;
   }
+  return HABIT_PANEL_DEFAULT_PX;
 }
 
-function saveHabitNameColWidth(value) {
-  const safeWidth = clampHabitNameColWidth(value);
+function saveHabitPanelWidth(value) {
+  const safePanelWidth = clampHabitPanelWidth(value);
   try {
-    localStorage.setItem(HABIT_NAME_COL_WIDTH_KEY, String(safeWidth));
+    localStorage.setItem(HABIT_PANEL_WIDTH_KEY, String(safePanelWidth));
+    localStorage.setItem(
+      LEGACY_HABIT_NAME_COL_WIDTH_KEY,
+      String(safePanelWidth),
+    );
   } catch (_) {}
 }
 
-function applyHabitNameColWidth(grid, value) {
-  if (!(grid instanceof HTMLElement)) return HABIT_NAME_COL_DEFAULT_PX;
-  const safeWidth = clampHabitNameColWidth(value);
-  grid.style.setProperty("--habit-name-col-width", `${safeWidth}px`);
-  return safeWidth;
+function applyHabitPanelWidth(grid, value) {
+  if (!(grid instanceof HTMLElement)) return HABIT_PANEL_DEFAULT_PX;
+  const safePanelWidth = clampHabitPanelWidth(value);
+  grid.style.setProperty("--habit-left-panel-width", `${safePanelWidth}px`);
+  grid.style.setProperty("--habit-name-col-width", `${safePanelWidth}px`);
+  grid.classList.toggle(
+    "habit-panel-compact",
+    safePanelWidth <= HABIT_PANEL_COMPACT_THRESHOLD_PX,
+  );
+  return safePanelWidth;
+}
+
+function formatStreakLabel(current, best, compact) {
+  return compact
+    ? `${current}d/${best}d`
+    : `Current ${current}d | Best ${best}d`;
+}
+
+function syncStreakBadgeText(badge, compactOverride = null) {
+  if (!(badge instanceof HTMLElement)) return;
+  const current = parseInt(badge.dataset.streakCurrent || "0", 10);
+  const best = parseInt(badge.dataset.streakBest || "0", 10);
+  const safeCurrent = Number.isFinite(current) ? Math.max(0, current) : 0;
+  const safeBest = Number.isFinite(best) ? Math.max(0, best) : 0;
+  const compact =
+    typeof compactOverride === "boolean"
+      ? compactOverride
+      : !!badge
+          .closest(".habits-grid")
+          ?.classList.contains("habit-panel-compact");
+  const fullText = formatStreakLabel(safeCurrent, safeBest, false);
+  badge.textContent = formatStreakLabel(safeCurrent, safeBest, compact);
+  badge.title = fullText;
+  badge.setAttribute("aria-label", fullText);
+}
+
+function syncAllStreakBadges(grid) {
+  if (!(grid instanceof HTMLElement)) return;
+  const compact = grid.classList.contains("habit-panel-compact");
+  grid
+    .querySelectorAll(".streak-badge[data-streak-habit]")
+    .forEach((badge) => syncStreakBadgeText(badge, compact));
 }
 
 export function switchView(viewId) {
@@ -510,41 +562,41 @@ function openDailyHabitActionsMenu(habitId) {
   activeDailyHabitActionsMenuId = safeHabitId;
 }
 
-function bindHabitNameColumnResizer(grid) {
+function bindHabitPanelResizer(grid) {
   if (!(grid instanceof HTMLElement)) return;
-  if (grid.dataset.habitColResizerBound === "true") return;
+  if (grid.dataset.habitPanelResizerBound === "true") return;
 
   const onPointerDown = (event) => {
     const target = event.target;
     if (!(target instanceof Element)) return;
-    const handle = target.closest(".habit-col-resizer");
+    const handle = target.closest(".habit-panel-resizer, .habit-col-resizer");
     if (!handle) return;
 
     event.preventDefault();
     closeDailyHabitActionsMenus();
 
-    const nameHeader = grid.querySelector("th.habit-name-col");
-    if (!(nameHeader instanceof HTMLElement)) return;
-
-    const startWidth = clampHabitNameColWidth(
-      nameHeader.getBoundingClientRect().width,
+    const appliedPanelWidth = parseInt(
+      grid.style.getPropertyValue("--habit-left-panel-width"),
+      10,
     );
+    const startWidth = clampHabitPanelWidth(appliedPanelWidth);
     const startX = event.clientX;
 
     document.body.classList.add("is-resizing-habit-col");
 
     const onPointerMove = (moveEvent) => {
       const deltaX = moveEvent.clientX - startX;
-      applyHabitNameColWidth(grid, startWidth + deltaX);
+      applyHabitPanelWidth(grid, startWidth + deltaX);
+      syncAllStreakBadges(grid);
     };
 
     const onPointerUp = () => {
       document.body.classList.remove("is-resizing-habit-col");
       const applied = parseInt(
-        grid.style.getPropertyValue("--habit-name-col-width"),
+        grid.style.getPropertyValue("--habit-left-panel-width"),
         10,
       );
-      saveHabitNameColWidth(applied);
+      saveHabitPanelWidth(applied);
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", onPointerUp);
       window.removeEventListener("pointercancel", onPointerUp);
@@ -556,7 +608,7 @@ function bindHabitNameColumnResizer(grid) {
   };
 
   grid.addEventListener("pointerdown", onPointerDown);
-  grid.dataset.habitColResizerBound = "true";
+  grid.dataset.habitPanelResizerBound = "true";
 }
 
 function runDailyHabitAction(habitId, action) {
@@ -611,7 +663,6 @@ function bindDailyHabitActionsMenuInteractions(grid) {
     if (!actionBtn) return;
     event.preventDefault();
     event.stopPropagation();
-
     const habitId = String(actionBtn.dataset.habitId || "");
     const action = String(actionBtn.dataset.habitAction || "");
     closeDailyHabitActionsMenus();
@@ -620,8 +671,14 @@ function bindDailyHabitActionsMenuInteractions(grid) {
 
   document.addEventListener("pointerdown", (event) => {
     if (!activeDailyHabitActionsMenuId) return;
-    const target = event.target;
-    if (!(target instanceof Element)) {
+    const rawTarget = event.target;
+    const target =
+      rawTarget instanceof Element
+        ? rawTarget
+        : rawTarget instanceof Node
+          ? rawTarget.parentElement
+          : null;
+    if (!target) {
       closeDailyHabitActionsMenus();
       return;
     }
@@ -756,7 +813,9 @@ function updateHabitStreak(habitId) {
     }
   }
 
-  badge.textContent = `Current ${current}d | Best ${best}d`;
+  badge.dataset.streakCurrent = String(current);
+  badge.dataset.streakBest = String(best);
+  syncStreakBadgeText(badge);
 }
 
 export function renderDailyHabitsGrid() {
@@ -814,7 +873,7 @@ export function renderDailyHabitsGrid() {
   }
 
   let html =
-    "<thead><tr><th class='habit-name-col'><span>Habits</span><button class='habit-col-resizer' type='button' aria-label='Resize habits column' title='Drag to resize habits column'></button></th><th class='category-col'>Category</th><th class='goal-col'>Goal</th>";
+    "<thead><tr><th class='habit-name-col'><span>Habits</span><button class='habit-panel-resizer' type='button' aria-label='Resize left habits panel' title='Drag to resize habit sidebar'></button></th>";
   for (let day = 1; day <= totalDays; day++) {
     const isToday = day === todayDay;
     const isComplete = completedDays[day];
@@ -829,11 +888,8 @@ export function renderDailyHabitsGrid() {
   html += "</tr></thead><tbody>";
 
   habits.forEach((habit, idx) => {
-    const cat = getCategoryById(habit.categoryId);
-    const catEmoji = cat ? sanitize(cat.emoji || "🗂️") : "➖";
-    const catName = cat ? sanitize(cat.name || "Category") : "No category";
     const emoji = sanitize(getHabitEmoji(habit));
-    html += `<tr><td class='habit-name-cell'><span class='habit-title'>${emoji} ${sanitize(habit.name)}</span><span class='streak-badge' data-streak-habit='${habit.id}'>Current 0d | Best 0d</span><span class='habit-actions-menu-wrap' data-habit-actions-wrap='${habit.id}'><button class='habit-actions-toggle' type='button' data-habit-actions-toggle='${habit.id}' aria-haspopup='menu' aria-expanded='false' title='Habit actions'>⋯</button><span class='habit-actions-menu' data-habit-actions-menu='${habit.id}' role='menu' hidden><button class='habit-action-menu-btn' type='button' data-habit-id='${habit.id}' data-habit-action='up' role='menuitem' ${idx === 0 ? "disabled" : ""}>Move up</button><button class='habit-action-menu-btn' type='button' data-habit-id='${habit.id}' data-habit-action='down' role='menuitem' ${idx === habits.length - 1 ? "disabled" : ""}>Move down</button><button class='habit-action-menu-btn' type='button' data-habit-id='${habit.id}' data-habit-action='edit' role='menuitem'>Edit</button><button class='habit-action-menu-btn delete' type='button' data-habit-id='${habit.id}' data-habit-action='delete' role='menuitem'>Delete</button></span></span></td><td class='category-cell'><span class='category-emoji-only' title='${catName}' aria-label='${catName}'>${catEmoji}</span></td><td class='goal-cell'>${habit.monthGoal}</td>`;
+    html += `<tr><td class='habit-name-cell'><span class='habit-title' title='${sanitize(habit.name)}'>${emoji} ${sanitize(habit.name)}</span><span class='streak-badge' data-streak-habit='${habit.id}' data-streak-current='0' data-streak-best='0' title='Current 0d | Best 0d' aria-label='Current 0d | Best 0d'>Current 0d | Best 0d</span><span class='habit-actions-menu-wrap' data-habit-actions-wrap='${habit.id}'><button class='habit-actions-toggle' type='button' data-habit-actions-toggle='${habit.id}' aria-haspopup='menu' aria-expanded='false' title='Habit actions'>⋯</button><span class='habit-actions-menu' data-habit-actions-menu='${habit.id}' role='menu' hidden><button class='habit-action-menu-btn' type='button' data-habit-id='${habit.id}' data-habit-action='up' role='menuitem' ${idx === 0 ? "disabled" : ""}>Move up</button><button class='habit-action-menu-btn' type='button' data-habit-id='${habit.id}' data-habit-action='down' role='menuitem' ${idx === habits.length - 1 ? "disabled" : ""}>Move down</button><button class='habit-action-menu-btn' type='button' data-habit-id='${habit.id}' data-habit-action='edit' role='menuitem'>Edit</button><button class='habit-action-menu-btn delete' type='button' data-habit-id='${habit.id}' data-habit-action='delete' role='menuitem'>Delete</button></span></span></td>`;
     for (let day = 1; day <= totalDays; day++) {
       const isToday = day === todayDay;
       const isComplete = completedDays[day];
@@ -860,7 +916,8 @@ export function renderDailyHabitsGrid() {
 
   html += "</tbody>";
   grid.innerHTML = html;
-  applyHabitNameColWidth(grid, loadHabitNameColWidth());
+  applyHabitPanelWidth(grid, loadHabitPanelWidth());
+  syncAllStreakBadges(grid);
 
   if (!isCurrentMonthView) {
     globals.lastAutoScrolledMonthKey = null;
@@ -922,7 +979,7 @@ export function renderDailyHabitsGrid() {
   });
 
   bindDailyHabitActionsMenuInteractions(grid);
-  bindHabitNameColumnResizer(grid);
+  bindHabitPanelResizer(grid);
 
   bindDailyGridHoverInteractions(grid);
 
