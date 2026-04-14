@@ -10,6 +10,7 @@ import {
   getValueColor,
   getWeekShadeColor,
   getIsoWeekNumber,
+  getMonthCalendarWeekLayout,
 } from "./utils.js";
 import {
   getCurrentMonthData,
@@ -294,17 +295,28 @@ function updateLinkedHoverTooltipPositionFromMouse(event) {
   tooltip.style.top = `${Math.round(event.clientY - 28)}px`;
 }
 
-function weekRangeFromIndex(week, totalDays) {
-  const maxWeek = Math.max(1, Math.min(5, Math.ceil(totalDays / 7)));
-  const normalizedWeek = Math.min(maxWeek, Math.max(1, week));
-  const start = (normalizedWeek - 1) * 7 + 1;
-  const end = Math.min(normalizedWeek * 7, totalDays);
-  return { week: normalizedWeek, start, end };
+function weekRangeFromIndex(week) {
+  const { weeks } = getMonthCalendarWeekLayout(
+    state.currentYear,
+    state.currentMonth,
+  );
+  if (!weeks.length) return null;
+
+  const normalizedWeek = Math.min(
+    weeks.length,
+    Math.max(1, parseInt(week, 10) || 1),
+  );
+  const range = weeks[normalizedWeek - 1];
+  return { week: range.week, start: range.start, end: range.end };
 }
 
-function weekFromDay(day, totalDays) {
-  if (!Number.isFinite(day) || day < 1 || day > totalDays) return null;
-  return weekRangeFromIndex(Math.ceil(day / 7), totalDays).week;
+function weekFromDay(day) {
+  if (!Number.isFinite(day) || day < 1) return null;
+  const { dayToWeek } = getMonthCalendarWeekLayout(
+    state.currentYear,
+    state.currentMonth,
+  );
+  return dayToWeek[day] || null;
 }
 
 function activateLinkedDay(day, options = {}) {
@@ -313,7 +325,7 @@ function activateLinkedDay(day, options = {}) {
   if (!Number.isFinite(normalizedDay) || normalizedDay < 1) return;
   if (normalizedDay > totalDays) return;
 
-  const week = weekFromDay(normalizedDay, totalDays);
+  const week = weekFromDay(normalizedDay);
   if (!week) return;
 
   clearLinkedHoverHighlights();
@@ -358,11 +370,11 @@ function activateLinkedDay(day, options = {}) {
 }
 
 function activateLinkedWeek(week, options = {}) {
-  const totalDays = daysInMonth(state.currentYear, state.currentMonth);
   const parsedWeek = parseInt(week, 10);
   if (!Number.isFinite(parsedWeek) || parsedWeek < 1) return;
 
-  const range = weekRangeFromIndex(parsedWeek, totalDays);
+  const range = weekRangeFromIndex(parsedWeek);
+  if (!range) return;
   clearLinkedHoverHighlights();
 
   const weekCard = document.querySelector(
@@ -701,13 +713,13 @@ export function renderWeeklySummaryCards() {
 
   const monthData = getCurrentMonthData();
   const habits = getSortedDailyHabits();
-  const totalDays = daysInMonth(state.currentYear, state.currentMonth);
-  const maxWeek = Math.min(5, Math.ceil(totalDays / 7));
+  const { weeks } = getMonthCalendarWeekLayout(
+    state.currentYear,
+    state.currentMonth,
+  );
 
   let html = "";
-  for (let week = 1; week <= maxWeek; week++) {
-    const start = (week - 1) * 7 + 1;
-    const end = Math.min(week * 7, totalDays);
+  weeks.forEach(({ week, start, end }) => {
     const weekAccent = getWeekShadeColor(week);
     let done = 0;
     let possible = 0;
@@ -756,7 +768,7 @@ export function renderWeeklySummaryCards() {
       .join("");
 
     html += `<div class="week-card" style="--week-accent:${weekAccent}" data-week="${week}" tabindex="0"><div class="week-card-top"><span class="week-card-title">Week ${week}</span><span class="week-range">${start}-${end}</span></div><div class="week-ring" style="--week-pct:${pct};--week-color:${weekColor};--week-shadow:${weekShadowColor}" aria-label="Week ${week} completion ${pct}%"><span class="week-pct">${pct}%</span></div><div class="week-meta">${done}/${possible} tasks</div><div class="week-mini-bars">${bars}</div></div>`;
-  }
+  });
 
   container.innerHTML = html;
   bindWeeklySummaryHoverInteractions(container);
@@ -826,6 +838,11 @@ export function renderDailyHabitsGrid() {
   const monthData = getCurrentMonthData();
   const habits = getSortedDailyHabits();
   const totalDays = daysInMonth(state.currentYear, state.currentMonth);
+  const { weeks, dayToWeek } = getMonthCalendarWeekLayout(
+    state.currentYear,
+    state.currentMonth,
+  );
+  const weekStartDays = new Set(weeks.map((range) => range.start));
   const today = new Date();
   const isCurrentMonthView =
     today.getFullYear() === state.currentYear &&
@@ -877,13 +894,20 @@ export function renderDailyHabitsGrid() {
   for (let day = 1; day <= totalDays; day++) {
     const isToday = day === todayDay;
     const isComplete = completedDays[day];
+    const weekNumber = dayToWeek[day] || 1;
     const isoWeek = getIsoWeekNumber(
       state.currentYear,
       state.currentMonth,
       day,
     );
-    const weekShadeColor = getWeekShadeColor(isoWeek);
-    html += `<th class='day-col ${isToday ? "today" : ""} ${isComplete ? "day-complete" : ""}' style='--week-accent:${weekShadeColor}' data-day='${day}' tabindex='0'><span class='day-col-week'>W${isoWeek}</span><span class='day-col-day'>${day}</span></th>`;
+    const weekShadeColor = getWeekShadeColor(weekNumber);
+    const weekBandBg =
+      weekNumber % 2 === 1
+        ? "rgba(123, 199, 236, 0.08)"
+        : "rgba(88, 165, 209, 0.15)";
+    const weekStartClass =
+      weekStartDays.has(day) && day !== 1 ? "week-start" : "";
+    html += `<th class='day-col ${weekStartClass} ${isToday ? "today" : ""} ${isComplete ? "day-complete" : ""}' style='--week-accent:${weekShadeColor};--week-band-bg:${weekBandBg}' data-day='${day}' tabindex='0'><span class='day-col-week'>W${isoWeek}</span><span class='day-col-day'>${day}</span></th>`;
   }
   html += "</tr></thead><tbody>";
 
@@ -893,10 +917,18 @@ export function renderDailyHabitsGrid() {
     for (let day = 1; day <= totalDays; day++) {
       const isToday = day === todayDay;
       const isComplete = completedDays[day];
+      const weekNumber = dayToWeek[day] || 1;
+      const weekShadeColor = getWeekShadeColor(weekNumber);
+      const weekBandBg =
+        weekNumber % 2 === 1
+          ? "rgba(123, 199, 236, 0.08)"
+          : "rgba(88, 165, 209, 0.15)";
+      const weekStartClass =
+        weekStartDays.has(day) && day !== 1 ? "week-start" : "";
       if (
         !isHabitTrackedOnDate(habit, state.currentYear, state.currentMonth, day)
       ) {
-        html += `<td class='day-cell day-cell-off ${isToday ? "today-col" : ""} ${isComplete ? "day-complete" : ""}' data-day='${day}'><span class='off-day-mark'>OFF</span></td>`;
+        html += `<td class='day-cell day-cell-off ${weekStartClass} ${isToday ? "today-col" : ""} ${isComplete ? "day-complete" : ""}' style='--week-accent:${weekShadeColor};--week-band-bg:${weekBandBg}' data-day='${day}'><span class='off-day-mark'>OFF</span></td>`;
         continue;
       }
       const checked =
@@ -909,7 +941,7 @@ export function renderDailyHabitsGrid() {
         typeof monthData.dailyNotes[habit.id][day] === "string" &&
         monthData.dailyNotes[habit.id][day].trim().length
       );
-      html += `<td class='day-cell ${isToday ? "today-col" : ""} ${isComplete ? "day-complete" : ""}' data-day='${day}'><div class='day-cell-content'><input type='checkbox' class='habit-check ${isToday ? "today-check" : ""}' data-habit='${habit.id}' data-day='${day}' ${checked}><button type='button' class='note-btn ${hasNote ? "has-note" : ""}' data-habit='${habit.id}' data-day='${day}'>📝</button></div></td>`;
+      html += `<td class='day-cell ${weekStartClass} ${isToday ? "today-col" : ""} ${isComplete ? "day-complete" : ""}' style='--week-accent:${weekShadeColor};--week-band-bg:${weekBandBg}' data-day='${day}'><div class='day-cell-content'><input type='checkbox' class='habit-check ${isToday ? "today-check" : ""}' data-habit='${habit.id}' data-day='${day}' ${checked}><button type='button' class='note-btn ${hasNote ? "has-note" : ""}' data-habit='${habit.id}' data-day='${day}'>📝</button></div></td>`;
     }
     html += "</tr>";
   });

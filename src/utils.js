@@ -68,9 +68,7 @@ export function stringFromBytes(input) {
 }
 
 export function sanitizeErrorForLog(error) {
-  const message = String(
-    error && error.message ? error.message : error || "",
-  );
+  const message = String(error && error.message ? error.message : error || "");
   return {
     errorName: error && error.name ? String(error.name) : "Error",
     errorMessage: message,
@@ -102,10 +100,10 @@ export function getValueColor(value, maxValue, alpha = 1) {
   return `hsla(${hue.toFixed(1)}, 72%, 46%, ${clampNumber(alpha, 0, 1).toFixed(3)})`;
 }
 
-export function getWeekShadeColor(isoWeek) {
-  const normalized = (((Number(isoWeek) || 0) % 8) + 8) % 8;
-  const lightness = 72 - normalized * 4;
-  return `hsl(207, 78%, ${lightness}%)`;
+export function getWeekShadeColor(weekNumber) {
+  const parsed = Math.floor(Number(weekNumber) || 1);
+  const normalized = ((((parsed - 1) % 2) + 2) % 2) + 1;
+  return normalized === 1 ? "hsl(207, 78%, 74%)" : "hsl(207, 78%, 66%)";
 }
 
 export function getHeatColor(strength) {
@@ -142,6 +140,55 @@ export function getIsoWeekNumber(year, month, day) {
   date.setUTCDate(date.getUTCDate() + 4 - weekday);
   const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
   return Math.ceil(((date - yearStart) / 86400000 + 1) / 7);
+}
+
+export function getMonthCalendarWeeks(year, month) {
+  const totalDays = daysInMonth(year, month);
+  const weeks = [];
+  let currentAnchor = null;
+  let currentWeek = null;
+
+  for (let day = 1; day <= totalDays; day++) {
+    const date = new Date(year, month, day);
+    const weekday = date.getDay();
+    const diffToMonday = weekday === 0 ? -6 : 1 - weekday;
+    date.setDate(date.getDate() + diffToMonday);
+    date.setHours(0, 0, 0, 0);
+
+    const mondayAnchor = date.getTime();
+    if (mondayAnchor !== currentAnchor) {
+      if (currentWeek) {
+        weeks.push(currentWeek);
+      }
+      currentAnchor = mondayAnchor;
+      currentWeek = {
+        week: weeks.length + 1,
+        start: day,
+        end: day,
+        isoWeek: getIsoWeekNumber(year, month, day),
+      };
+      continue;
+    }
+
+    currentWeek.end = day;
+  }
+
+  if (currentWeek) {
+    weeks.push(currentWeek);
+  }
+
+  return weeks;
+}
+
+export function getMonthCalendarWeekLayout(year, month) {
+  const weeks = getMonthCalendarWeeks(year, month);
+  const dayToWeek = {};
+  weeks.forEach((range) => {
+    for (let day = range.start; day <= range.end; day++) {
+      dayToWeek[day] = range.week;
+    }
+  });
+  return { weeks, dayToWeek };
 }
 
 export function formatIsoForDisplay(iso) {

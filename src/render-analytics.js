@@ -10,10 +10,20 @@ import {
   getWeekShadeColor,
   getHeatColor,
   getIsoWeekNumber,
+  getMonthCalendarWeekLayout,
   isPlainObject,
 } from "./utils.js";
-import { getCurrentMonthData, getDefaultMonthData, ensureMonthDataShape, getHabitEmoji } from "./persistence.js";
-import { getSortedDailyHabits, isHabitTrackedOnDate, getPossibleActiveDaysInMonth } from "./habits.js";
+import {
+  getCurrentMonthData,
+  getDefaultMonthData,
+  ensureMonthDataShape,
+  getHabitEmoji,
+} from "./persistence.js";
+import {
+  getSortedDailyHabits,
+  isHabitTrackedOnDate,
+  getPossibleActiveDaysInMonth,
+} from "./habits.js";
 import {
   getMetricValue,
   getMetricLabel,
@@ -41,12 +51,7 @@ export function renderDailyBarChart() {
     let count = 0;
     habits.forEach((habit) => {
       if (
-        !isHabitTrackedOnDate(
-          habit,
-          state.currentYear,
-          state.currentMonth,
-          day,
-        )
+        !isHabitTrackedOnDate(habit, state.currentYear, state.currentMonth, day)
       ) {
         return;
       }
@@ -105,12 +110,7 @@ export function renderCategoryBarChart() {
     if (!bucket) return;
     for (let day = 1; day <= totalDays; day++) {
       if (
-        !isHabitTrackedOnDate(
-          habit,
-          state.currentYear,
-          state.currentMonth,
-          day,
-        )
+        !isHabitTrackedOnDate(habit, state.currentYear, state.currentMonth, day)
       ) {
         continue;
       }
@@ -195,7 +195,8 @@ export function buildMonthTotals(year, month) {
 
 export function buildWeeklyAnalytics(year, month) {
   const totals = buildMonthTotals(year, month);
-  const maxWeek = Math.max(1, Math.min(5, Math.ceil(totals.totalDays / 7)));
+  const { weeks, dayToWeek } = getMonthCalendarWeekLayout(year, month);
+  const maxWeek = Math.max(1, weeks.length);
 
   const weekBuckets = Array.from({ length: maxWeek }, (_, index) => ({
     label: `Week ${index + 1}`,
@@ -213,7 +214,9 @@ export function buildWeeklyAnalytics(year, month) {
   });
 
   for (let day = 1; day <= totals.totalDays; day++) {
-    const weekIndex = Math.min(maxWeek - 1, Math.floor((day - 1) / 7));
+    const week = dayToWeek[day];
+    if (!week) continue;
+    const weekIndex = week - 1;
     const weekday = new Date(year, month, day).getDay();
 
     totals.habits.forEach((habit) => {
@@ -302,12 +305,7 @@ export function getMonthStreakLeaderboard(limit = 10) {
     let trackedDays = 0;
     for (let day = 1; day <= endDay; day++) {
       if (
-        isHabitTrackedOnDate(
-          habit,
-          state.currentYear,
-          state.currentMonth,
-          day,
-        )
+        isHabitTrackedOnDate(habit, state.currentYear, state.currentMonth, day)
       ) {
         trackedDays += 1;
       }
@@ -315,12 +313,7 @@ export function getMonthStreakLeaderboard(limit = 10) {
 
     for (let day = endDay; day >= 1; day--) {
       if (
-        !isHabitTrackedOnDate(
-          habit,
-          state.currentYear,
-          state.currentMonth,
-          day,
-        )
+        !isHabitTrackedOnDate(habit, state.currentYear, state.currentMonth, day)
       ) {
         continue;
       }
@@ -397,8 +390,7 @@ export function renderWeeklyTrendChart(canvasId, chartKey, weeklyData) {
           segment: {
             borderColor(context) {
               const midpoint =
-                ((context.p0?.parsed?.y || 0) +
-                  (context.p1?.parsed?.y || 0)) /
+                ((context.p0?.parsed?.y || 0) + (context.p1?.parsed?.y || 0)) /
                 2;
               return getValueColor(midpoint, maxScale, 0.95);
             },
@@ -436,7 +428,11 @@ export function renderWeeklyTrendChart(canvasId, chartKey, weeklyData) {
   });
 }
 
-export function renderWeeklyCategoryStackedChart(canvasId, chartKey, weeklyData) {
+export function renderWeeklyCategoryStackedChart(
+  canvasId,
+  chartKey,
+  weeklyData,
+) {
   const labels = weeklyData.weekBuckets.map((bucket) => bucket.label);
   const datasets = state.categories
     .map((category) => {
@@ -545,8 +541,7 @@ export function renderMonthlyTrendChart(canvasId, chartKey, timeline) {
           segment: {
             borderColor(context) {
               const midpoint =
-                ((context.p0?.parsed?.y || 0) +
-                  (context.p1?.parsed?.y || 0)) /
+                ((context.p0?.parsed?.y || 0) + (context.p1?.parsed?.y || 0)) /
                 2;
               return getValueColor(midpoint, maxScale, 0.95);
             },
@@ -740,8 +735,7 @@ export function renderWeeklyHeatmap(containerId, weeklyData) {
     html += `<div class='heatmap-week-label'>W${weekIndex + 1}</div>`;
     week.weekdays.forEach((entry) => {
       const value = getMetricValue(entry.done, entry.possible);
-      const scaleMax =
-        getAnalyticsDisplayMode() === "percent" ? 100 : maxValue;
+      const scaleMax = getAnalyticsDisplayMode() === "percent" ? 100 : maxValue;
       const ratio = scaleMax > 0 ? value / scaleMax : 0;
       html += `<div class='heatmap-cell' style='background:${getHeatColor(ratio)}' title='Done ${entry.done} / ${entry.possible}'>${getMetricLabel(value)}</div>`;
     });

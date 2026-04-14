@@ -990,6 +990,13 @@ textarea:focus-visible,
   min-width: 36px;
   text-align: center;
   border-top: 2px solid var(--week-accent, rgba(125, 180, 255, 0.65));
+  background: var(--week-band-bg, transparent);
+}
+
+.habits-grid th.day-col.week-start,
+.habits-grid td.day-cell.week-start {
+  border-left: 2px solid
+    color-mix(in srgb, var(--week-accent, #7bc7ec) 72%, transparent);
 }
 
 .habits-grid th.day-col .day-col-week {
@@ -1120,6 +1127,7 @@ textarea:focus-visible,
 .habits-grid td.day-cell {
   text-align: center;
   padding: 4px 2px;
+  background: var(--week-band-bg, transparent);
 }
 
 .day-cell-content {
