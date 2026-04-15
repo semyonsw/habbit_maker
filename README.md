@@ -5,376 +5,522 @@
 ![Stack](https://img.shields.io/badge/stack-vanilla%20JS%20%7C%20HTML%20%7C%20CSS-f59f00)
 ![License](https://img.shields.io/badge/license-MIT-2b8a3e)
 
-Habit Maker is a local-first web app for tracking daily habits and managing PDF books in one place.
-No backend. No account. All your data stays in your browser.
+Habit Maker is a local-first web app for two things in one place:
+
+- Tracking daily habits in a monthly grid.
+- Managing PDF books with bookmarks, reader mode, and optional AI summaries.
+
+No account, no backend, no cloud database by default.
+Your data stays in your browser unless you choose to use AI summaries.
 
 ---
 
 ## Table of Contents
 
-- [What It Does](#what-it-does)
-- [Who It Is For](#who-it-is-for)
-- [Features](#features)
-- [Quick Start](#quick-start)
-- [How to Use](#how-to-use)
-- [Storage and Privacy](#storage-and-privacy)
+- [What You Get](#what-you-get)
+- [60-Second Quick Start](#60-second-quick-start)
+- [Install and Run (From Zero)](#install-and-run-from-zero)
+- [First 10 Minutes in the App](#first-10-minutes-in-the-app)
+- [Feature Guide](#feature-guide)
+- [Backup, Restore, and Migration](#backup-restore-and-migration)
+- [Storage, Privacy, and Security](#storage-privacy-and-security)
 - [Limits](#limits)
-- [Auto Sync Script](#auto-sync-script)
 - [Troubleshooting](#troubleshooting)
-- [Code Quality](#code-quality)
-- [Tech Stack](#tech-stack)
-- [Browser Support](#browser-support)
+- [Developer Notes](#developer-notes)
 - [Project Structure](#project-structure)
-- [Habit Maker - HY](#habit-maker---hy)
+- [Useful Utility Files](#useful-utility-files)
 - [Contributing, Security, Conduct, License](#contributing-security-conduct-license)
 
 ---
 
-## What It Does
-
-- Tracks your daily habits in a monthly grid with checkboxes.
-- Shows your progress with summary cards, charts, and analytics.
-- Lets you upload PDF books, create page bookmarks, and read them inside the app.
-- Optionally generates AI summaries of your bookmarked pages using the Gemini API.
-- Keeps everything local in your browser. Nothing is sent to a server unless you use AI summaries.
-
-## Who It Is For
-
-- Anyone who wants a simple habit tracker without signing up for anything.
-- Students or professionals who read PDFs and want to save page bookmarks with notes.
-- Developers who want to see a clean vanilla JavaScript project with no build tools.
-
----
-
-## Features
+## What You Get
 
 ### Habit Tracking
 
-- Monthly grid where each row is a habit and each column is a day.
-- Create categories with custom name, emoji, and color.
-- Set monthly goals for each habit.
-- Add notes to any habit on any day.
-- Weekly summary cards show your progress at a glance.
-- Analytics page with charts and monthly review notes (wins, blockers, focus).
-- The app always opens on today's month automatically.
+- Daily habit grid for each month.
+- Categories with custom name, emoji, and color.
+- Monthly goal per habit.
+- Daily notes per habit/day cell.
+- Habit scheduling modes:
+  - Fixed (every day)
+  - Specific weekdays
+  - Specific month days
+- Weekly summary cards and dashboard donut summary.
 
-### Books and PDF Workspace
+### Books + PDF Workspace
 
-- Upload PDF files (up to 70 MB each).
-- Create bookmarks with a page number and a short note.
-- Open any bookmark in Reader Mode to read the PDF right inside the app.
-- Jump to any page directly.
-- Dark mode for reading (two styles: full invert or text-only).
-- Book Finisher Helper: calculates how many pages per day you need to finish a book by a target date.
-- Bookmark event history (keeps up to 200 events).
+- Upload PDF books (stored locally in IndexedDB).
+- Add bookmarks (PDF page + optional real page + note).
+- Open bookmarks in Reader Mode.
+- Reader controls: next/prev, jump to page, zoom, dark reading modes.
+- Book Finisher Helper (pages/day plan to finish by a date).
+- Bookmarks keep event history.
 
-### AI Summary (Optional)
+### Analytics + Review
 
-- Uses the Gemini API to summarize text from your bookmarked PDF pages.
-- Pick a Gemini model from a built-in list.
-- Your API key is encrypted and stored on your device with a passphrase you choose.
-- Summary output is formatted in Markdown.
-- Requires internet access and a valid Gemini API key.
+- Habit charts (daily, weekly, monthly trends, category performance).
+- Books analytics (pace, trends, heatmaps, per-book comparisons).
+- Monthly review notes:
+  - wins
+  - blockers
+  - focus for next month
 
-### Export and Import
+### Optional AI Summaries
 
-- Export your full app state as a JSON file.
-- Choose whether to include PDF files in the export or keep it lightweight (metadata only).
-- Import a backup JSON file to restore everything.
+- Uses Gemini API to summarize bookmarked PDF ranges.
+- Incremental summary flow supported.
+- Markdown summary rendering with math support.
+- Model picker + language selection.
+- API key can be encrypted locally with your passphrase.
 
-### Logs
+### Logs + Diagnostics
 
-- In-app log viewer for debugging.
-- Export logs as JSON or CSV.
-- Optional live `.log` file writing (requires a browser that supports the File System Access API).
+- In-app log viewer with filters.
+- Export logs as JSON/CSV.
+- Optional live `.log` file append (browser support required).
 
 ---
 
-## Quick Start
+## 60-Second Quick Start
 
-### 1. Clone the repository
+If you already have Git + Python installed:
+
+```bash
+git clone https://github.com/semyonsw/habbit_maker.git
+cd habbit_maker
+python3 -m http.server 3000
+```
+
+Then open `http://localhost:3000`.
+
+On Windows, you can simply double-click `start.bat`.
+
+---
+
+## Install and Run (From Zero)
+
+This section assumes you are starting from scratch.
+
+### 1) Install prerequisites
+
+You need:
+
+- A modern browser (Chrome, Edge, Firefox, Safari).
+- Git (to clone the repo).
+- One local static server option:
+  - Python 3 (recommended), or
+  - Node.js (optional alternative).
+
+### Quick install references
+
+- Git: https://git-scm.com/downloads
+- Python: https://www.python.org/downloads/
+- Node.js (optional): https://nodejs.org/
+
+### Optional install commands (if useful)
+
+Ubuntu/Debian:
+
+```bash
+sudo apt update
+sudo apt install -y git python3 python3-pip
+```
+
+macOS (Homebrew):
+
+```bash
+brew install git python
+```
+
+Windows (PowerShell with winget):
+
+```powershell
+winget install --id Git.Git -e
+winget install --id Python.Python.3 -e
+```
+
+### Verify installs
+
+Run these in a terminal:
+
+```bash
+git --version
+```
+
+For Python:
+
+```bash
+python3 --version
+```
+
+On Windows, this can be:
+
+```bash
+py --version
+```
+
+Optional Node.js check:
+
+```bash
+node --version
+npm --version
+```
+
+### 2) Clone the project
 
 ```bash
 git clone https://github.com/semyonsw/habbit_maker.git
 cd habbit_maker
 ```
 
-### 2. Run the app
+### 3) Start the app
 
-#### Option A: Double-click `start.bat` (Windows, easiest)
+Important: do **not** open `index.html` directly via `file://`.
+Use a local HTTP server.
 
-Just double-click `start.bat` in the project folder. It will:
+### Windows easiest (double-click)
 
-1. Start a local server on port 3000.
-2. Wait a couple of seconds for the server to be ready.
-3. Open `http://localhost:3000` in your default browser automatically.
-4. Keep the terminal open so you can see what is happening.
-5. Press any key in the terminal to stop the server when you are done.
+Double-click `start.bat`.
 
-> **Tip:** You can create a desktop shortcut to `start.bat` so you can launch the app from your desktop without opening the project folder.
+What it does:
 
-> **Requirement:** Python must be installed on your system. You can download it from [python.org](https://www.python.org/downloads/).
+1. Starts `py -m http.server 3000`
+2. Opens `http://localhost:3000`
+3. Waits until you press a key to stop
 
-#### Option B: Start a server manually
+Note: this script ends by stopping `python.exe` processes.
 
-If you are on Mac, Linux, or prefer to run things from the terminal:
+### Manual start (all platforms)
 
-**Python (Mac/Linux):**
+Python (macOS/Linux):
 
 ```bash
 python3 -m http.server 3000
 ```
 
-**Python (Windows terminal):**
+Python (Windows terminal):
 
 ```bash
 py -m http.server 3000
 ```
 
-**Node.js (any platform):**
+Node.js alternative:
 
 ```bash
 npx serve . -l 3000
 ```
 
-Then open `http://localhost:3000` in your browser.
+Then open:
+
+- `http://localhost:3000`
+
+If port 3000 is busy, use another port (for example `8080`) and open that URL.
 
 ---
 
-## How to Use
+## First 10 Minutes in the App
 
-### Step 1: Set Up Your Habits
+### 1) Create categories
 
-1. Open the **Manage** tab.
-2. Create categories first (for example: Health, Study, Work). Each category has a name, emoji, and color.
-3. Add daily habits and assign each one to a category.
-4. Set a monthly goal for any habit if you want (optional).
-5. Go back to **Dashboard** to see your month grid.
+- Open **Manage**.
+- Click **Add Category**.
+- Add name, emoji, and color.
 
-### Step 2: Track Your Progress
+### 2) Add habits
 
-1. On the **Dashboard**, check the box for each habit you completed on that day.
-2. Click the note button on any cell to add a note for that day.
-3. Summary cards at the top update automatically as you check things off.
-4. Open **Analytics** to see charts and write monthly review notes.
+- In **Manage**, click **Add Daily Habit**.
+- Pick category, emoji, monthly goal.
+- Choose schedule mode (fixed / weekdays / month days).
 
-### Step 3: Work with Books
+### 3) Track today
 
-1. Open the **Books** tab.
-2. Click "Add Book" and upload a PDF file.
-3. Add bookmarks: pick a page number and write a short note about what is there.
-4. Click a bookmark to open it in **Reader Mode**. You can navigate pages, jump to a specific page, and turn on dark mode.
-5. Use the **Book Finisher Helper** to calculate how many pages per day you need to finish the book by a specific date.
+- Go to **Dashboard**.
+- Check completed habits for today.
+- Add note on any day cell when needed.
 
-### Step 4: AI Summaries (Optional)
+### 4) Add first PDF book
 
-1. In the Books section, open **Summary AI** settings.
-2. Paste your Gemini API key.
-3. Create a passphrase to encrypt and save the key on your device.
-4. Pick a Gemini model from the list.
-5. Select a bookmark range and run the summary.
-6. Read the generated Markdown summary.
+- Open **Books**.
+- Enter title (required) and choose a PDF.
+- Click **Upload PDF Book**.
 
-### Step 5: Backup Your Data
+### 5) Add bookmarks and read
 
-1. Use **Export** in the sidebar to download your app state as a JSON file.
-2. Leave "Include PDFs" unchecked for a small backup (just metadata and habits).
-3. Turn on "Include PDFs" for a full backup that includes your book files.
-4. Use **Import** to restore from a saved JSON file.
+- Select a book.
+- Click **Add Bookmark**.
+- Set page and note.
+- Click **Open at Bookmark** to enter Reader Mode.
+
+### 6) (Optional) Configure AI summary
+
+- In **Books > Summary AI Settings**:
+  - paste Gemini API key
+  - choose model
+  - choose summary language
+  - save settings
+- Use **Summarize up to Bookmark** on a bookmark.
+
+### 7) Make a backup
+
+- Use **Export** in sidebar.
+- Metadata-only export is default (small file).
+- Enable **Include PDFs in export** for full backup.
 
 ---
 
-## Storage and Privacy
+## Feature Guide
 
-| What                             | Where                                             |
-| -------------------------------- | ------------------------------------------------- |
-| Habits, categories, goals, notes | localStorage                                      |
-| PDF book files                   | IndexedDB (database: `habitTracker_books_pdf_v1`) |
-| Reader and analytics preferences | localStorage                                      |
-| App logs                         | localStorage (capped at 1000 entries)             |
-| Encrypted API key                | localStorage                                      |
+### Habits
 
-**Privacy:** Everything stays in your browser by default. The only time data leaves your device is if you use the AI summary feature, which sends extracted PDF text to the Gemini API.
+- Monthly grid with one row per habit.
+- Weekly cards and summary donut update automatically.
+- Habit order can be changed.
+- Reset current month clears only that month's completions/notes.
+- Clear all data resets full app state.
+
+### Books and Reader
+
+- PDF upload validation:
+  - must be `.pdf`
+  - MIME type `application/pdf`
+  - max file size 70MB
+- Reader Mode opens in a separate tab with URL query params.
+- Reader can add bookmark/history from current page.
+
+### Book Finisher Helper
+
+- Choose book, target date, start page, and reading weekdays.
+- App calculates required pages per selected reading day.
+- Includes a weekly load plan chart.
+
+### AI Summary (optional)
+
+- Uses Gemini endpoint only when you run summaries.
+- Supports regeneration and full rebuild from Summary modal.
+- Consolidation mode:
+  - ON: merges old + new summary intelligently
+  - OFF: appends new segment under separator
+- Summary output renders Markdown, with math fallback support.
+
+### Analytics
+
+- Habit analytics with percentage/raw display mode toggle.
+- Books analytics range filters: 7d, 30d, 90d, all.
+- Monthly review text fields saved per month.
+
+### Logs
+
+- Filter by level, component, text.
+- Export JSON/CSV.
+- Live `.log` file writing supported only where File System Access API is available in secure context.
+
+---
+
+## Backup, Restore, and Migration
+
+### Export
+
+- Sidebar **Export** downloads a JSON backup of app state.
+- If **Include PDFs in export** is ON:
+  - PDF blobs are embedded as base64
+  - backup can become very large
+- If OFF (default):
+  - habits/books metadata exported
+  - PDFs are not embedded
+
+### Import
+
+- Sidebar **Import** accepts exported JSON.
+- State is validated before import.
+- If embedded PDFs exist, app restores them to IndexedDB.
+
+### Legacy API key migration
+
+If old plaintext key data is detected, app prompts to migrate it into encrypted storage.
+
+### Auto-restore behavior
+
+On startup, if no real habit data exists, app tries to fetch `habit-tracker-backup-2026-03.json` from project root.
+If file does not exist, app starts fresh.
+
+---
+
+## Storage, Privacy, and Security
+
+### Where data is stored
+
+| Data                                | Storage        | Key / DB                                                                      |
+| ----------------------------------- | -------------- | ----------------------------------------------------------------------------- |
+| Habits/categories/month data        | `localStorage` | `habitTracker_v1`                                                             |
+| Encrypted API key material          | `localStorage` | `habitTracker_secure_settings_v1`                                             |
+| Optional API key cache (plain text) | `localStorage` | `habitTracker_summary_api_key_cache_v1`                                       |
+| Logs                                | `localStorage` | `habitTracker_logs_v1`                                                        |
+| Reader theme preferences            | `localStorage` | `habitTracker_readerDarkEnabled_v1`, `habitTracker_readerDarkMode_v1`         |
+| Analytics preferences               | `localStorage` | `habitTracker_analyticsDisplayMode_v1`, `habitTracker_booksAnalyticsRange_v1` |
+| PDF files                           | `IndexedDB`    | DB: `habitTracker_books_pdf_v1`, Store: `pdfFiles`                            |
+
+### Privacy model
+
+- Local-first by default.
+- Data leaves your device only when you use Gemini summaries.
+- Clearing browser data removes localStorage + IndexedDB (permanent local data loss).
+
+### API key security
+
+- Encrypted storage uses Web Crypto (`AES-GCM` + `PBKDF2` with high iteration count).
+- You choose the passphrase.
+- Passphrase is not stored by the app.
+- Optional "remember on device" cache stores API key locally for convenience.
+
+---
 
 ## Limits
 
-| Limit                       | Value |
-| --------------------------- | ----- |
-| Max PDF file size           | 70 MB |
-| Max bookmark history events | 200   |
-| Max stored log entries      | 1000  |
+| Limit                                     | Value |
+| ----------------------------------------- | ----- |
+| Max PDF file size                         | 70MB  |
+| Max bookmark history entries per bookmark | 200   |
+| Max log records kept in app               | 1000  |
+| Live `.log` safety cutoff                 | 10MB  |
+| Schema version                            | 4     |
 
----
+Notes:
 
-## Auto Sync Script
-
-The repository includes `auto-sync.sh` for automatic git add, commit, and push on a timer.
-
-```bash
-./auto-sync.sh 20
-```
-
-- `20` means 20 seconds between sync cycles.
-- The script checks that you are in a git repository before running.
-- Stop it with `Ctrl+C`.
+- Summary chunk/page limits are dynamic by model and document characteristics.
+- Browser storage quota depends on browser/device.
 
 ---
 
 ## Troubleshooting
 
-### The app does not load after double-clicking `start.bat`
+### App does not open
 
-- Make sure Python is installed. Open a terminal and run `py --version`. If it says "not recognized", install Python from [python.org](https://www.python.org/downloads/).
-- If port 3000 is already in use, close the other program using it, or edit `start.bat` and change `3000` to another number like `8080`.
+- Make sure you started a local server (not `file://`).
+- Check Python/Node install.
+- Check terminal output for port errors.
 
-### PDF upload does not work
+### `start.bat` does nothing
 
-- Make sure the file is actually a PDF (correct extension and type).
-- Make sure it is under 70 MB.
-- Make sure your browser supports IndexedDB.
+- Ensure Python launcher `py` is installed/available.
+- Try manual server command in terminal.
 
-### Charts are not showing
+### Port already in use
 
-- The app loads Chart.js from a CDN. Make sure you have internet access.
-- Try refreshing the page and reopening Analytics.
+Use another port:
 
-### Reader Mode is broken
+```bash
+python3 -m http.server 8080
+```
 
-- Reload the page and reopen Reader Mode.
-- Check that the PDF file still exists in your browser storage (clearing browser data removes it).
+Then open `http://localhost:8080`.
+
+### PDF upload fails
+
+- Confirm file is real PDF.
+- Confirm size <= 70MB.
+- Confirm browser supports IndexedDB.
+
+### Reader Mode says PDF missing
+
+- PDF blob is not in this browser profile's IndexedDB.
+- Re-upload PDF or import a backup containing embedded PDFs.
+
+### Charts are empty
+
+- Chart.js is CDN-loaded.
+- Check internet connection and refresh.
 
 ### AI summary fails
 
-- Check that your API key is correct.
-- Unlock the encrypted key in Summary AI settings.
-- Make sure you have internet access to reach the Gemini API.
+- Verify Gemini API key.
+- Unlock saved encrypted key if needed.
+- Check internet access.
+- Try a different model.
+
+### Live `.log` file unavailable
+
+- Requires secure context and File System Access API support.
+- Best support is Chrome/Edge.
+
+### Data disappeared
+
+- Browser storage may have been cleared.
+- Restore from exported backup JSON if available.
 
 ---
 
-## Code Quality
+## Developer Notes
 
-ESLint is configured for `src/**/*.js` to catch unused imports/variables and other basic safety issues.
+Runtime requirements:
+
+- No build step.
+- No npm install required to run app.
+
+Code quality tooling (dev only):
 
 ```bash
 npm install
 npm run lint
+npm run lint:fix
 ```
 
-Use this before commits to keep the codebase clean.
+Current npm scripts:
 
----
-
-## Tech Stack
-
-- **HTML5, CSS3, Vanilla JavaScript** - no framework, no build step, no dependencies to install.
-- **Chart.js** (loaded from CDN) - for analytics charts.
-- **PDF.js 3.11.174** (loaded from CDN) - for rendering PDFs in Reader Mode.
-- **Gemini API** - for optional AI summaries.
-- **ESLint** (dev dependency) - for static quality checks.
-
-## Browser Support
-
-- Chrome, Edge, Firefox, and Safari (modern versions).
-- Requires ES6+ module support, localStorage, and IndexedDB.
-- Live `.log` file writing requires a secure context and the File System Access API (Chrome/Edge only).
+- `lint`
+- `lint:fix`
+- `test` (placeholder)
 
 ---
 
 ## Project Structure
 
-```
+```text
 habbit_maker/
-|-- index.html              Main app page
-|-- styles.css              All styles
-|-- start.bat               Double-click to start the app (Windows)
-|-- debug.html              Debug/diagnostics page
-|-- restore.html            Data restore page
-|-- auto-sync.sh            Auto git sync script
+|-- index.html
+|-- styles.css
+|-- start.bat
+|-- debug.html
+|-- restore.html
+|-- auto-sync.sh
 |-- src/
-|   |-- app.js              App entry point and initialization
-|   |-- state.js            Global state and shared variables
-|   |-- constants.js        Shared constants (month names, defaults, etc.)
-|   |-- utils.js            Utility functions (date helpers, formatting, etc.)
-|   |-- persistence.js      Save/load state to localStorage, migrations
-|   |-- habits.js           Habit logic (sorting, scheduling, month navigation)
-|   |-- books.js            Book and bookmark logic
-|   |-- events.js           DOM event listeners
-|   |-- modals.js           Modal dialogs (habit editor, notes, confirmations)
-|   |-- layout.js           Sidebar, top bar, and layout management
-|   |-- preferences.js      User preferences and display settings
-|   |-- render-registry.js  View rendering coordinator
-|   |-- render-dashboard.js Dashboard view (habit grid, summary cards)
-|   |-- render-analytics.js Analytics view (charts, monthly review)
-|   |-- render-books.js     Books view (book list, bookmarks, finisher helper)
-|   |-- render-logs.js      Logs view
-|   |-- pdf-reader.js       PDF Reader Mode (page rendering, navigation)
-|   |-- ai-summary.js       AI summary generation with Gemini
-|   |-- encryption.js       API key encryption/decryption
-|   |-- model-picker.js     Gemini model selection UI
-|   |-- data-io.js          Export/import functionality
-|   |-- idb.js              IndexedDB operations for PDF storage
-|   |-- logging.js          In-app logging system
-|-- .editorconfig
-|-- .gitignore
-|-- README.md
-|-- CONTRIBUTING.md
-|-- CODE_OF_CONDUCT.md
-|-- SECURITY.md
-|-- LICENSE
+|   |-- app.js
+|   |-- state.js
+|   |-- constants.js
+|   |-- utils.js
+|   |-- persistence.js
+|   |-- habits.js
+|   |-- books.js
+|   |-- events.js
+|   |-- modals.js
+|   |-- layout.js
+|   |-- preferences.js
+|   |-- render-registry.js
+|   |-- render-dashboard.js
+|   |-- render-analytics.js
+|   |-- render-books.js
+|   |-- render-logs.js
+|   |-- pdf-reader.js
+|   |-- ai-summary.js
+|   |-- encryption.js
+|   |-- model-picker.js
+|   |-- data-io.js
+|   |-- idb.js
+|   |-- logging.js
 ```
 
 ---
 
-## Habit Maker - HY
+## Useful Utility Files
 
-Habit Maker-y local-first veb havelvats e, vory miavorum e amenorya sovorytneri karavarume yev PDF grqeri ashkhatanqayin mijavayre mek teghum.
-
-### Arag meknark
-
-1. Clone ara repository-n yev mtir tghthapanak.
+- `debug.html`: quick localStorage inspector for `habitTracker_v1`.
+- `restore.html`: restore helper that attempts to import a specific backup filename.
+- `auto-sync.sh`: optional Git auto add/commit/push loop:
 
 ```bash
-git clone https://github.com/semyonsw/habbit_maker.git
-cd habbit_maker
+./auto-sync.sh 20
 ```
 
-2. Windows-um krknakit sxmir `start.bat` fayli vra. Ayn kkancharkvi servery yev kbatsi browsery avtomatkoren.
-
-3. Kam gortsarqir local server dzernarkoren:
-
-```bash
-py -m http.server 3000
-```
-
-4. Batsir havelvatsn: `http://localhost:3000`
-
-### Sovorytneri flow
-
-1. Batsir Manage bajiny.
-2. Avelatsru category-ner (anun, emoji, guyn).
-3. Steghtsir daily habits yev kapir category-neri het.
-4. Dashboard-um nshir katarvatsor orery yev hetevir summary qarterine.
-
-### PDF yev bookmark flow
-
-1. Books bajnum upload ara PDF (minchev 70MB).
-2. Avelatsru bookmark: eji hamarov yev karts note-ov.
-3. Batsir Reader Mode yev ashkhatir ejeri navigation-ov.
-4. Anhraqeshtutyan depqum miatsru dark mode (full/text).
-
-### AI ampopum (yst tsankutyan)
-
-1. Books-um mtir Summary AI settings.
-2. Mutsqagrir Gemini API key.
-3. Steghtsir passphrase, vorpeszy key-y encrypted pahvi ays sarqum.
-4. Yntrir model yev gortsarqir summary bookmark range-i hamar.
-
-### Export / Import
-
-1. Export-ov pahir state-y JSON faylum.
-2. Yete uzum es poqr backup, pahir Include PDFs yntranqy anjatvatsor.
-3. Yete petq e amboghchakan backup, miatsru Include PDFs.
-4. Import-ov verakangrir backup-y.
+Stop with `Ctrl+C`.
 
 ---
 
