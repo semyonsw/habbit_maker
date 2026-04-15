@@ -48,6 +48,12 @@
   --transition-fast: 0.16s ease;
   --transition-slow: 0.28s ease;
   --focus-ring: 0 0 0 2px rgba(88, 165, 209, 0.36);
+
+  --grid-today-glow-soft: rgba(123, 199, 236, 0.74);
+  --grid-today-glow-strong: rgba(56, 136, 198, 0.42);
+  --grid-complete-glow-soft: rgba(134, 239, 172, 0.8);
+  --grid-complete-glow-strong: rgba(22, 163, 74, 0.68);
+  --grid-week-gap: rgba(5, 9, 20, 0.8);
 }
 
 *,
@@ -1024,8 +1030,12 @@ textarea:focus-visible,
 
 .habits-grid th.day-col.week-start,
 .habits-grid td.day-cell.week-start {
-  border-left: 2px solid
-    color-mix(in srgb, var(--week-accent, #7bc7ec) 72%, transparent);
+  border-left: 3px solid
+    color-mix(in srgb, var(--week-accent, #7bc7ec) 90%, transparent);
+  box-shadow:
+    -6px 0 0 var(--grid-week-gap),
+    inset 1px 0 0
+      color-mix(in srgb, var(--week-accent, #7bc7ec) 95%, transparent);
 }
 
 .habits-grid th.day-col .day-col-week {
@@ -1051,21 +1061,27 @@ textarea:focus-visible,
   background: var(--purple-600);
   color: var(--white);
   border-radius: 4px 4px 0 0;
+  box-shadow:
+    inset 0 -1px 0 rgba(196, 232, 255, 0.72),
+    0 0 14px var(--grid-today-glow-soft),
+    0 0 28px var(--grid-today-glow-strong);
 }
 
 .habits-grid th.day-col.day-complete {
-  background: rgba(22, 163, 74, 0.85);
+  background: rgba(34, 197, 94, 0.88);
   color: var(--white);
   box-shadow:
-    inset 0 -1px 0 rgba(187, 247, 208, 0.55),
-    0 0 12px rgba(34, 197, 94, 0.45);
+    inset 0 -1px 0 rgba(220, 252, 231, 0.68),
+    0 0 16px var(--grid-complete-glow-soft),
+    0 0 30px var(--grid-complete-glow-strong);
 }
 
 .habits-grid th.day-col.today.day-complete {
-  background: #15803d;
+  background: #1faa55;
   box-shadow:
-    inset 0 -1px 0 rgba(220, 252, 231, 0.7),
-    0 0 16px rgba(34, 197, 94, 0.6);
+    inset 0 -1px 0 rgba(236, 253, 245, 0.78),
+    0 0 18px rgba(134, 239, 172, 0.92),
+    0 0 32px rgba(22, 163, 74, 0.76);
 }
 
 .habits-grid td {
@@ -1217,21 +1233,27 @@ textarea:focus-visible,
 }
 
 .habits-grid td.day-cell.today-col .day-cell-content {
-  background: rgba(88, 165, 209, 0.15);
-  border: 1px solid rgba(88, 165, 209, 0.35);
+  background: rgba(88, 165, 209, 0.22);
+  border: 1px solid rgba(123, 199, 236, 0.52);
   border-radius: 8px;
   padding: 3px 2px;
+  box-shadow:
+    0 0 12px rgba(88, 165, 209, 0.56),
+    0 0 22px rgba(56, 136, 198, 0.3);
 }
 
 .habits-grid td.day-cell.day-complete {
-  background: rgba(22, 163, 74, 0.16);
+  background: rgba(34, 197, 94, 0.22);
 }
 
 .habits-grid td.day-cell.day-complete .day-cell-content {
-  background: rgba(34, 197, 94, 0.2);
-  border: 1px solid rgba(34, 197, 94, 0.45);
+  background: rgba(74, 222, 128, 0.3);
+  border: 1px solid rgba(134, 239, 172, 0.68);
   border-radius: 8px;
   padding: 3px 2px;
+  box-shadow:
+    0 0 14px rgba(134, 239, 172, 0.54),
+    0 0 24px rgba(22, 163, 74, 0.38);
 }
 
 .habits-grid td.day-cell.day-cell-off.day-complete {
