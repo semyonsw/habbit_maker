@@ -2,7 +2,7 @@
 
 import { LOGS_STORAGE_KEY, MAX_LOG_RECORDS } from "./constants.js";
 import { appLogs, setAppLogs, liveLogFileState, globals } from "./state.js";
-import { uid, nowIso, sanitizeErrorForLog, redactForLogs } from "./utils.js";
+import { uid, nowIso, sanitizeErrorForLog, redactForLogs } from "./utils.js?v=2";
 
 export function loadLogs() {
   try {

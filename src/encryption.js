@@ -13,7 +13,7 @@ import {
   fromBase64,
   bytesFromString,
   stringFromBytes,
-} from "./utils.js";
+} from "./utils.js?v=2";
 import { appendLogEntry } from "./logging.js";
 
 export function loadSecureSettings() {

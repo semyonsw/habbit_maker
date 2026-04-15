@@ -4,23 +4,21 @@
 
 import { STORAGE_KEY } from "./constants.js";
 import { loadLogs, appendLogEntry } from "./logging.js";
-import { loadSecureSettings, maybeMigrateLegacyApiKey, tryUnlockOnStartup, applyBookSummarySettingsToInputs } from "./encryption.js";
-import { loadState, saveState } from "./persistence.js";
+import {
+  loadSecureSettings,
+  maybeMigrateLegacyApiKey,
+  tryUnlockOnStartup,
+  applyBookSummarySettingsToInputs,
+} from "./encryption.js";
+import { loadState } from "./persistence.js";
 import { loadAnalyticsPreferences } from "./preferences.js";
 import { initSidebarCollapse, initTopClock } from "./layout.js";
 import { bindEvents } from "./events.js";
 import { initReaderMode } from "./pdf-reader.js";
 import { setBookUploadStatus } from "./books.js";
 import { callRenderer } from "./render-registry.js";
-import {
-  deleteHabit,
-  deleteCategory,
-  moveDailyHabit,
-} from "./habits.js";
-import {
-  setActiveBook,
-  openBookmarkInNewTab,
-} from "./books.js";
+import { deleteHabit, deleteCategory, moveDailyHabit } from "./habits.js";
+import { setActiveBook, openBookmarkInNewTab } from "./books.js";
 import {
   openHabitModal,
   openCategoryModal,
@@ -85,7 +83,11 @@ async function init() {
   try {
     const existing = localStorage.getItem(STORAGE_KEY);
     const parsed = existing ? JSON.parse(existing) : null;
-    const hasHabits = parsed && parsed.habits && Array.isArray(parsed.habits.daily) && parsed.habits.daily.length > 0;
+    const hasHabits =
+      parsed &&
+      parsed.habits &&
+      Array.isArray(parsed.habits.daily) &&
+      parsed.habits.daily.length > 0;
     if (!hasHabits) {
       const resp = await fetch("habit-tracker-backup-2026-03.json");
       if (resp.ok) {
@@ -94,7 +96,9 @@ async function init() {
         console.log("Backup restored from habit-tracker-backup-2026-03.json");
       }
     }
-  } catch (_) { /* no backup file available, start fresh */ }
+  } catch (_) {
+    /* no backup file available, start fresh */
+  }
 
   loadLogs();
   loadSecureSettings();

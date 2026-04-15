@@ -1,28 +1,23 @@
 "use strict";
 
 import { PDFJS_WORKER_URL, GEMINI_API_BASE_URL } from "./constants.js";
-import { state, summaryModalState } from "./state.js";
+import { summaryModalState } from "./state.js";
 import {
   sanitize,
   isPlainObject,
   uid,
   formatIsoForDisplay,
   nowIso,
-} from "./utils.js";
+  clampNumber,
+} from "./utils.js?v=2";
 import { appendLogEntry, maybeAutoDownloadLogs } from "./logging.js";
 import { idbGetPdfBlob } from "./idb.js";
 import { ensurePdfJsLibLoaded } from "./pdf-reader.js";
 import { getApiKeyForSummary, getBookAiSettings } from "./encryption.js";
-import { saveState } from "./persistence.js";
 import {
   getBookById,
-  getActiveBook,
   getBookmarkById,
-  getReadySummariesFromBookmark,
-  getBookmarkLastSummarizedPage,
-  getReadySummariesFromBook,
   getLatestSummaryUpToPageFromBook,
-  getBookLastSummarizedPage,
   resolveIncrementalRange,
   getSummaryById,
   getLatestBookmarkSummary,
@@ -39,10 +34,6 @@ const MATHJAX_FALLBACK_URL =
   "https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js";
 const SUMMARY_PENDING_ID = "__summary_pending__";
 let mathJaxLoadPromise = null;
-
-function clampNumber(value, min, max) {
-  return Math.min(max, Math.max(min, value));
-}
 
 function resolveSummaryModelProfile(model) {
   const normalized = String(model || "").toLowerCase();
@@ -622,6 +613,30 @@ export function parseGeminiResponseText(payload) {
     .trim();
 }
 
+export function describeGeminiResponseIssue(payload) {
+  if (!isPlainObject(payload)) return "";
+  const parts = [];
+  if (Array.isArray(payload.candidates) && payload.candidates.length) {
+    const reasons = payload.candidates
+      .map((candidate) =>
+        candidate && typeof candidate.finishReason === "string"
+          ? candidate.finishReason
+          : "",
+      )
+      .filter(Boolean);
+    if (reasons.length) {
+      parts.push(`finishReason=${reasons.join(",")}`);
+    }
+  }
+  if (isPlainObject(payload.promptFeedback)) {
+    const block = payload.promptFeedback.blockReason;
+    if (typeof block === "string" && block) {
+      parts.push(`blockReason=${block}`);
+    }
+  }
+  return parts.join("; ");
+}
+
 export async function callGeminiGenerateText({ apiKey, model, prompt }) {
   if (!apiKey) {
     throw new Error("Gemini API key is missing.");
@@ -631,7 +646,7 @@ export async function callGeminiGenerateText({ apiKey, model, prompt }) {
   }
 
   const endpoint = `${GEMINI_API_BASE_URL}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
-  const retries = 1;
+  const retries = 2;
   const startedAt = performance.now();
   const timeoutMs = clampNumber(
     90000 + Math.round(String(prompt || "").length / 24),
@@ -653,6 +668,7 @@ export async function callGeminiGenerateText({ apiKey, model, prompt }) {
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
             temperature: 0.2,
+            maxOutputTokens: 8192,
           },
         }),
         signal: controller.signal,
@@ -676,12 +692,18 @@ export async function callGeminiGenerateText({ apiKey, model, prompt }) {
 
       const text = parseGeminiResponseText(body);
       if (!text) {
-        throw new Error("Gemini returned an empty response.");
+        const diagnostic = describeGeminiResponseIssue(body);
+        const detail = diagnostic ? ` (${diagnostic})` : "";
+        const err = new Error(`Gemini returned an empty response.${detail}`);
+        err.isEmptyResponse = true;
+        err.finishReason = diagnostic;
+        throw err;
       }
 
       return text;
     } catch (error) {
       const isAbort = error && error.name === "AbortError";
+      const isEmpty = Boolean(error && error.isEmptyResponse);
       appendLogEntry({
         level: "warn",
         component: "ai-summary",
@@ -696,7 +718,14 @@ export async function callGeminiGenerateText({ apiKey, model, prompt }) {
           elapsedMs: Math.round(performance.now() - startedAt),
         },
       });
-      if ((isAbort || /network/i.test(String(error))) && attempt < retries) {
+      const canRetry = attempt < retries;
+      const retriableEmpty =
+        isEmpty &&
+        !/SAFETY|RECITATION|BLOCK/i.test(String(error && error.finishReason));
+      if (
+        (isAbort || retriableEmpty || /network/i.test(String(error))) &&
+        canRetry
+      ) {
         continue;
       }
       throw error;

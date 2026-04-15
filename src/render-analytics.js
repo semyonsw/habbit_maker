@@ -7,29 +7,23 @@ import {
   daysInMonth,
   monthKey,
   getValueColor,
-  getWeekShadeColor,
   getHeatColor,
-  getIsoWeekNumber,
   getMonthCalendarWeekLayout,
+  formatIsoWeekRangeLabel,
   isPlainObject,
-} from "./utils.js";
+} from "./utils.js?v=2";
 import {
   getCurrentMonthData,
   getDefaultMonthData,
   ensureMonthDataShape,
   getHabitEmoji,
 } from "./persistence.js";
-import {
-  getSortedDailyHabits,
-  isHabitTrackedOnDate,
-  getPossibleActiveDaysInMonth,
-} from "./habits.js";
+import { getSortedDailyHabits, isHabitTrackedOnDate } from "./habits.js";
 import {
   getMetricValue,
   getMetricLabel,
   getMetricAxisLabel,
   syncAnalyticsModeControls,
-  getBooksAnalyticsRangeDays,
   getAnalyticsDisplayMode,
 } from "./preferences.js";
 import { getCategoryById } from "./persistence.js";
@@ -197,44 +191,78 @@ export function buildWeeklyAnalytics(year, month) {
   const totals = buildMonthTotals(year, month);
   const { weeks, dayToWeek } = getMonthCalendarWeekLayout(year, month);
   const maxWeek = Math.max(1, weeks.length);
+  const createMetricBucket = () => ({ done: 0, possible: 0 });
+  const ensureCategoryWeekBucket = (categoryId, weekIndex) => {
+    if (!Array.isArray(categoryWeek[categoryId])) {
+      categoryWeek[categoryId] = [];
+    }
+    if (!categoryWeek[categoryId][weekIndex]) {
+      categoryWeek[categoryId][weekIndex] = createMetricBucket();
+    }
+    return categoryWeek[categoryId][weekIndex];
+  };
 
-  const weekBuckets = Array.from({ length: maxWeek }, (_, index) => ({
-    label: `Week ${index + 1}`,
-    done: 0,
-    possible: 0,
-    weekdays: Array.from({ length: 7 }, () => ({ done: 0, possible: 0 })),
-  }));
+  const isoWeekToIndex = {};
+  weeks.forEach((w, idx) => {
+    isoWeekToIndex[w.week] = idx;
+  });
+
+  const weekBuckets = weeks.length
+    ? weeks.map((w) => ({
+        isoWeek: w.week,
+        label: `W${w.week}`,
+        rangeLabel: formatIsoWeekRangeLabel(w.fullStart, w.fullEnd),
+        done: 0,
+        possible: 0,
+        weekdays: Array.from({ length: 7 }, createMetricBucket),
+      }))
+    : [
+        {
+          isoWeek: 0,
+          label: "W?",
+          rangeLabel: "",
+          done: 0,
+          possible: 0,
+          weekdays: Array.from({ length: 7 }, createMetricBucket),
+        },
+      ];
 
   const categoryWeek = {};
   state.categories.forEach((category) => {
-    categoryWeek[category.id] = Array.from({ length: maxWeek }, () => ({
-      done: 0,
-      possible: 0,
-    }));
+    categoryWeek[category.id] = Array.from(
+      { length: maxWeek },
+      createMetricBucket,
+    );
   });
 
   for (let day = 1; day <= totals.totalDays; day++) {
     const week = dayToWeek[day];
     if (!week) continue;
-    const weekIndex = week - 1;
+    const weekIndex = isoWeekToIndex[week];
+    if (weekIndex == null || !weekBuckets[weekIndex]) continue;
     const weekday = new Date(year, month, day).getDay();
 
     totals.habits.forEach((habit) => {
       if (!isHabitTrackedOnDate(habit, year, month, day)) return;
 
-      weekBuckets[weekIndex].possible += 1;
-      weekBuckets[weekIndex].weekdays[weekday].possible += 1;
-
-      if (!categoryWeek[habit.categoryId]) {
-        categoryWeek[habit.categoryId] = Array.from(
-          { length: maxWeek },
-          () => ({
-            done: 0,
-            possible: 0,
-          }),
-        );
+      const bucket = weekBuckets[weekIndex];
+      if (!bucket) return;
+      if (!Array.isArray(bucket.weekdays)) {
+        bucket.weekdays = Array.from({ length: 7 }, createMetricBucket);
       }
-      categoryWeek[habit.categoryId][weekIndex].possible += 1;
+      if (!bucket.weekdays[weekday]) {
+        bucket.weekdays[weekday] = createMetricBucket();
+      }
+      const weekdayBucket = bucket.weekdays[weekday];
+
+      bucket.possible += 1;
+      if (weekdayBucket) weekdayBucket.possible += 1;
+
+      const categoryBucket = ensureCategoryWeekBucket(
+        habit.categoryId,
+        weekIndex,
+      );
+      if (categoryBucket) categoryBucket.possible += 1;
 
       const done = !!(
         totals.monthData.dailyCompletions[habit.id] &&
@@ -242,9 +270,9 @@ export function buildWeeklyAnalytics(year, month) {
       );
 
       if (done) {
-        weekBuckets[weekIndex].done += 1;
-        weekBuckets[weekIndex].weekdays[weekday].done += 1;
-        categoryWeek[habit.categoryId][weekIndex].done += 1;
+        bucket.done += 1;
+        if (weekdayBucket) weekdayBucket.done += 1;
+        if (categoryBucket) categoryBucket.done += 1;
       }
     });
   }
@@ -437,9 +465,11 @@ export function renderWeeklyCategoryStackedChart(
   const datasets = state.categories
     .map((category) => {
       const points = labels.map((_, index) => {
-        const slot = weeklyData.categoryWeek[category.id]
-          ? weeklyData.categoryWeek[category.id][index]
-          : { done: 0, possible: 0 };
+        const slot = (weeklyData.categoryWeek[category.id] &&
+          weeklyData.categoryWeek[category.id][index]) || {
+          done: 0,
+          possible: 0,
+        };
         return getMetricValue(slot.done, slot.possible);
       });
       const visible = points.some((point) => point > 0);
@@ -731,13 +761,17 @@ export function renderWeeklyHeatmap(containerId, weeklyData) {
     html += `<div class='heatmap-head'>${label}</div>`;
   });
 
-  weeklyData.weekBuckets.forEach((week, weekIndex) => {
-    html += `<div class='heatmap-week-label'>W${weekIndex + 1}</div>`;
+  weeklyData.weekBuckets.forEach((week) => {
+    const weekLabel = week.label || `W${week.isoWeek || "?"}`;
+    const rangeTitle = week.rangeLabel
+      ? `Week ${week.isoWeek} (${week.rangeLabel})`
+      : weekLabel;
+    html += `<div class='heatmap-week-label' title='${rangeTitle}'>${weekLabel}</div>`;
     week.weekdays.forEach((entry) => {
       const value = getMetricValue(entry.done, entry.possible);
       const scaleMax = getAnalyticsDisplayMode() === "percent" ? 100 : maxValue;
       const ratio = scaleMax > 0 ? value / scaleMax : 0;
-      html += `<div class='heatmap-cell' style='background:${getHeatColor(ratio)}' title='Done ${entry.done} / ${entry.possible}'>${getMetricLabel(value)}</div>`;
+      html += `<div class='heatmap-cell' style='background:${getHeatColor(ratio)}' title='${rangeTitle} · Done ${entry.done} / ${entry.possible}'>${getMetricLabel(value)}</div>`;
     });
   });
 

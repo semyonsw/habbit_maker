@@ -16,20 +16,14 @@ import {
   isPlainObject,
   normalizeWeekdayArray,
   normalizeMonthDayArray,
-} from "./utils.js";
+} from "./utils.js?v=2";
 import { appendLogEntry } from "./logging.js";
 import {
   hasStoredEncryptedApiKey,
   ensureModelAllowed,
+  ensureSummaryLanguageAllowed,
   _bindSaveState,
 } from "./encryption.js";
-
-function ensureSummaryLanguageAllowed(value) {
-  const candidate = String(value || "").trim();
-  if (candidate === "Armenian") return "Armenian";
-  if (candidate === "Russian") return "Russian";
-  return "English";
-}
 
 export function getDefaultMonthData() {
   return {

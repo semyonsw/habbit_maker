@@ -2,7 +2,7 @@
 
 import { PDF_DB_NAME, PDF_DB_VERSION, PDF_STORE_NAME } from "./constants.js";
 import { idbPromise, setIdbPromise } from "./state.js";
-import { nowIso } from "./utils.js";
+import { nowIso } from "./utils.js?v=2";
 import { appendLogEntry } from "./logging.js";
 
 export function openPdfDatabase() {

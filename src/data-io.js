@@ -1,8 +1,15 @@
 "use strict";
 
+import { EMBEDDED_EXPORT_SIZE_WARN_BYTES } from "./constants.js";
 import { state, setState } from "./state.js";
-import { isPlainObject, toBase64, fromBase64, nowIso, monthKey, formatByteSize } from "./utils.js";
-import { appendLogEntry, maybeAutoDownloadLogs } from "./logging.js";
+import {
+  isPlainObject,
+  toBase64,
+  fromBase64,
+  monthKey,
+  formatByteSize,
+} from "./utils.js?v=2";
+import { appendLogEntry } from "./logging.js";
 import { idbGetPdfBlob, idbSavePdfBlob } from "./idb.js";
 import { migrateState, ensureMonthData, saveState } from "./persistence.js";
 import { callRenderer } from "./render-registry.js";
@@ -210,14 +217,9 @@ export function validateImportedState(imported) {
             return;
           }
           if (typeof book.bookId !== "string" || !book.bookId.trim()) {
-            errors.push(
-              `books.items[${i}].bookId must be a non-empty string.`,
-            );
+            errors.push(`books.items[${i}].bookId must be a non-empty string.`);
           }
-          if (
-            book.bookmarks !== undefined &&
-            !Array.isArray(book.bookmarks)
-          ) {
+          if (book.bookmarks !== undefined && !Array.isArray(book.bookmarks)) {
             errors.push(`books.items[${i}].bookmarks must be an array.`);
           }
           if (Array.isArray(book.bookmarks)) {
@@ -228,10 +230,7 @@ export function validateImportedState(imported) {
                 );
                 return;
               }
-              if (
-                typeof bm.bookmarkId !== "string" ||
-                !bm.bookmarkId.trim()
-              ) {
+              if (typeof bm.bookmarkId !== "string" || !bm.bookmarkId.trim()) {
                 errors.push(
                   `books.items[${i}].bookmarks[${j}].bookmarkId must be a non-empty string.`,
                 );
@@ -307,8 +306,7 @@ export function importData(file) {
       saveState();
       callRenderer("renderAll");
 
-      const restoreStats =
-        await restoreEmbeddedPdfPayload(embeddedPdfPayload);
+      const restoreStats = await restoreEmbeddedPdfPayload(embeddedPdfPayload);
       await callRenderer("refreshBookBlobStatus");
       await callRenderer("renderBooksView");
 
@@ -326,9 +324,11 @@ export function importData(file) {
       }
     } catch (err) {
       console.error("Import error:", err);
-      alert("Failed to import backup file.\n" + (err && err.message ? err.message : String(err)));
+      alert(
+        "Failed to import backup file.\n" +
+          (err && err.message ? err.message : String(err)),
+      );
     }
   };
   reader.readAsText(file);
 }
-

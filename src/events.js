@@ -1,31 +1,25 @@
 "use strict";
 
+import { MONTH_NAMES } from "./constants.js";
 import { state, globals } from "./state.js";
-import { monthKey, nowIso } from "./utils.js";
-import { navigateMonth, moveDailyHabit } from "./habits.js";
+import { monthKey, nowIso } from "./utils.js?v=2";
+import { navigateMonth } from "./habits.js";
 import {
   openHabitModal,
   saveHabitModal,
   openCategoryModal,
   saveCategoryModal,
-  openNoteModal,
   saveNoteModal,
   openBookModal,
   saveBookModal,
   openBookmarkModal,
   saveBookmark,
-  openHistoryEventModal,
   saveHistoryEventModal,
-  openModal,
   closeModal,
   openConfirm,
   saveMonthlyReview,
 } from "./modals.js";
-import {
-  setSidebarCollapsed,
-  isDesktopViewport,
-  applySidebarCollapseState,
-} from "./layout.js";
+import { setSidebarCollapsed, applySidebarCollapseState } from "./layout.js";
 import {
   handleBookFileInputChange,
   saveBookFromUpload,
@@ -36,21 +30,13 @@ import {
 } from "./books.js";
 import { exportData, importData, setBackupStatus } from "./data-io.js";
 import { bindLogsControls } from "./render-logs.js";
-import {
-  bindSummaryModelPicker,
-  setSummaryModelValue,
-  closeSummaryModelDropdown,
-} from "./model-picker.js";
+import { bindSummaryModelPicker } from "./model-picker.js";
 import {
   saveBookSummarySettingsFromInputs,
-  applyBookSummarySettingsToInputs,
   unlockStoredApiKeyInteractive,
   wipeStoredApiKey,
 } from "./encryption.js";
-import {
-  updateHabitScheduleTypeUI,
-  renderHabitScheduleSelectors,
-} from "./habits.js";
+import { updateHabitScheduleTypeUI } from "./habits.js";
 import {
   setBooksAnalyticsRange,
   setAnalyticsDisplayMode,

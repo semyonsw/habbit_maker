@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(*)",
+      "Read(*)",
+      "Write(*)",
+      "Edit(*)",
+      "Bash(curl -s http://localhost:3000/src/utils.js)",
+      "Bash(curl -s -o /tmp/served-utils.js -w \"HTTP %{http_code} size=%{size_download}\\\\n\" http://localhost:3000/src/utils.js)",
+      "Read(//tmp/**)"
+    ]
+  }
+}

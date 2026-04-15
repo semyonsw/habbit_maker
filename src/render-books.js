@@ -1,20 +1,14 @@
 "use strict";
 
 import { state } from "./state.js";
-import {
-  chartInstances,
-  booksBlobStatus,
-  summaryModalState,
-  finisherState,
-} from "./state.js";
+import { booksBlobStatus, finisherState } from "./state.js";
 import {
   sanitize,
   getHeatColor,
-  monthKey,
   getValueColor,
   formatIsoForDisplay,
   formatRealBookPage,
-} from "./utils.js";
+} from "./utils.js?v=2";
 import {
   getActiveBook,
   getBookById,
@@ -26,7 +20,6 @@ import {
   getOrInitBooksHelperState,
   getEffectiveBookTotalPages,
   getBookMaxBookmarkPage,
-  formatShortDateLabel,
   formatDateInputValue,
   round1,
   refreshBookBlobStatus,
@@ -34,16 +27,11 @@ import {
 } from "./books.js";
 import {
   getBookmarkLastSummarizedPage,
-  getReadySummariesFromBookmark,
   getLatestBookmarkSummary,
   floorToDayTime,
 } from "./books.js";
-import { saveState } from "./persistence.js";
 import { applyBookSummarySettingsToInputs } from "./encryption.js";
-import {
-  getBooksAnalyticsRangeDays,
-  syncBooksRangeControls,
-} from "./preferences.js";
+import { syncBooksRangeControls } from "./preferences.js";
 import { registerRenderer, callRenderer } from "./render-registry.js";
 
 let booksCoverObserver = null;

@@ -1,17 +1,16 @@
 "use strict";
 
-import { MONTH_NAMES, WEEKDAY_LABELS, ALL_WEEKDAYS } from "./constants.js";
+import { MONTH_NAMES } from "./constants.js";
 import { state, chartInstances, linkedHoverState, globals } from "./state.js";
 import {
   sanitize,
   daysInMonth,
   monthKey,
-  formatDateKey,
   getValueColor,
   getWeekShadeColor,
-  getIsoWeekNumber,
   getMonthCalendarWeekLayout,
-} from "./utils.js";
+  formatIsoWeekRangeLabel,
+} from "./utils.js?v=2";
 import {
   getCurrentMonthData,
   getCategoryById,
@@ -21,14 +20,8 @@ import {
 import {
   getSortedDailyHabits,
   isHabitTrackedOnDate,
-  getPossibleActiveDaysInMonth,
   getHabitScheduleMode,
 } from "./habits.js";
-import {
-  getMetricValue,
-  getMetricLabel,
-  syncAnalyticsModeControls,
-} from "./preferences.js";
 import { registerRenderer, callRenderer } from "./render-registry.js";
 
 let activeDailyHabitActionsMenuId = null;
@@ -200,6 +193,22 @@ export function renderSummary() {
 
   const pct = goal > 0 ? Math.round((completed / goal) * 100) : 0;
   renderDonut("summaryDonut", pct);
+
+  const combo = computeGlobalComboStreak();
+  const comboEl = document.getElementById("comboStreakValue");
+  if (comboEl) {
+    const capped = Math.min(combo.current, 30);
+    const fire = combo.current > 0 ? "🔥 " : "";
+    comboEl.textContent = `${fire}${combo.current}d`;
+    comboEl.style.color = getValueColor(capped, 30, 1);
+    comboEl.style.background = getValueColor(capped, 30, 0.18);
+    comboEl.style.borderColor = getValueColor(capped, 30, 0.55);
+    comboEl.title = `Current combo ${combo.current}d · Best ${combo.best}d`;
+    const bestEl = document.getElementById("comboStreakBest");
+    if (bestEl) {
+      bestEl.textContent = combo.best > 0 ? `best ${combo.best}d` : "";
+    }
+  }
 }
 
 export function renderDonut(canvasId, pct) {
@@ -302,11 +311,10 @@ function weekRangeFromIndex(week) {
   );
   if (!weeks.length) return null;
 
-  const normalizedWeek = Math.min(
-    weeks.length,
-    Math.max(1, parseInt(week, 10) || 1),
-  );
-  const range = weeks[normalizedWeek - 1];
+  const parsed = parseInt(week, 10);
+  if (!Number.isFinite(parsed)) return null;
+  const range = weeks.find((w) => w.week === parsed);
+  if (!range) return null;
   return { week: range.week, start: range.start, end: range.end };
 }
 
@@ -719,8 +727,9 @@ export function renderWeeklySummaryCards() {
   );
 
   let html = "";
-  weeks.forEach(({ week, start, end }) => {
+  weeks.forEach(({ week, start, end, fullStart, fullEnd }) => {
     const weekAccent = getWeekShadeColor(week);
+    const rangeLabel = formatIsoWeekRangeLabel(fullStart, fullEnd);
     let done = 0;
     let possible = 0;
     const dayCompletionRates = [];
@@ -767,7 +776,7 @@ export function renderWeeklySummaryCards() {
       )
       .join("");
 
-    html += `<div class="week-card" style="--week-accent:${weekAccent}" data-week="${week}" tabindex="0"><div class="week-card-top"><span class="week-card-title">Week ${week}</span><span class="week-range">${start}-${end}</span></div><div class="week-ring" style="--week-pct:${pct};--week-color:${weekColor};--week-shadow:${weekShadowColor}" aria-label="Week ${week} completion ${pct}%"><span class="week-pct">${pct}%</span></div><div class="week-meta">${done}/${possible} tasks</div><div class="week-mini-bars">${bars}</div></div>`;
+    html += `<div class="week-card" style="--week-accent:${weekAccent}" data-week="${week}" tabindex="0"><div class="week-card-top"><span class="week-card-title">Week ${week}</span><span class="week-range">${rangeLabel}</span></div><div class="week-ring" style="--week-pct:${pct};--week-color:${weekColor};--week-shadow:${weekShadowColor}" aria-label="Week ${week} completion ${pct}%"><span class="week-pct">${pct}%</span></div><div class="week-meta">${done}/${possible} tasks</div><div class="week-mini-bars">${bars}</div></div>`;
   });
 
   container.innerHTML = html;
@@ -809,25 +818,187 @@ function updateHabitStreak(habitId) {
 
   const habit = state.habits.daily.find((h) => h.id === habitId);
   if (habit) {
-    const totalDays = daysInMonth(state.currentYear, state.currentMonth);
-    const md = getCurrentMonthData();
-    for (let day = totalDays; day >= 1; day--) {
-      if (
-        !isHabitTrackedOnDate(habit, state.currentYear, state.currentMonth, day)
-      ) {
-        continue;
+    const today = new Date();
+    const viewedIsCurrent =
+      today.getFullYear() === state.currentYear &&
+      today.getMonth() === state.currentMonth;
+    const viewedIsFuture =
+      state.currentYear > today.getFullYear() ||
+      (state.currentYear === today.getFullYear() &&
+        state.currentMonth > today.getMonth());
+
+    if (!viewedIsFuture) {
+      let y = state.currentYear;
+      let m = state.currentMonth;
+      let d = viewedIsCurrent ? today.getDate() : daysInMonth(y, m);
+
+      if (viewedIsCurrent) {
+        const mdToday = state.months[monthKey(y, m)];
+        const tracked = isHabitTrackedOnDate(habit, y, m, d);
+        const doneToday = !!(
+          mdToday &&
+          mdToday.dailyCompletions[habitId] &&
+          mdToday.dailyCompletions[habitId][d]
+        );
+        if (tracked && !doneToday) {
+          d -= 1;
+          if (d < 1) {
+            m -= 1;
+            if (m < 0) {
+              m = 11;
+              y -= 1;
+            }
+            d = daysInMonth(y, m);
+          }
+        }
       }
-      const done = !!(
-        md.dailyCompletions[habitId] && md.dailyCompletions[habitId][day]
-      );
-      if (!done) break;
-      current += 1;
+
+      let safety = 370;
+      while (safety-- > 0) {
+        const md = state.months[monthKey(y, m)];
+        if (md) {
+          if (isHabitTrackedOnDate(habit, y, m, d)) {
+            const done = !!(
+              md.dailyCompletions[habitId] && md.dailyCompletions[habitId][d]
+            );
+            if (!done) break;
+            current += 1;
+          }
+        } else if (isHabitTrackedOnDate(habit, y, m, d)) {
+          break;
+        }
+        d -= 1;
+        if (d < 1) {
+          m -= 1;
+          if (m < 0) {
+            m = 11;
+            y -= 1;
+          }
+          d = daysInMonth(y, m);
+        }
+      }
     }
   }
 
   badge.dataset.streakCurrent = String(current);
   badge.dataset.streakBest = String(best);
   syncStreakBadgeText(badge);
+}
+
+function evaluateDayCompletion(habits, monthData, y, m, day) {
+  let required = 0;
+  let done = 0;
+  habits.forEach((habit) => {
+    if (!isHabitTrackedOnDate(habit, y, m, day)) return;
+    required += 1;
+    if (
+      monthData.dailyCompletions[habit.id] &&
+      monthData.dailyCompletions[habit.id][day]
+    ) {
+      done += 1;
+    }
+  });
+  return { required, done };
+}
+
+function computeGlobalComboStreak() {
+  const habits = getSortedDailyHabits();
+  if (!habits.length) return { current: 0, best: 0 };
+
+  let best = 0;
+  let chain = 0;
+  const months = Object.keys(state.months).sort();
+  months.forEach((mKey) => {
+    const parts = mKey.split("-");
+    const year = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1;
+    const md = state.months[mKey];
+    if (!md) return;
+    const total = daysInMonth(year, month);
+    for (let day = 1; day <= total; day++) {
+      const { required, done } = evaluateDayCompletion(
+        habits,
+        md,
+        year,
+        month,
+        day,
+      );
+      if (required === 0) continue;
+      if (done === required) {
+        chain += 1;
+        best = Math.max(best, chain);
+      } else {
+        chain = 0;
+      }
+    }
+  });
+
+  let current = 0;
+  const today = new Date();
+  const viewedIsCurrent =
+    today.getFullYear() === state.currentYear &&
+    today.getMonth() === state.currentMonth;
+  const viewedIsFuture =
+    state.currentYear > today.getFullYear() ||
+    (state.currentYear === today.getFullYear() &&
+      state.currentMonth > today.getMonth());
+
+  if (!viewedIsFuture) {
+    let y = state.currentYear;
+    let m = state.currentMonth;
+    let d = viewedIsCurrent ? today.getDate() : daysInMonth(y, m);
+
+    if (viewedIsCurrent) {
+      const mdToday = state.months[monthKey(y, m)];
+      if (mdToday) {
+        const { required, done } = evaluateDayCompletion(
+          habits,
+          mdToday,
+          y,
+          m,
+          d,
+        );
+        if (required > 0 && done !== required) {
+          d -= 1;
+          if (d < 1) {
+            m -= 1;
+            if (m < 0) {
+              m = 11;
+              y -= 1;
+            }
+            d = daysInMonth(y, m);
+          }
+        }
+      }
+    }
+
+    let safety = 370;
+    while (safety-- > 0) {
+      const md = state.months[monthKey(y, m)];
+      if (!md) {
+        const anyTracked = habits.some((h) => isHabitTrackedOnDate(h, y, m, d));
+        if (anyTracked) break;
+      } else {
+        const { required, done } = evaluateDayCompletion(habits, md, y, m, d);
+        if (required > 0) {
+          if (done !== required) break;
+          current += 1;
+        }
+      }
+      d -= 1;
+      if (d < 1) {
+        m -= 1;
+        if (m < 0) {
+          m = 11;
+          y -= 1;
+        }
+        d = daysInMonth(y, m);
+      }
+    }
+  }
+
+  best = Math.max(best, current);
+  return { current, best };
 }
 
 export function renderDailyHabitsGrid() {
@@ -895,19 +1066,14 @@ export function renderDailyHabitsGrid() {
     const isToday = day === todayDay;
     const isComplete = completedDays[day];
     const weekNumber = dayToWeek[day] || 1;
-    const isoWeek = getIsoWeekNumber(
-      state.currentYear,
-      state.currentMonth,
-      day,
-    );
     const weekShadeColor = getWeekShadeColor(weekNumber);
     const weekBandBg =
       weekNumber % 2 === 1
-        ? "rgba(123, 199, 236, 0.08)"
-        : "rgba(88, 165, 209, 0.15)";
+        ? "rgba(125, 200, 240, 0.10)"
+        : "rgba(60, 130, 200, 0.28)";
     const weekStartClass =
       weekStartDays.has(day) && day !== 1 ? "week-start" : "";
-    html += `<th class='day-col ${weekStartClass} ${isToday ? "today" : ""} ${isComplete ? "day-complete" : ""}' style='--week-accent:${weekShadeColor};--week-band-bg:${weekBandBg}' data-day='${day}' tabindex='0'><span class='day-col-week'>W${isoWeek}</span><span class='day-col-day'>${day}</span></th>`;
+    html += `<th class='day-col ${weekStartClass} ${isToday ? "today" : ""} ${isComplete ? "day-complete" : ""}' style='--week-accent:${weekShadeColor};--week-band-bg:${weekBandBg}' data-day='${day}' tabindex='0'><span class='day-col-week'>W${weekNumber}</span><span class='day-col-day'>${day}</span></th>`;
   }
   html += "</tr></thead><tbody>";
 
@@ -921,8 +1087,8 @@ export function renderDailyHabitsGrid() {
       const weekShadeColor = getWeekShadeColor(weekNumber);
       const weekBandBg =
         weekNumber % 2 === 1
-          ? "rgba(123, 199, 236, 0.08)"
-          : "rgba(88, 165, 209, 0.15)";
+          ? "rgba(125, 200, 240, 0.10)"
+          : "rgba(60, 130, 200, 0.28)";
       const weekStartClass =
         weekStartDays.has(day) && day !== 1 ? "week-start" : "";
       if (

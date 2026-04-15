@@ -1,16 +1,10 @@
 "use strict";
 
 import { PDFJS_SCRIPT_URLS, PDFJS_WORKER_URL } from "./constants.js";
-import { state, readerState } from "./state.js";
+import { readerState } from "./state.js";
 import { appendLogEntry } from "./logging.js";
 import { idbGetPdfBlob } from "./idb.js";
-import {
-  getBookById,
-  getBookmarkById,
-  addReaderHistoryToBookmark,
-  addBookmarkOnCurrentReaderPage,
-  openBookmarkInNewTab,
-} from "./books.js";
+import { getBookById, addBookmarkOnCurrentReaderPage } from "./books.js";
 import {
   loadReaderThemePreferences,
   applyReaderThemeClasses,
@@ -18,7 +12,6 @@ import {
   toggleReaderDarkTheme,
   setReaderDarkMode,
 } from "./preferences.js";
-import { callRenderer } from "./render-registry.js";
 
 export function loadScriptTag(url) {
   return new Promise((resolve, reject) => {

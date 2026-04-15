@@ -1,0 +1,27 @@
+{
+  "name": "habbit_maker",
+  "version": "1.0.0",
+  "description": "![Status](https://img.shields.io/badge/status-production--ready-1f9d55) ![Local First](https://img.shields.io/badge/storage-local--first-0b7285) ![Stack](https://img.shields.io/badge/stack-vanilla%20JS%20%7C%20HTML%20%7C%20CSS-f59f00) ![License](https://img.shields.io/badge/license-MIT-2b8a3e)",
+  "main": "index.js",
+  "scripts": {
+    "lint": "eslint src/**/*.js",
+    "lint:fix": "eslint src/**/*.js --fix",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/semyonsw/habbit_maker.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/semyonsw/habbit_maker/issues"
+  },
+  "homepage": "https://github.com/semyonsw/habbit_maker#readme",
+  "devDependencies": {
+    "eslint": "^10.2.0",
+    "globals": "^16.5.0"
+  }
+}

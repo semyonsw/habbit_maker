@@ -7,7 +7,7 @@ import {
   daysInMonth,
   normalizeWeekdayArray,
   normalizeMonthDayArray,
-} from "./utils.js";
+} from "./utils.js?v=2";
 import { saveState, ensureMonthData } from "./persistence.js";
 import { callRenderer } from "./render-registry.js";
 

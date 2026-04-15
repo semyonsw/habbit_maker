@@ -149,23 +149,36 @@ export function getMonthCalendarWeeks(year, month) {
   let currentWeek = null;
 
   for (let day = 1; day <= totalDays; day++) {
-    const date = new Date(year, month, day);
-    const weekday = date.getDay();
+    const monday = new Date(year, month, day);
+    const weekday = monday.getDay();
     const diffToMonday = weekday === 0 ? -6 : 1 - weekday;
-    date.setDate(date.getDate() + diffToMonday);
-    date.setHours(0, 0, 0, 0);
+    monday.setDate(monday.getDate() + diffToMonday);
+    monday.setHours(0, 0, 0, 0);
 
-    const mondayAnchor = date.getTime();
+    const mondayAnchor = monday.getTime();
     if (mondayAnchor !== currentAnchor) {
       if (currentWeek) {
         weeks.push(currentWeek);
       }
       currentAnchor = mondayAnchor;
+      const sunday = new Date(monday);
+      sunday.setDate(sunday.getDate() + 6);
+      const isoWeek = getIsoWeekNumber(year, month, day);
       currentWeek = {
-        week: weeks.length + 1,
+        week: isoWeek,
+        isoWeek,
         start: day,
         end: day,
-        isoWeek: getIsoWeekNumber(year, month, day),
+        fullStart: {
+          year: monday.getFullYear(),
+          month: monday.getMonth(),
+          day: monday.getDate(),
+        },
+        fullEnd: {
+          year: sunday.getFullYear(),
+          month: sunday.getMonth(),
+          day: sunday.getDate(),
+        },
       };
       continue;
     }
@@ -178,6 +191,18 @@ export function getMonthCalendarWeeks(year, month) {
   }
 
   return weeks;
+}
+
+export function formatIsoWeekRangeLabel(fullStart, fullEnd) {
+  if (!fullStart || !fullEnd) return "";
+  const sameMonth =
+    fullStart.year === fullEnd.year && fullStart.month === fullEnd.month;
+  if (sameMonth) {
+    return `${fullStart.day}–${fullEnd.day}`;
+  }
+  const startMonth = (MONTH_NAMES[fullStart.month] || "").slice(0, 3);
+  const endMonth = (MONTH_NAMES[fullEnd.month] || "").slice(0, 3);
+  return `${startMonth} ${fullStart.day} – ${endMonth} ${fullEnd.day}`;
 }
 
 export function getMonthCalendarWeekLayout(year, month) {

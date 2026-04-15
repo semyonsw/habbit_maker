@@ -1,7 +1,7 @@
 "use strict";
 
-import { appLogs } from "./state.js";
-import { sanitize, formatIsoForDisplay } from "./utils.js";
+import { appLogs, setAppLogs } from "./state.js";
+import { sanitize, formatIsoForDisplay } from "./utils.js?v=2";
 import { enableLiveLogFile, disableLiveLogFile, updateLiveLogFileStatus, exportLogsAsJson, exportLogsAsCsv, persistLogs } from "./logging.js";
 import { registerRenderer } from "./render-registry.js";
 
@@ -101,7 +101,7 @@ export function bindLogsControls() {
     clearBtn.addEventListener("click", () => {
       const ok = window.confirm("Clear all debug logs?");
       if (!ok) return;
-      appLogs = [];
+      setAppLogs([]);
       persistLogs();
       renderLogsView();
     });

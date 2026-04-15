@@ -524,6 +524,35 @@ textarea:focus-visible,
   margin-top: 2px;
 }
 
+.stat-sublabel {
+  font-size: 0.65rem;
+  color: var(--gray-500);
+  margin-top: 2px;
+  letter-spacing: 0.3px;
+}
+
+.combo-value {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: transparent;
+  transition:
+    background 0.25s ease,
+    color 0.25s ease,
+    border-color 0.25s ease,
+    transform 0.2s ease;
+}
+
+.combo-value:hover {
+  transform: translateY(-1px);
+}
+
+.combo-best {
+  font-weight: 600;
+  color: var(--gray-600);
+}
+
 .weekly-summary-cards {
   display: flex;
   gap: 12px;

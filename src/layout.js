@@ -2,7 +2,7 @@
 
 import { SIDEBAR_COLLAPSE_KEY } from "./constants.js";
 import { globals } from "./state.js";
-import { formatTopClockDateTime } from "./utils.js";
+import { formatTopClockDateTime } from "./utils.js?v=2";
 
 export function isDesktopViewport() {
   return window.innerWidth > 768;

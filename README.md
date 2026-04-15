@@ -21,6 +21,7 @@ No backend. No account. All your data stays in your browser.
 - [Limits](#limits)
 - [Auto Sync Script](#auto-sync-script)
 - [Troubleshooting](#troubleshooting)
+- [Code Quality](#code-quality)
 - [Tech Stack](#tech-stack)
 - [Browser Support](#browser-support)
 - [Project Structure](#project-structure)
@@ -103,6 +104,7 @@ cd habbit_maker
 #### Option A: Double-click `start.bat` (Windows, easiest)
 
 Just double-click `start.bat` in the project folder. It will:
+
 1. Start a local server on port 3000.
 2. Wait a couple of seconds for the server to be ready.
 3. Open `http://localhost:3000` in your default browser automatically.
@@ -184,23 +186,23 @@ Then open `http://localhost:3000` in your browser.
 
 ## Storage and Privacy
 
-| What | Where |
-| --- | --- |
-| Habits, categories, goals, notes | localStorage |
-| PDF book files | IndexedDB (database: `habitTracker_books_pdf_v1`) |
-| Reader and analytics preferences | localStorage |
-| App logs | localStorage (capped at 1000 entries) |
-| Encrypted API key | localStorage |
+| What                             | Where                                             |
+| -------------------------------- | ------------------------------------------------- |
+| Habits, categories, goals, notes | localStorage                                      |
+| PDF book files                   | IndexedDB (database: `habitTracker_books_pdf_v1`) |
+| Reader and analytics preferences | localStorage                                      |
+| App logs                         | localStorage (capped at 1000 entries)             |
+| Encrypted API key                | localStorage                                      |
 
 **Privacy:** Everything stays in your browser by default. The only time data leaves your device is if you use the AI summary feature, which sends extracted PDF text to the Gemini API.
 
 ## Limits
 
-| Limit | Value |
-| --- | --- |
-| Max PDF file size | 70 MB |
-| Max bookmark history events | 200 |
-| Max stored log entries | 1000 |
+| Limit                       | Value |
+| --------------------------- | ----- |
+| Max PDF file size           | 70 MB |
+| Max bookmark history events | 200   |
+| Max stored log entries      | 1000  |
 
 ---
 
@@ -249,12 +251,26 @@ The repository includes `auto-sync.sh` for automatic git add, commit, and push o
 
 ---
 
+## Code Quality
+
+ESLint is configured for `src/**/*.js` to catch unused imports/variables and other basic safety issues.
+
+```bash
+npm install
+npm run lint
+```
+
+Use this before commits to keep the codebase clean.
+
+---
+
 ## Tech Stack
 
 - **HTML5, CSS3, Vanilla JavaScript** - no framework, no build step, no dependencies to install.
 - **Chart.js** (loaded from CDN) - for analytics charts.
 - **PDF.js 3.11.174** (loaded from CDN) - for rendering PDFs in Reader Mode.
 - **Gemini API** - for optional AI summaries.
+- **ESLint** (dev dependency) - for static quality checks.
 
 ## Browser Support
 

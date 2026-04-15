@@ -1,11 +1,6 @@
 "use strict";
 
-import {
-  ALL_WEEKDAYS,
-  WEEKDAY_LABELS,
-  MAX_BOOKMARK_HISTORY,
-  MONTH_NAMES,
-} from "./constants.js";
+import { ALL_WEEKDAYS, MONTH_NAMES } from "./constants.js";
 import {
   state,
   globals,
@@ -18,17 +13,13 @@ import {
   uid,
   nowIso,
   sanitize,
-  isPlainObject,
-  monthKey,
   formatDateKey,
   normalizeWeekdayArray,
   normalizeMonthDayArray,
-} from "./utils.js";
-import { appendLogEntry } from "./logging.js";
+} from "./utils.js?v=2";
 import {
   saveState,
   getCurrentMonthData,
-  getCategoryById,
   getHabitEmoji,
 } from "./persistence.js";
 import {
@@ -41,13 +32,11 @@ import {
 } from "./habits.js";
 import {
   getBookById,
-  getActiveBook,
-  getBookmarkById,
   addBookmarkHistoryEvent,
   refreshBookBlobStatus,
   clearBookCoverPreview,
 } from "./books.js";
-import { idbSavePdfBlob, idbDeletePdfBlob } from "./idb.js";
+import { idbDeletePdfBlob } from "./idb.js";
 import { callRenderer, registerRenderer } from "./render-registry.js";
 
 export function openModal(id) {
@@ -423,6 +412,10 @@ export function openBookmarkModal(bookId, bookmarkId, options = {}) {
   const realPageInput = document.getElementById("bookmarkRealPage");
   const noteInput = document.getElementById("bookmarkNote");
 
+  const prefillPdfPage = parseInt(options.prefillPdfPage, 10);
+  const safePrefillPdfPage =
+    Number.isFinite(prefillPdfPage) && prefillPdfPage >= 1 ? prefillPdfPage : 1;
+
   if (bookmarkId) {
     const bm = book.bookmarks.find((b) => b.bookmarkId === bookmarkId);
     if (!bm) return;
@@ -436,16 +429,9 @@ export function openBookmarkModal(bookId, bookmarkId, options = {}) {
     noteInput.value = bm.note || "";
   } else {
     title.textContent = "Add Bookmark";
-    const prefillPdfPage = parseInt(options.prefillPdfPage, 10);
-    const safePrefillPdfPage =
-      Number.isFinite(prefillPdfPage) && prefillPdfPage >= 1
-        ? prefillPdfPage
-        : 1;
     labelInput.value = String(options.label || "");
     pdfPageInput.value = "";
     pdfPageInput.valueAsNumber = safePrefillPdfPage;
-    pdfPageInput.defaultValue = String(safePrefillPdfPage);
-    pdfPageInput.setAttribute("value", String(safePrefillPdfPage));
     realPageInput.value =
       options.prefillRealPage === null ||
       options.prefillRealPage === undefined ||
@@ -458,11 +444,6 @@ export function openBookmarkModal(bookId, bookmarkId, options = {}) {
   openModal("bookmarkModal");
 
   if (!bookmarkId) {
-    const prefillPdfPage = parseInt(options.prefillPdfPage, 10);
-    const safePrefillPdfPage =
-      Number.isFinite(prefillPdfPage) && prefillPdfPage >= 1
-        ? prefillPdfPage
-        : 1;
     requestAnimationFrame(() => {
       pdfPageInput.valueAsNumber = safePrefillPdfPage;
     });

@@ -2,7 +2,7 @@
 
 import { GEMINI_MODELS } from "./constants.js";
 import { summaryModelPickerState } from "./state.js";
-import { sanitize } from "./utils.js";
+import { sanitize } from "./utils.js?v=2";
 import { ensureModelAllowed } from "./encryption.js";
 
 export function closeSummaryModelDropdown() {
