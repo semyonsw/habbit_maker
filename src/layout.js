@@ -26,7 +26,10 @@ export function setSidebarCollapsed(collapsed, persist = true) {
   globals.sidebarCollapsed = !!collapsed;
   applySidebarCollapseState();
   if (persist) {
-    localStorage.setItem(SIDEBAR_COLLAPSE_KEY, globals.sidebarCollapsed ? "1" : "0");
+    localStorage.setItem(
+      SIDEBAR_COLLAPSE_KEY,
+      globals.sidebarCollapsed ? "1" : "0",
+    );
   }
 }
 

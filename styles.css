@@ -929,13 +929,10 @@ textarea:focus-visible,
   box-shadow: var(--shadow-md);
   border: 1px solid var(--gray-100);
   overflow-x: auto;
-  overflow-y: visible;
 }
 
 .habits-grid {
-  --habit-left-panel-width: 260px;
-  --habit-name-col-width: 260px;
-  width: 100%;
+  width: max-content;
   border-collapse: collapse;
   font-size: 0.82rem;
 }
@@ -958,9 +955,9 @@ textarea:focus-visible,
 .habits-grid th.habit-name-col {
   text-align: left;
   padding-left: 16px;
-  width: var(--habit-name-col-width);
-  min-width: var(--habit-name-col-width);
-  max-width: var(--habit-name-col-width);
+  width: var(--habit-name-col-width, max-content);
+  min-width: var(--habit-name-col-width, max-content);
+  max-width: var(--habit-name-col-width, none);
   position: sticky;
   left: 0;
   z-index: 3;
@@ -1099,9 +1096,9 @@ textarea:focus-visible,
   background: var(--purple-100);
   z-index: 1;
   white-space: nowrap;
-  width: var(--habit-name-col-width);
-  min-width: var(--habit-name-col-width);
-  max-width: var(--habit-name-col-width);
+  width: var(--habit-name-col-width, max-content);
+  min-width: var(--habit-name-col-width, max-content);
+  max-width: var(--habit-name-col-width, none);
   overflow: visible;
 }
 
@@ -1109,14 +1106,7 @@ textarea:focus-visible,
   display: inline-block;
   color: var(--gray-900);
   font-weight: 600;
-  max-width: max(24px, calc(var(--habit-name-col-width) - 132px));
-  overflow: hidden;
-  text-overflow: ellipsis;
   vertical-align: bottom;
-}
-
-.habits-grid.habit-panel-compact .habit-title {
-  max-width: max(16px, calc(var(--habit-name-col-width) - 90px));
 }
 
 .habit-leading-emoji {
@@ -1342,83 +1332,6 @@ textarea:focus-visible,
   color: var(--gray-700);
 }
 
-.habit-actions-menu-wrap {
-  display: inline-flex;
-  margin-left: 8px;
-  position: relative;
-  vertical-align: middle;
-}
-
-.habits-grid.habit-panel-compact .habit-actions-menu-wrap {
-  margin-left: 6px;
-}
-
-.habit-actions-toggle {
-  width: 24px;
-  height: 24px;
-  border-radius: 999px;
-  border: 1px solid rgba(88, 165, 209, 0.28);
-  background: rgba(11, 24, 44, 0.4);
-  color: var(--gray-600);
-  cursor: pointer;
-  position: relative;
-  z-index: 2;
-  font-size: 1rem;
-  line-height: 1;
-  opacity: 0.92;
-  transform: translateY(0);
-  transition:
-    opacity var(--transition),
-    transform var(--transition),
-    color var(--transition),
-    border-color var(--transition),
-    background-color var(--transition);
-}
-
-.habits-grid tr:hover .habit-actions-toggle,
-.habit-actions-menu-wrap.open .habit-actions-toggle,
-.habit-actions-toggle:focus-visible {
-  opacity: 1;
-}
-
-.habit-actions-toggle:hover {
-  color: var(--gray-900);
-  border-color: rgba(88, 165, 209, 0.5);
-  background: rgba(17, 28, 51, 0.85);
-}
-
-.habit-actions-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  min-width: 132px;
-  padding: 6px;
-  border-radius: 10px;
-  border: 1px solid rgba(88, 165, 209, 0.28);
-  background: rgba(7, 15, 30, 0.98);
-  box-shadow: 0 12px 28px rgba(2, 8, 23, 0.45);
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  opacity: 0;
-  pointer-events: none;
-  transform: translateY(-4px) scale(0.98);
-  transition:
-    opacity var(--transition),
-    transform var(--transition);
-  z-index: 40;
-}
-
-.habit-actions-menu[hidden] {
-  display: none !important;
-}
-
-.habit-actions-menu-wrap.open .habit-actions-menu {
-  opacity: 1;
-  pointer-events: auto;
-  transform: translateY(0) scale(1);
-}
-
 .habits-grid tbody tr:has(.habit-check:hover) td {
   background: rgba(88, 165, 209, 0.08);
   box-shadow:
@@ -1432,43 +1345,6 @@ textarea:focus-visible,
 
 .habits-grid tbody tr:has(.habit-check:hover) td.day-cell.day-cell-off {
   background: rgba(17, 28, 51, 0.96);
-}
-
-.habits-grid tbody tr:has(.habit-check:hover) .habit-actions-toggle {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-.habit-action-menu-btn {
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--gray-600);
-  border-radius: 7px;
-  padding: 5px 8px;
-  text-align: left;
-  font-size: 0.78rem;
-  cursor: pointer;
-  transition:
-    color var(--transition),
-    border-color var(--transition),
-    background-color var(--transition);
-}
-
-.habit-action-menu-btn:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
-
-.habit-action-menu-btn:not(:disabled):hover {
-  color: var(--gray-900);
-  border-color: rgba(88, 165, 209, 0.3);
-  background: rgba(26, 43, 69, 0.8);
-}
-
-.habit-action-menu-btn.delete:not(:disabled):hover {
-  color: var(--danger);
-  background: var(--danger-light);
-  border-color: rgba(239, 68, 68, 0.45);
 }
 
 .habit-check {

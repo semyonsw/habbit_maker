@@ -24,97 +24,23 @@ import {
 } from "./habits.js";
 import { registerRenderer, callRenderer } from "./render-registry.js";
 
-let activeDailyHabitActionsMenuId = null;
-let isDailyHabitActionsMenuBound = false;
-
-const HABIT_PANEL_WIDTH_KEY = "habitPanelWidthPx";
-const LEGACY_HABIT_NAME_COL_WIDTH_KEY = "habitNameColWidthPx";
-const HABIT_NAME_COL_MIN_PX = 120;
-const HABIT_NAME_COL_MAX_PX = 520;
-const HABIT_NAME_COL_DEFAULT_PX = 260;
-const HABIT_PANEL_MIN_PX = HABIT_NAME_COL_MIN_PX;
-const HABIT_PANEL_MAX_PX = HABIT_NAME_COL_MAX_PX;
-const HABIT_PANEL_DEFAULT_PX = HABIT_NAME_COL_DEFAULT_PX;
-const HABIT_PANEL_COMPACT_THRESHOLD_PX = 220;
-
-function clampHabitPanelWidth(value) {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return HABIT_PANEL_DEFAULT_PX;
-  return Math.max(
-    HABIT_PANEL_MIN_PX,
-    Math.min(HABIT_PANEL_MAX_PX, Math.round(numeric)),
-  );
-}
-
-function loadHabitPanelWidth() {
-  try {
-    const panelRaw = localStorage.getItem(HABIT_PANEL_WIDTH_KEY);
-    if (panelRaw) {
-      return clampHabitPanelWidth(parseInt(panelRaw, 10));
-    }
-    const legacyNameRaw = localStorage.getItem(LEGACY_HABIT_NAME_COL_WIDTH_KEY);
-    if (legacyNameRaw) {
-      return clampHabitPanelWidth(parseInt(legacyNameRaw, 10));
-    }
-  } catch (_) {
-    return HABIT_PANEL_DEFAULT_PX;
-  }
-  return HABIT_PANEL_DEFAULT_PX;
-}
-
-function saveHabitPanelWidth(value) {
-  const safePanelWidth = clampHabitPanelWidth(value);
-  try {
-    localStorage.setItem(HABIT_PANEL_WIDTH_KEY, String(safePanelWidth));
-    localStorage.setItem(
-      LEGACY_HABIT_NAME_COL_WIDTH_KEY,
-      String(safePanelWidth),
-    );
-  } catch (_) {}
-}
-
-function applyHabitPanelWidth(grid, value) {
-  if (!(grid instanceof HTMLElement)) return HABIT_PANEL_DEFAULT_PX;
-  const safePanelWidth = clampHabitPanelWidth(value);
-  grid.style.setProperty("--habit-left-panel-width", `${safePanelWidth}px`);
-  grid.style.setProperty("--habit-name-col-width", `${safePanelWidth}px`);
-  grid.classList.toggle(
-    "habit-panel-compact",
-    safePanelWidth <= HABIT_PANEL_COMPACT_THRESHOLD_PX,
-  );
-  return safePanelWidth;
-}
-
-function formatStreakLabel(current, best, compact) {
-  return compact
-    ? `${current}d/${best}d`
-    : `Current ${current}d | Best ${best}d`;
-}
-
-function syncStreakBadgeText(badge, compactOverride = null) {
+function syncStreakBadgeText(badge) {
   if (!(badge instanceof HTMLElement)) return;
   const current = parseInt(badge.dataset.streakCurrent || "0", 10);
   const best = parseInt(badge.dataset.streakBest || "0", 10);
   const safeCurrent = Number.isFinite(current) ? Math.max(0, current) : 0;
   const safeBest = Number.isFinite(best) ? Math.max(0, best) : 0;
-  const compact =
-    typeof compactOverride === "boolean"
-      ? compactOverride
-      : !!badge
-          .closest(".habits-grid")
-          ?.classList.contains("habit-panel-compact");
-  const fullText = formatStreakLabel(safeCurrent, safeBest, false);
-  badge.textContent = formatStreakLabel(safeCurrent, safeBest, compact);
-  badge.title = fullText;
-  badge.setAttribute("aria-label", fullText);
+  const text = `Current ${safeCurrent}d | Best ${safeBest}d`;
+  badge.textContent = text;
+  badge.title = text;
+  badge.setAttribute("aria-label", text);
 }
 
 function syncAllStreakBadges(grid) {
   if (!(grid instanceof HTMLElement)) return;
-  const compact = grid.classList.contains("habit-panel-compact");
   grid
     .querySelectorAll(".streak-badge[data-streak-habit]")
-    .forEach((badge) => syncStreakBadgeText(badge, compact));
+    .forEach((badge) => syncStreakBadgeText(badge));
 }
 
 export function switchView(viewId) {
@@ -542,179 +468,6 @@ function bindDailyGridHoverInteractions(grid) {
   grid.dataset.linkedHoverBound = "true";
 }
 
-function closeDailyHabitActionsMenus() {
-  document.querySelectorAll(".habit-actions-menu-wrap.open").forEach((wrap) => {
-    wrap.classList.remove("open");
-    const toggle = wrap.querySelector(".habit-actions-toggle");
-    if (toggle) {
-      toggle.setAttribute("aria-expanded", "false");
-    }
-    const menu = wrap.querySelector(".habit-actions-menu");
-    if (menu instanceof HTMLElement) {
-      menu.hidden = true;
-    }
-  });
-  activeDailyHabitActionsMenuId = null;
-}
-
-function openDailyHabitActionsMenu(habitId) {
-  const safeHabitId = String(habitId || "");
-  if (!safeHabitId) return;
-  closeDailyHabitActionsMenus();
-
-  const wrap = Array.from(
-    document.querySelectorAll(
-      ".habit-actions-menu-wrap[data-habit-actions-wrap]",
-    ),
-  ).find((node) => String(node.dataset.habitActionsWrap || "") === safeHabitId);
-  if (!wrap) return;
-
-  const menu = wrap.querySelector(".habit-actions-menu");
-  if (menu instanceof HTMLElement) {
-    menu.hidden = false;
-  }
-
-  wrap.classList.add("open");
-  const toggle = wrap.querySelector(".habit-actions-toggle");
-  if (toggle) {
-    toggle.setAttribute("aria-expanded", "true");
-  }
-  activeDailyHabitActionsMenuId = safeHabitId;
-}
-
-function bindHabitPanelResizer(grid) {
-  if (!(grid instanceof HTMLElement)) return;
-  if (grid.dataset.habitPanelResizerBound === "true") return;
-
-  const onPointerDown = (event) => {
-    const target = event.target;
-    if (!(target instanceof Element)) return;
-    const handle = target.closest(".habit-panel-resizer, .habit-col-resizer");
-    if (!handle) return;
-
-    event.preventDefault();
-    closeDailyHabitActionsMenus();
-
-    const appliedPanelWidth = parseInt(
-      grid.style.getPropertyValue("--habit-left-panel-width"),
-      10,
-    );
-    const startWidth = clampHabitPanelWidth(appliedPanelWidth);
-    const startX = event.clientX;
-
-    document.body.classList.add("is-resizing-habit-col");
-
-    const onPointerMove = (moveEvent) => {
-      const deltaX = moveEvent.clientX - startX;
-      applyHabitPanelWidth(grid, startWidth + deltaX);
-      syncAllStreakBadges(grid);
-    };
-
-    const onPointerUp = () => {
-      document.body.classList.remove("is-resizing-habit-col");
-      const applied = parseInt(
-        grid.style.getPropertyValue("--habit-left-panel-width"),
-        10,
-      );
-      saveHabitPanelWidth(applied);
-      window.removeEventListener("pointermove", onPointerMove);
-      window.removeEventListener("pointerup", onPointerUp);
-      window.removeEventListener("pointercancel", onPointerUp);
-    };
-
-    window.addEventListener("pointermove", onPointerMove);
-    window.addEventListener("pointerup", onPointerUp);
-    window.addEventListener("pointercancel", onPointerUp);
-  };
-
-  grid.addEventListener("pointerdown", onPointerDown);
-  grid.dataset.habitPanelResizerBound = "true";
-}
-
-function runDailyHabitAction(habitId, action) {
-  const app = window.HabitApp;
-  if (!app) return;
-
-  if (action === "up" || action === "down") {
-    if (typeof app.moveHabit === "function") {
-      app.moveHabit(habitId, action);
-    }
-    return;
-  }
-
-  if (action === "edit") {
-    if (typeof app.editHabit === "function") {
-      app.editHabit(habitId);
-    }
-    return;
-  }
-
-  if (action === "delete" && typeof app.deleteHabit === "function") {
-    app.deleteHabit(habitId);
-  }
-}
-
-function bindDailyHabitActionsMenuInteractions(grid) {
-  if (!grid || isDailyHabitActionsMenuBound) return;
-
-  grid.addEventListener("click", (event) => {
-    const target = event.target;
-    if (!(target instanceof Element)) return;
-
-    const toggle = target.closest(
-      ".habit-actions-toggle[data-habit-actions-toggle]",
-    );
-    if (toggle) {
-      event.preventDefault();
-      event.stopPropagation();
-      const habitId = String(toggle.dataset.habitActionsToggle || "");
-      if (!habitId) return;
-      if (activeDailyHabitActionsMenuId === habitId) {
-        closeDailyHabitActionsMenus();
-      } else {
-        openDailyHabitActionsMenu(habitId);
-      }
-      return;
-    }
-
-    const actionBtn = target.closest(
-      ".habit-action-menu-btn[data-habit-action][data-habit-id]",
-    );
-    if (!actionBtn) return;
-    event.preventDefault();
-    event.stopPropagation();
-    const habitId = String(actionBtn.dataset.habitId || "");
-    const action = String(actionBtn.dataset.habitAction || "");
-    closeDailyHabitActionsMenus();
-    runDailyHabitAction(habitId, action);
-  });
-
-  document.addEventListener("pointerdown", (event) => {
-    if (!activeDailyHabitActionsMenuId) return;
-    const rawTarget = event.target;
-    const target =
-      rawTarget instanceof Element
-        ? rawTarget
-        : rawTarget instanceof Node
-          ? rawTarget.parentElement
-          : null;
-    if (!target) {
-      closeDailyHabitActionsMenus();
-      return;
-    }
-    if (target.closest(".habit-actions-menu-wrap")) return;
-    closeDailyHabitActionsMenus();
-  });
-
-  document.addEventListener("keydown", (event) => {
-    if (!activeDailyHabitActionsMenuId) return;
-    if (event.key !== "Escape") return;
-    closeDailyHabitActionsMenus();
-  });
-
-  isDailyHabitActionsMenuBound = true;
-}
-
 export function renderWeeklySummaryCards() {
   const container = document.getElementById("weeklySummaryCards");
   if (!container) return;
@@ -1004,7 +757,6 @@ function computeGlobalComboStreak() {
 export function renderDailyHabitsGrid() {
   const grid = document.getElementById("dailyHabitsGrid");
   if (!grid) return;
-  activeDailyHabitActionsMenuId = null;
 
   const monthData = getCurrentMonthData();
   const habits = getSortedDailyHabits();
@@ -1077,9 +829,9 @@ export function renderDailyHabitsGrid() {
   }
   html += "</tr></thead><tbody>";
 
-  habits.forEach((habit, idx) => {
+  habits.forEach((habit) => {
     const emoji = sanitize(getHabitEmoji(habit));
-    html += `<tr><td class='habit-name-cell'><span class='habit-title' title='${sanitize(habit.name)}'>${emoji} ${sanitize(habit.name)}</span><span class='streak-badge' data-streak-habit='${habit.id}' data-streak-current='0' data-streak-best='0' title='Current 0d | Best 0d' aria-label='Current 0d | Best 0d'>Current 0d | Best 0d</span><span class='habit-actions-menu-wrap' data-habit-actions-wrap='${habit.id}'><button class='habit-actions-toggle' type='button' data-habit-actions-toggle='${habit.id}' aria-haspopup='menu' aria-expanded='false' title='Habit actions'>⋯</button><span class='habit-actions-menu' data-habit-actions-menu='${habit.id}' role='menu' hidden><button class='habit-action-menu-btn' type='button' data-habit-id='${habit.id}' data-habit-action='up' role='menuitem' ${idx === 0 ? "disabled" : ""}>Move up</button><button class='habit-action-menu-btn' type='button' data-habit-id='${habit.id}' data-habit-action='down' role='menuitem' ${idx === habits.length - 1 ? "disabled" : ""}>Move down</button><button class='habit-action-menu-btn' type='button' data-habit-id='${habit.id}' data-habit-action='edit' role='menuitem'>Edit</button><button class='habit-action-menu-btn delete' type='button' data-habit-id='${habit.id}' data-habit-action='delete' role='menuitem'>Delete</button></span></span></td>`;
+    html += `<tr><td class='habit-name-cell'><span class='habit-title' title='${sanitize(habit.name)}'>${emoji} ${sanitize(habit.name)}</span><span class='streak-badge' data-streak-habit='${habit.id}' data-streak-current='0' data-streak-best='0' title='Current 0d | Best 0d' aria-label='Current 0d | Best 0d'>Current 0d | Best 0d</span></td>`;
     for (let day = 1; day <= totalDays; day++) {
       const isToday = day === todayDay;
       const isComplete = completedDays[day];
@@ -1114,7 +866,14 @@ export function renderDailyHabitsGrid() {
 
   html += "</tbody>";
   grid.innerHTML = html;
-  applyHabitPanelWidth(grid, loadHabitPanelWidth());
+  const loadHabitPanelWidthFn = globalThis.loadHabitPanelWidth;
+  const applyHabitPanelWidthFn = globalThis.applyHabitPanelWidth;
+  if (
+    typeof loadHabitPanelWidthFn === "function" &&
+    typeof applyHabitPanelWidthFn === "function"
+  ) {
+    applyHabitPanelWidthFn(grid, loadHabitPanelWidthFn());
+  }
   syncAllStreakBadges(grid);
 
   if (!isCurrentMonthView) {
@@ -1175,9 +934,10 @@ export function renderDailyHabitsGrid() {
       );
     });
   });
-
-  bindDailyHabitActionsMenuInteractions(grid);
-  bindHabitPanelResizer(grid);
+  const bindHabitPanelResizerFn = globalThis.bindHabitPanelResizer;
+  if (typeof bindHabitPanelResizerFn === "function") {
+    bindHabitPanelResizerFn(grid);
+  }
 
   bindDailyGridHoverInteractions(grid);
 
