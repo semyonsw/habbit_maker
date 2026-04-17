@@ -813,7 +813,7 @@ export function renderDailyHabitsGrid() {
   }
 
   let html =
-    "<thead><tr><th class='habit-name-col'><span>Habits</span><button class='habit-panel-resizer' type='button' aria-label='Resize left habits panel' title='Drag to resize habit sidebar'></button></th>";
+    "<thead><tr><th class='habit-name-col'><span>Habits</span></th>";
   for (let day = 1; day <= totalDays; day++) {
     const isToday = day === todayDay;
     const isComplete = completedDays[day];
@@ -866,14 +866,6 @@ export function renderDailyHabitsGrid() {
 
   html += "</tbody>";
   grid.innerHTML = html;
-  const loadHabitPanelWidthFn = globalThis.loadHabitPanelWidth;
-  const applyHabitPanelWidthFn = globalThis.applyHabitPanelWidth;
-  if (
-    typeof loadHabitPanelWidthFn === "function" &&
-    typeof applyHabitPanelWidthFn === "function"
-  ) {
-    applyHabitPanelWidthFn(grid, loadHabitPanelWidthFn());
-  }
   syncAllStreakBadges(grid);
 
   if (!isCurrentMonthView) {
@@ -934,10 +926,6 @@ export function renderDailyHabitsGrid() {
       );
     });
   });
-  const bindHabitPanelResizerFn = globalThis.bindHabitPanelResizer;
-  if (typeof bindHabitPanelResizerFn === "function") {
-    bindHabitPanelResizerFn(grid);
-  }
 
   bindDailyGridHoverInteractions(grid);
 
