@@ -436,153 +436,6 @@
               <div id="bookmarksPanel"></div>
             </section>
           </div>
-
-          <section class="books-card books-stats-section">
-            <div class="books-card-header">
-              <h3>Reading Statistics</h3>
-              <div class="books-range-controls" id="booksRangeControlsBooks">
-                <button
-                  class="books-range-btn"
-                  data-books-range="7"
-                  type="button"
-                >
-                  7d
-                </button>
-                <button
-                  class="books-range-btn"
-                  data-books-range="30"
-                  type="button"
-                >
-                  30d
-                </button>
-                <button
-                  class="books-range-btn"
-                  data-books-range="90"
-                  type="button"
-                >
-                  90d
-                </button>
-                <button
-                  class="books-range-btn"
-                  data-books-range="all"
-                  type="button"
-                >
-                  All
-                </button>
-              </div>
-            </div>
-            <div class="books-stats-kpis" id="booksStatsOverview"></div>
-            <div class="books-stats-top" id="booksStatsTopBook"></div>
-            <div class="books-mini-charts">
-              <article class="books-mini-chart-card">
-                <h4>Daily Reading Trend</h4>
-                <canvas id="booksMiniTrendChart"></canvas>
-              </article>
-              <article class="books-mini-chart-card">
-                <h4>Pages Advanced by Book</h4>
-                <canvas id="booksMiniBookShareChart"></canvas>
-              </article>
-            </div>
-            <div class="books-stats-by-book" id="booksStatsByBook"></div>
-          </section>
-
-          <section
-            class="books-card books-finisher-card"
-            id="booksFinisherCard"
-          >
-            <div class="books-card-header">
-              <h3>Book Finisher Helper</h3>
-            </div>
-            <p class="books-help-text books-finisher-help">
-              Pick a finish date and reading weekdays. The helper calculates the
-              minimum pages per selected reading day to finish on or before the
-              target day.
-            </p>
-
-            <div class="books-finisher-grid">
-              <div class="form-group">
-                <label for="finisherBookSelect">Book</label>
-                <select id="finisherBookSelect"></select>
-              </div>
-
-              <div class="form-group">
-                <label for="finisherTargetDate">Finish by</label>
-                <input id="finisherTargetDate" type="date" />
-              </div>
-
-              <div class="form-group">
-                <label for="finisherStartPage"
-                  >Start page (PDF, by default: your bookmark's last
-                  page)</label
-                >
-                <input id="finisherStartPage" type="number" min="1" step="1" />
-              </div>
-
-              <div class="form-group">
-                <label for="finisherTotalPages">Total pages (PDF)</label>
-                <div class="books-finisher-total-row">
-                  <input
-                    id="finisherTotalPages"
-                    type="number"
-                    min="1"
-                    step="1"
-                  />
-                  <button
-                    class="btn-secondary"
-                    id="finisherUseAutoPagesBtn"
-                    type="button"
-                  >
-                    Use Auto
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div class="books-finisher-weekdays" id="finisherWeekdaysGroup">
-              <span class="books-finisher-weekdays-label"
-                >Reading weekdays</span
-              >
-              <label
-                ><input type="checkbox" data-finisher-weekday="1" /> Mon</label
-              >
-              <label
-                ><input type="checkbox" data-finisher-weekday="2" /> Tue</label
-              >
-              <label
-                ><input type="checkbox" data-finisher-weekday="3" /> Wed</label
-              >
-              <label
-                ><input type="checkbox" data-finisher-weekday="4" /> Thu</label
-              >
-              <label
-                ><input type="checkbox" data-finisher-weekday="5" /> Fri</label
-              >
-              <label
-                ><input type="checkbox" data-finisher-weekday="6" /> Sat</label
-              >
-              <label
-                ><input type="checkbox" data-finisher-weekday="0" /> Sun</label
-              >
-            </div>
-
-            <div class="books-finisher-actions">
-              <button
-                class="btn-primary"
-                id="finisherRecalculateBtn"
-                type="button"
-              >
-                Recalculate Plan
-              </button>
-              <p class="books-help-text" id="finisherStatusText"></p>
-            </div>
-
-            <div class="books-finisher-results" id="finisherResultsPanel"></div>
-
-            <article class="books-mini-chart-card books-finisher-chart-wrap">
-              <h4>Weekly Reading Load Plan</h4>
-              <canvas id="booksFinisherPlanChart"></canvas>
-            </article>
-          </section>
         </section>
         <section class="view" id="view-manage">
           <div class="manage-header">
@@ -686,17 +539,6 @@
             </div>
           </div>
 
-          <div class="charts-row">
-            <div class="chart-card">
-              <h3>Daily Habit Count</h3>
-              <canvas id="dailyBarChart"></canvas>
-            </div>
-            <div class="chart-card">
-              <h3>Habit Count by Category</h3>
-              <canvas id="categoryBarChart"></canvas>
-            </div>
-          </div>
-
           <div class="charts-row charts-row-analytics">
             <div class="chart-card">
               <h3>Weekly Completion Trend</h3>
@@ -713,89 +555,12 @@
 
           <div class="charts-row charts-row-analytics">
             <div class="chart-card">
-              <h3>Weekly Category Stacks</h3>
-              <canvas id="analyticsWeeklyCategoryStackedChart"></canvas>
-            </div>
-            <div class="chart-card">
-              <h3>Monthly Streak Leaderboard</h3>
-              <canvas id="analyticsMonthlyStreakChart"></canvas>
-            </div>
-          </div>
-
-          <div class="charts-row charts-row-analytics">
-            <div class="chart-card">
               <h3>Monthly Trend (12 Months)</h3>
               <canvas id="analyticsMonthlyTrendChart"></canvas>
             </div>
             <div class="chart-card">
-              <h3>Category Performance Over Time</h3>
-              <canvas id="analyticsMonthlyCategoryTrendChart"></canvas>
-            </div>
-          </div>
-
-          <div class="books-analytics-block">
-            <div class="books-analytics-head">
-              <h3>Books Analytics</h3>
-              <div
-                class="books-range-controls"
-                id="booksRangeControlsAnalytics"
-              >
-                <button
-                  class="books-range-btn"
-                  data-books-range="7"
-                  type="button"
-                >
-                  7d
-                </button>
-                <button
-                  class="books-range-btn"
-                  data-books-range="30"
-                  type="button"
-                >
-                  30d
-                </button>
-                <button
-                  class="books-range-btn"
-                  data-books-range="90"
-                  type="button"
-                >
-                  90d
-                </button>
-                <button
-                  class="books-range-btn"
-                  data-books-range="all"
-                  type="button"
-                >
-                  All
-                </button>
-              </div>
-            </div>
-
-            <div class="books-analytics-kpis" id="booksAnalyticsKpis"></div>
-
-            <div class="charts-row charts-row-analytics">
-              <div class="chart-card">
-                <h3>Reading Velocity Trend</h3>
-                <canvas id="booksVelocityTrendChart"></canvas>
-              </div>
-              <div class="chart-card">
-                <h3>Per-Book Pace Comparison</h3>
-                <canvas id="booksPerBookComparisonChart"></canvas>
-              </div>
-            </div>
-
-            <div class="charts-row charts-row-analytics">
-              <div class="chart-card">
-                <h3>Weekly Reading Heatmap</h3>
-                <div
-                  class="weekly-heatmap weekly-heatmap-large"
-                  id="booksWeeklyHeatmap"
-                ></div>
-              </div>
-              <div class="chart-card">
-                <h3>Bookmark Activity Timeline</h3>
-                <canvas id="booksBookmarkActivityChart"></canvas>
-              </div>
+              <h3>Monthly Streak Leaderboard</h3>
+              <canvas id="analyticsMonthlyStreakChart"></canvas>
             </div>
           </div>
 

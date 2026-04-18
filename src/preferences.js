@@ -4,7 +4,6 @@ import {
   READER_DARK_ENABLED_KEY,
   READER_DARK_MODE_KEY,
   ANALYTICS_DISPLAY_MODE_KEY,
-  BOOKS_ANALYTICS_RANGE_KEY,
 } from "./constants.js";
 import { readerState, analyticsState } from "./state.js";
 import { callRenderer } from "./render-registry.js";
@@ -70,19 +69,9 @@ export function setReaderDarkMode(mode) {
   updateReaderThemeControls();
 }
 
-export function normalizeBooksRange(value) {
-  const asString = String(value || "30").toLowerCase();
-  if (asString === "all") return 0;
-  const parsed = parseInt(asString, 10);
-  if ([7, 30, 90].includes(parsed)) return parsed;
-  return 30;
-}
-
 export function loadAnalyticsPreferences() {
   const savedMode = localStorage.getItem(ANALYTICS_DISPLAY_MODE_KEY);
   analyticsState.displayMode = savedMode === "raw" ? "raw" : "percent";
-  const savedBooksRange = localStorage.getItem(BOOKS_ANALYTICS_RANGE_KEY);
-  analyticsState.booksRangeDays = normalizeBooksRange(savedBooksRange);
 }
 
 export function persistAnalyticsPreferences() {
@@ -90,16 +79,6 @@ export function persistAnalyticsPreferences() {
     ANALYTICS_DISPLAY_MODE_KEY,
     analyticsState.displayMode,
   );
-  localStorage.setItem(
-    BOOKS_ANALYTICS_RANGE_KEY,
-    analyticsState.booksRangeDays === 0
-      ? "all"
-      : String(analyticsState.booksRangeDays),
-  );
-}
-
-export function getBooksAnalyticsRangeDays() {
-  return normalizeBooksRange(analyticsState.booksRangeDays);
 }
 
 export function getAnalyticsDisplayMode() {
@@ -143,30 +122,3 @@ export function setAnalyticsDisplayMode(mode) {
   callRenderer("renderAnalyticsView");
 }
 
-export function syncBooksRangeControls() {
-  const current = getBooksAnalyticsRangeDays();
-  document.querySelectorAll("[data-books-range]").forEach((btn) => {
-    if (!(btn instanceof HTMLElement)) return;
-    const range = normalizeBooksRange(btn.dataset.booksRange);
-    btn.classList.toggle("active", range === current);
-    btn.setAttribute("aria-pressed", range === current ? "true" : "false");
-  });
-}
-
-export function setBooksAnalyticsRange(value) {
-  const next = normalizeBooksRange(value);
-  if (next === analyticsState.booksRangeDays) return;
-  analyticsState.booksRangeDays = next;
-  persistAnalyticsPreferences();
-  syncBooksRangeControls();
-  if (document.getElementById("view-books")?.classList.contains("active")) {
-    callRenderer("renderBooksView");
-  } else {
-    callRenderer("renderBooksStatsOverview");
-  }
-  if (
-    document.getElementById("view-analytics")?.classList.contains("active")
-  ) {
-    callRenderer("renderAnalyticsView");
-  }
-}

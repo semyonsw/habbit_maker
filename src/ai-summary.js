@@ -1331,11 +1331,7 @@ export async function runBookmarkSummary(bookId, bookmarkId, runMode) {
     renderSummaryModal();
 
     const plannedPages = endPage - startPage + 1;
-    const totalBookPages = Math.max(
-      endPage,
-      parseInt(book.totalPagesOverride || book.totalPagesDetected, 10) ||
-        endPage,
-    );
+    const totalBookPages = endPage;
     runtimeLimits = computeDynamicSummaryLimits({
       model: settings.model,
       plannedPages,

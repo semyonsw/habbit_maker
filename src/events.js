@@ -2,7 +2,7 @@
 
 import { MONTH_NAMES } from "./constants.js";
 import { state, globals } from "./state.js";
-import { monthKey, nowIso } from "./utils.js?v=2";
+import { monthKey } from "./utils.js?v=2";
 import { navigateMonth } from "./habits.js";
 import {
   openHabitModal,
@@ -24,9 +24,6 @@ import {
   handleBookFileInputChange,
   saveBookFromUpload,
   setBookUploadStatus,
-  getOrInitBooksHelperState,
-  getSelectedFinisherBook,
-  getBookMaxBookmarkPage,
 } from "./books.js";
 import { exportData, importData, setBackupStatus } from "./data-io.js";
 import { bindLogsControls } from "./render-logs.js";
@@ -37,10 +34,7 @@ import {
   wipeStoredApiKey,
 } from "./encryption.js";
 import { updateHabitScheduleTypeUI } from "./habits.js";
-import {
-  setBooksAnalyticsRange,
-  setAnalyticsDisplayMode,
-} from "./preferences.js";
+import { setAnalyticsDisplayMode } from "./preferences.js";
 import {
   getDefaultMonthData,
   saveState,
@@ -372,97 +366,6 @@ export function bindEvents() {
     }
     openBookmarkModal(state.books.activeBookId);
   });
-
-  document.querySelectorAll("[data-books-range]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      setBooksAnalyticsRange(btn.dataset.booksRange || "30");
-    });
-  });
-
-  const finisherBookSelect = document.getElementById("finisherBookSelect");
-  if (finisherBookSelect) {
-    finisherBookSelect.addEventListener("change", async (event) => {
-      const helper = getOrInitBooksHelperState();
-      helper.selectedBookId = String(event.target.value || "");
-      const book = getSelectedFinisherBook();
-      helper.startPage = book ? getBookMaxBookmarkPage(book) : 1;
-      saveState();
-      await callRenderer("renderBookFinisherHelper");
-    });
-  }
-
-  const finisherTargetDate = document.getElementById("finisherTargetDate");
-  if (finisherTargetDate) {
-    finisherTargetDate.addEventListener("change", async (event) => {
-      const helper = getOrInitBooksHelperState();
-      helper.targetDate = String(event.target.value || "");
-      saveState();
-      await callRenderer("renderBookFinisherHelper");
-    });
-  }
-
-  const finisherStartPage = document.getElementById("finisherStartPage");
-  if (finisherStartPage) {
-    finisherStartPage.addEventListener("change", async (event) => {
-      const helper = getOrInitBooksHelperState();
-      const next = parseInt(event.target.value, 10);
-      helper.startPage = Number.isFinite(next) && next >= 1 ? next : 1;
-      saveState();
-      await callRenderer("renderBookFinisherHelper");
-    });
-  }
-
-  const finisherTotalPages = document.getElementById("finisherTotalPages");
-  if (finisherTotalPages) {
-    finisherTotalPages.addEventListener("change", async (event) => {
-      const book = getSelectedFinisherBook();
-      if (!book) return;
-      const next = parseInt(event.target.value, 10);
-      book.totalPagesOverride =
-        Number.isFinite(next) && next >= 1 ? next : null;
-      book.updatedAt = nowIso();
-      saveState();
-      await callRenderer("renderBookFinisherHelper");
-    });
-  }
-
-  const finisherUseAutoPagesBtn = document.getElementById(
-    "finisherUseAutoPagesBtn",
-  );
-  if (finisherUseAutoPagesBtn) {
-    finisherUseAutoPagesBtn.addEventListener("click", async () => {
-      const book = getSelectedFinisherBook();
-      if (!book) return;
-      book.totalPagesOverride = null;
-      book.updatedAt = nowIso();
-      saveState();
-      await callRenderer("renderBookFinisherHelper");
-    });
-  }
-
-  document.querySelectorAll("[data-finisher-weekday]").forEach((checkbox) => {
-    checkbox.addEventListener("change", async () => {
-      const helper = getOrInitBooksHelperState();
-      helper.weekdays = Array.from(
-        document.querySelectorAll("[data-finisher-weekday]"),
-      )
-        .filter((node) => node instanceof HTMLInputElement && node.checked)
-        .map((node) => parseInt(node.dataset.finisherWeekday, 10))
-        .filter((value) => Number.isInteger(value) && value >= 0 && value <= 6)
-        .sort((a, b) => a - b);
-      saveState();
-      await callRenderer("renderBookFinisherHelper");
-    });
-  });
-
-  const finisherRecalculateBtn = document.getElementById(
-    "finisherRecalculateBtn",
-  );
-  if (finisherRecalculateBtn) {
-    finisherRecalculateBtn.addEventListener("click", async () => {
-      await callRenderer("renderBookFinisherHelper");
-    });
-  }
 
   window.addEventListener("error", (event) => {
     appendLogEntry({

@@ -29,132 +29,6 @@ import {
 import { getCategoryById } from "./persistence.js";
 import { registerRenderer, callRenderer } from "./render-registry.js";
 
-export function renderDailyBarChart() {
-  if (typeof Chart === "undefined") return;
-  const canvas = document.getElementById("dailyBarChart");
-  if (!canvas) return;
-
-  const monthData = getCurrentMonthData();
-  const habits = getSortedDailyHabits();
-  const totalDays = daysInMonth(state.currentYear, state.currentMonth);
-
-  const labels = [];
-  const values = [];
-  for (let day = 1; day <= totalDays; day++) {
-    labels.push(day);
-    let count = 0;
-    habits.forEach((habit) => {
-      if (
-        !isHabitTrackedOnDate(habit, state.currentYear, state.currentMonth, day)
-      ) {
-        return;
-      }
-      if (
-        monthData.dailyCompletions[habit.id] &&
-        monthData.dailyCompletions[habit.id][day]
-      ) {
-        count += 1;
-      }
-    });
-    values.push(count);
-  }
-
-  if (chartInstances.dailyBarChart) {
-    chartInstances.dailyBarChart.destroy();
-  }
-
-  chartInstances.dailyBarChart = new Chart(canvas.getContext("2d"), {
-    type: "bar",
-    data: {
-      labels,
-      datasets: [
-        {
-          data: values,
-          backgroundColor: values.map((value) =>
-            getValueColor(value, Math.max(1, ...values), 0.86),
-          ),
-          borderRadius: 4,
-        },
-      ],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
-    },
-  });
-}
-
-export function renderCategoryBarChart() {
-  if (typeof Chart === "undefined") return;
-  const canvas = document.getElementById("categoryBarChart");
-  if (!canvas) return;
-
-  const monthData = getCurrentMonthData();
-  const totalDays = daysInMonth(state.currentYear, state.currentMonth);
-  const habits = getSortedDailyHabits();
-
-  const map = {};
-  state.categories.forEach((c) => {
-    map[c.id] = { name: c.name, emoji: c.emoji, completed: 0 };
-  });
-
-  habits.forEach((habit) => {
-    const bucket = map[habit.categoryId];
-    if (!bucket) return;
-    for (let day = 1; day <= totalDays; day++) {
-      if (
-        !isHabitTrackedOnDate(habit, state.currentYear, state.currentMonth, day)
-      ) {
-        continue;
-      }
-      if (
-        monthData.dailyCompletions[habit.id] &&
-        monthData.dailyCompletions[habit.id][day]
-      ) {
-        bucket.completed += 1;
-      }
-    }
-  });
-
-  const entries = Object.values(map).filter((x) => x.completed > 0);
-  if (entries.length === 0) {
-    if (chartInstances.categoryBarChart) {
-      chartInstances.categoryBarChart.destroy();
-    }
-    return;
-  }
-
-  if (chartInstances.categoryBarChart) {
-    chartInstances.categoryBarChart.destroy();
-  }
-
-  chartInstances.categoryBarChart = new Chart(canvas.getContext("2d"), {
-    type: "bar",
-    data: {
-      labels: entries.map((e) => `${e.emoji} ${e.name}`),
-      datasets: [
-        {
-          data: entries.map((e) => e.completed),
-          backgroundColor: entries.map((e) =>
-            getValueColor(
-              e.completed,
-              Math.max(1, ...entries.map((item) => item.completed)),
-              0.86,
-            ),
-          ),
-        },
-      ],
-    },
-    options: {
-      indexAxis: "y",
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
-    },
-  });
-}
-
 export function safeMonthData(year, month) {
   const key = monthKey(year, month);
   const monthData = state.months[key];
@@ -429,104 +303,36 @@ export function renderWeeklyTrendChart(canvasId, chartKey, weeklyData) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      aspectRatio: 1.8,
       plugins: {
         legend: { display: false },
         tooltip: {
           callbacks: {
+            title(items) {
+              const bucket = weeklyData.weekBuckets[items[0].dataIndex];
+              return bucket && bucket.rangeLabel
+                ? `${bucket.label} · ${bucket.rangeLabel}`
+                : (bucket && bucket.label) || "";
+            },
             label(context) {
-              return `${getMetricAxisLabel()}: ${getMetricLabel(context.parsed.y)}`;
+              const bucket = weeklyData.weekBuckets[context.dataIndex];
+              const done = bucket ? bucket.done : 0;
+              const possible = bucket ? bucket.possible : 0;
+              return `${getMetricLabel(context.parsed.y)} · ${done}/${possible}`;
             },
           },
         },
       },
       scales: {
+        x: {
+          grid: { display: false },
+          title: { display: true, text: "Week" },
+        },
         y: {
           beginAtZero: true,
           max: getAnalyticsDisplayMode() === "percent" ? 100 : undefined,
-          ticks: {
-            callback(value) {
-              return getAnalyticsDisplayMode() === "percent"
-                ? `${Math.round(value)}%`
-                : value;
-            },
-          },
-        },
-      },
-    },
-  });
-}
-
-export function renderWeeklyCategoryStackedChart(
-  canvasId,
-  chartKey,
-  weeklyData,
-) {
-  const labels = weeklyData.weekBuckets.map((bucket) => bucket.label);
-  const datasets = state.categories
-    .map((category) => {
-      const points = labels.map((_, index) => {
-        const slot = (weeklyData.categoryWeek[category.id] &&
-          weeklyData.categoryWeek[category.id][index]) || {
-          done: 0,
-          possible: 0,
-        };
-        return getMetricValue(slot.done, slot.possible);
-      });
-      const visible = points.some((point) => point > 0);
-      if (!visible) return null;
-      return {
-        label: `${category.emoji} ${category.name}`,
-        data: points,
-        backgroundColor(context) {
-          const value =
-            context.parsed && Number(context.parsed.y)
-              ? Number(context.parsed.y)
-              : 0;
-          const scaleMax =
-            getAnalyticsDisplayMode() === "percent"
-              ? 100
-              : Math.max(1, ...points);
-          return getValueColor(value, scaleMax, 0.86);
-        },
-        borderRadius: 4,
-        borderColor(context) {
-          const value =
-            context.parsed && Number(context.parsed.y)
-              ? Number(context.parsed.y)
-              : 0;
-          const scaleMax =
-            getAnalyticsDisplayMode() === "percent"
-              ? 100
-              : Math.max(1, ...points);
-          return getValueColor(value, scaleMax, 1);
-        },
-        borderWidth: 1,
-      };
-    })
-    .filter(Boolean);
-
-  renderChart(chartKey, canvasId, {
-    type: "bar",
-    data: { labels, datasets },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { position: "bottom" },
-        tooltip: {
-          callbacks: {
-            label(context) {
-              return `${context.dataset.label}: ${getMetricLabel(context.parsed.y)}`;
-            },
-          },
-        },
-      },
-      scales: {
-        x: { stacked: true },
-        y: {
-          stacked: true,
-          beginAtZero: true,
-          max: getAnalyticsDisplayMode() === "percent" ? 100 : undefined,
+          grid: { color: "rgba(255,255,255,0.06)" },
+          title: { display: true, text: getMetricAxisLabel() },
           ticks: {
             callback(value) {
               return getAnalyticsDisplayMode() === "percent"
@@ -582,20 +388,31 @@ export function renderMonthlyTrendChart(canvasId, chartKey, timeline) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      aspectRatio: 1.8,
       plugins: {
         legend: { display: false },
         tooltip: {
           callbacks: {
             label(context) {
-              return getMetricLabel(context.parsed.y);
+              const item = timeline[context.dataIndex] || {
+                done: 0,
+                possible: 0,
+              };
+              return `${getMetricLabel(context.parsed.y)} · ${item.done}/${item.possible}`;
             },
           },
         },
       },
       scales: {
+        x: {
+          grid: { display: false },
+          title: { display: true, text: "Month" },
+        },
         y: {
           beginAtZero: true,
           max: getAnalyticsDisplayMode() === "percent" ? 100 : undefined,
+          grid: { color: "rgba(255,255,255,0.06)" },
+          title: { display: true, text: getMetricAxisLabel() },
           ticks: {
             callback(value) {
               return getAnalyticsDisplayMode() === "percent"
@@ -624,6 +441,8 @@ export function renderMonthlyStreakChart(canvasId, chartKey, rows) {
           backgroundColor: values.map((value) =>
             getValueColor(value, maxScale, 0.88),
           ),
+          borderRadius: 6,
+          maxBarThickness: 18,
         },
       ],
     },
@@ -631,12 +450,14 @@ export function renderMonthlyStreakChart(canvasId, chartKey, rows) {
       indexAxis: "y",
       responsive: true,
       maintainAspectRatio: false,
+      aspectRatio: 1.8,
       plugins: {
         legend: { display: false },
         tooltip: {
           callbacks: {
             label(context) {
-              return getMetricLabel(context.parsed.x);
+              const row = rows[context.dataIndex] || { done: 0, possible: 0 };
+              return `${getMetricLabel(context.parsed.x)} · ${row.done}/${row.possible} days`;
             },
           },
         },
@@ -645,6 +466,8 @@ export function renderMonthlyStreakChart(canvasId, chartKey, rows) {
         x: {
           beginAtZero: true,
           max: getAnalyticsDisplayMode() === "percent" ? 100 : undefined,
+          grid: { color: "rgba(255,255,255,0.06)" },
+          title: { display: true, text: "Current streak (days)" },
           ticks: {
             callback(value) {
               return getAnalyticsDisplayMode() === "percent"
@@ -653,90 +476,8 @@ export function renderMonthlyStreakChart(canvasId, chartKey, rows) {
             },
           },
         },
-      },
-    },
-  });
-}
-
-export function renderMonthlyCategoryTrendChart(canvasId, chartKey, timeline) {
-  const topCategories = state.categories
-    .map((category) => {
-      const sum = timeline.reduce((acc, item) => {
-        const slot = item.byCategory[category.id] || { done: 0 };
-        return acc + slot.done;
-      }, 0);
-      return { category, sum };
-    })
-    .filter((item) => item.sum > 0)
-    .sort((a, b) => b.sum - a.sum)
-    .slice(0, 6);
-
-  const datasets = topCategories.map((item) => {
-    const points = timeline.map((point) => {
-      const slot = point.byCategory[item.category.id] || {
-        done: 0,
-        possible: 0,
-      };
-      return getMetricValue(slot.done, slot.possible);
-    });
-    const maxScale =
-      getAnalyticsDisplayMode() === "percent" ? 100 : Math.max(1, ...points);
-    const avgValue = points.length
-      ? points.reduce((sum, value) => sum + value, 0) / points.length
-      : 0;
-    return {
-      label: `${item.category.emoji} ${item.category.name}`,
-      data: points,
-      borderColor: getValueColor(avgValue, maxScale, 0.95),
-      backgroundColor: getValueColor(avgValue, maxScale, 0.2),
-      pointBackgroundColor: points.map((value) =>
-        getValueColor(value, maxScale, 0.92),
-      ),
-      pointBorderColor: points.map((value) =>
-        getValueColor(value, maxScale, 1),
-      ),
-      segment: {
-        borderColor(context) {
-          const midpoint =
-            ((context.p0?.parsed?.y || 0) + (context.p1?.parsed?.y || 0)) / 2;
-          return getValueColor(midpoint, maxScale, 0.95);
-        },
-      },
-      fill: false,
-      tension: 0.25,
-    };
-  });
-
-  renderChart(chartKey, canvasId, {
-    type: "line",
-    data: {
-      labels: timeline.map((item) => item.label),
-      datasets,
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { position: "bottom" },
-        tooltip: {
-          callbacks: {
-            label(context) {
-              return `${context.dataset.label}: ${getMetricLabel(context.parsed.y)}`;
-            },
-          },
-        },
-      },
-      scales: {
         y: {
-          beginAtZero: true,
-          max: getAnalyticsDisplayMode() === "percent" ? 100 : undefined,
-          ticks: {
-            callback(value) {
-              return getAnalyticsDisplayMode() === "percent"
-                ? `${Math.round(value)}%`
-                : value;
-            },
-          },
+          grid: { display: false },
         },
       },
     },
@@ -787,16 +528,9 @@ export function renderAnalyticsView() {
   const timeline = buildMonthlyTimeline(12);
   const streakRows = getMonthStreakLeaderboard(14);
 
-  renderDailyBarChart();
-  renderCategoryBarChart();
   renderWeeklyTrendChart(
     "analyticsWeeklyTrendChart",
     "analyticsWeeklyTrendChart",
-    weeklyData,
-  );
-  renderWeeklyCategoryStackedChart(
-    "analyticsWeeklyCategoryStackedChart",
-    "analyticsWeeklyCategoryStackedChart",
     weeklyData,
   );
   renderMonthlyTrendChart(
@@ -809,13 +543,7 @@ export function renderAnalyticsView() {
     "analyticsMonthlyStreakChart",
     streakRows,
   );
-  renderMonthlyCategoryTrendChart(
-    "analyticsMonthlyCategoryTrendChart",
-    "analyticsMonthlyCategoryTrendChart",
-    timeline,
-  );
   renderWeeklyHeatmap("analyticsWeeklyHeatmap", weeklyData);
-  callRenderer("renderBooksAnalyticsDashboard", { includeCharts: true });
   callRenderer("renderMonthlyReview");
 }
 

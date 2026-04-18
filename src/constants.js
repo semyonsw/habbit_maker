@@ -39,7 +39,6 @@ export const PDFJS_WORKER_URL =
 export const READER_DARK_ENABLED_KEY = "habitTracker_readerDarkEnabled_v1";
 export const READER_DARK_MODE_KEY = "habitTracker_readerDarkMode_v1";
 export const ANALYTICS_DISPLAY_MODE_KEY = "habitTracker_analyticsDisplayMode_v1";
-export const BOOKS_ANALYTICS_RANGE_KEY = "habitTracker_booksAnalyticsRange_v1";
 export const GEMINI_API_BASE_URL =
   "https://generativelanguage.googleapis.com/v1beta";
 export const GEMINI_MODELS = [

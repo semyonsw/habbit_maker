@@ -93,17 +93,6 @@ export function ensureBooksShape(input) {
         fileSize: Number.isFinite(book.fileSize)
           ? Math.max(0, book.fileSize)
           : 0,
-        totalPagesDetected: Number.isFinite(
-          parseInt(book.totalPagesDetected, 10),
-        )
-          ? Math.max(1, parseInt(book.totalPagesDetected, 10))
-          : null,
-        totalPagesDetectedAt: String(book.totalPagesDetectedAt || ""),
-        totalPagesOverride: Number.isFinite(
-          parseInt(book.totalPagesOverride, 10),
-        )
-          ? Math.max(1, parseInt(book.totalPagesOverride, 10))
-          : null,
         createdAt,
         updatedAt,
         bookmarks: [],

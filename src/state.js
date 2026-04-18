@@ -95,12 +95,6 @@ export const liveLogFileState = {
 
 export const analyticsState = {
   displayMode: "percent",
-  booksRangeDays: 30,
-};
-
-export const finisherState = {
-  loadingBookId: null,
-  lastError: "",
 };
 
 export const readerState = {
