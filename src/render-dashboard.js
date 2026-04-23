@@ -252,13 +252,13 @@ export function switchView(viewId) {
   }
 }
 
-export function renderMonthHeader() {
+function renderMonthHeader() {
   const name = `${MONTH_NAMES[state.currentMonth]} ${state.currentYear}`;
   const monthName = document.getElementById("monthName");
   if (monthName) monthName.textContent = name;
 }
 
-export function renderSummary() {
+function renderSummary() {
   const monthData = getCurrentMonthData();
   const habits = getSortedDailyHabits();
   const totalDays = daysInMonth(state.currentYear, state.currentMonth);
@@ -641,7 +641,7 @@ function bindDailyGridHoverInteractions(grid) {
   grid.dataset.linkedHoverBound = "true";
 }
 
-export function renderWeeklySummaryCards() {
+function renderWeeklySummaryCards() {
   const container = document.getElementById("weeklySummaryCards");
   if (!container) return;
 

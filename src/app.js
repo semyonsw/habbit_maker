@@ -93,7 +93,6 @@ async function init() {
       if (resp.ok) {
         const data = await resp.json();
         localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-        console.log("Backup restored from habit-tracker-backup-2026-03.json");
       }
     }
   } catch (_) {

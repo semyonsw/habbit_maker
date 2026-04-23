@@ -323,7 +323,13 @@ export function importData(file) {
         );
       }
     } catch (err) {
-      console.error("Import error:", err);
+      appendLogEntry({
+        level: "error",
+        component: "backup",
+        operation: "importData",
+        message: "Failed to import backup file.",
+        error: err,
+      });
       alert(
         "Failed to import backup file.\n" +
           (err && err.message ? err.message : String(err)),

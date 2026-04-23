@@ -136,7 +136,7 @@ export function deleteCategory(id) {
   });
 }
 
-export function buildScheduleCheckboxes(
+function buildScheduleCheckboxes(
   containerId,
   values,
   labelBuilder,

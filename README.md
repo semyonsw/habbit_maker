@@ -45,21 +45,22 @@ Your data stays in your browser unless you choose to use AI summaries.
   - Fixed (every day)
   - Specific weekdays
   - Specific month days
+- Per-habit streak badges (current / best days).
+- Three-dot menu on each habit: move up, move down, edit, delete.
 - Weekly summary cards and dashboard donut summary.
 
 ### Books + PDF Workspace
 
 - Upload PDF books (stored locally in IndexedDB).
+- Auto-generated cover previews from the first PDF page.
 - Add bookmarks (PDF page + optional real page + note).
 - Open bookmarks in Reader Mode.
 - Reader controls: next/prev, jump to page, zoom, dark reading modes.
-- Book Finisher Helper (pages/day plan to finish by a date).
 - Bookmarks keep event history.
 
 ### Analytics + Review
 
 - Habit charts (daily, weekly, monthly trends, category performance).
-- Books analytics (pace, trends, heatmaps, per-book comparisons).
 - Monthly review notes:
   - wins
   - blockers
@@ -70,7 +71,7 @@ Your data stays in your browser unless you choose to use AI summaries.
 - Uses Gemini API to summarize bookmarked PDF ranges.
 - Incremental summary flow supported.
 - Markdown summary rendering with math support.
-- Model picker + language selection.
+- Model picker + language selection (English, Armenian, Russian).
 - API key can be encrypted locally with your passphrase.
 
 ### Logs + Diagnostics
@@ -274,7 +275,7 @@ If port 3000 is busy, use another port (for example `8080`) and open that URL.
 
 - Monthly grid with one row per habit.
 - Weekly cards and summary donut update automatically.
-- Habit order can be changed.
+- Three-dot menu on each habit row for reorder (move up/down), edit, and delete.
 - Reset current month clears only that month's completions/notes.
 - Clear all data resets full app state.
 
@@ -286,12 +287,7 @@ If port 3000 is busy, use another port (for example `8080`) and open that URL.
   - max file size 70MB
 - Reader Mode opens in a separate tab with URL query params.
 - Reader can add bookmark/history from current page.
-
-### Book Finisher Helper
-
-- Choose book, target date, start page, and reading weekdays.
-- App calculates required pages per selected reading day.
-- Includes a weekly load plan chart.
+- Book covers are auto-generated from the first PDF page and lazy-loaded.
 
 ### AI Summary (optional)
 
@@ -305,7 +301,6 @@ If port 3000 is busy, use another port (for example `8080`) and open that URL.
 ### Analytics
 
 - Habit analytics with percentage/raw display mode toggle.
-- Books analytics range filters: 7d, 30d, 90d, all.
 - Monthly review text fields saved per month.
 
 ### Logs
@@ -356,7 +351,8 @@ If file does not exist, app starts fresh.
 | Optional API key cache (plain text) | `localStorage` | `habitTracker_summary_api_key_cache_v1`                                       |
 | Logs                                | `localStorage` | `habitTracker_logs_v1`                                                        |
 | Reader theme preferences            | `localStorage` | `habitTracker_readerDarkEnabled_v1`, `habitTracker_readerDarkMode_v1`         |
-| Analytics preferences               | `localStorage` | `habitTracker_analyticsDisplayMode_v1`, `habitTracker_booksAnalyticsRange_v1` |
+| Analytics preferences               | `localStorage` | `habitTracker_analyticsDisplayMode_v1`                                        |
+| Sidebar collapsed state             | `localStorage` | `habitTracker_sidebarCollapsed_v1`                                            |
 | PDF files                           | `IndexedDB`    | DB: `habitTracker_books_pdf_v1`, Store: `pdfFiles`                            |
 
 ### Privacy model

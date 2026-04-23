@@ -65,7 +65,7 @@ function resolveSummaryModelProfile(model) {
   };
 }
 
-export function computeDynamicSummaryLimits({
+function computeDynamicSummaryLimits({
   model,
   plannedPages,
   totalBookPages,
@@ -368,7 +368,7 @@ async function renderSummaryMath(element) {
   }
 }
 
-export function chunkTextForSummary(text, maxChars) {
+function chunkTextForSummary(text, maxChars) {
   const clean = String(text || "")
     .replace(/\r/g, "")
     .trim();
@@ -515,7 +515,7 @@ export async function extractTextRangeFromBookPdf(
   }
 }
 
-export function buildIncrementalChunkPrompt({
+function buildIncrementalChunkPrompt({
   text,
   startPage,
   endPage,
@@ -538,7 +538,7 @@ export function buildIncrementalChunkPrompt({
   ].join("\n\n");
 }
 
-export function buildChunkMergePrompt({
+function buildChunkMergePrompt({
   chunkSummaries,
   startPage,
   endPage,
@@ -560,7 +560,7 @@ export function buildChunkMergePrompt({
   ].join("\n\n");
 }
 
-export function buildFinalMergePrompt({
+function buildFinalMergePrompt({
   previousSummary,
   incrementalSummary,
   currentBookmarkPage,
@@ -593,7 +593,7 @@ function resolveSummaryLanguageInstruction(summaryLanguage) {
   return "Write the entire response in English.";
 }
 
-export function parseGeminiResponseText(payload) {
+function parseGeminiResponseText(payload) {
   if (!isPlainObject(payload) || !Array.isArray(payload.candidates)) {
     return "";
   }
@@ -613,7 +613,7 @@ export function parseGeminiResponseText(payload) {
     .trim();
 }
 
-export function describeGeminiResponseIssue(payload) {
+function describeGeminiResponseIssue(payload) {
   if (!isPlainObject(payload)) return "";
   const parts = [];
   if (Array.isArray(payload.candidates) && payload.candidates.length) {
@@ -824,14 +824,14 @@ export async function mergeWithPreviousSummary({
   return callGeminiGenerateText({ apiKey, model, prompt });
 }
 
-export function formatDuration(durationMs) {
+function formatDuration(durationMs) {
   const ms = Number(durationMs);
   if (!Number.isFinite(ms) || ms <= 0) return "-";
   if (ms < 1000) return `${Math.round(ms)} ms`;
   return `${(ms / 1000).toFixed(1)} s`;
 }
 
-export function formatSummaryInlineMarkdown(input) {
+function formatSummaryInlineMarkdown(input) {
   const escaped = sanitize(String(input || "")).replace(/\r/g, "");
   const withCode = escaped.replace(/`([^`]+)`/g, "<code>$1</code>");
   const withBold = withCode.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
@@ -840,7 +840,7 @@ export function formatSummaryInlineMarkdown(input) {
     .replace(/(^|[^_])_([^_\n]+)_(?!_)/g, "$1<em>$2</em>");
 }
 
-export function renderSummaryContentHtmlFallback(content) {
+function renderSummaryContentHtmlFallback(content) {
   const source = String(content || "")
     .replace(/\r\n?/g, "\n")
     .trim();
@@ -917,7 +917,7 @@ export function renderSummaryContentHtmlFallback(content) {
   return html.join("");
 }
 
-export function normalizeSummaryMarkdown(content) {
+function normalizeSummaryMarkdown(content) {
   let source = String(content || "").trim();
   if (!source) return "";
 
@@ -939,7 +939,7 @@ export function normalizeSummaryMarkdown(content) {
   return source;
 }
 
-export function renderSummaryContentHtml(content) {
+function renderSummaryContentHtml(content) {
   const source = normalizeSummaryMarkdown(content);
   if (!source) return "";
 
