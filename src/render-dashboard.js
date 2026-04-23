@@ -43,6 +43,179 @@ function syncAllStreakBadges(grid) {
     .forEach((badge) => syncStreakBadgeText(badge));
 }
 
+let dashboardHabitActionsMenu = null;
+let dashboardHabitActionsActiveToggle = null;
+let dashboardHabitActionsBound = false;
+
+function closeDashboardHabitActionsMenu(options = {}) {
+  const restoreFocus = !!options.restoreFocus;
+  if (!dashboardHabitActionsMenu) return;
+
+  dashboardHabitActionsMenu.hidden = true;
+  dashboardHabitActionsMenu.setAttribute("aria-hidden", "true");
+
+  if (dashboardHabitActionsActiveToggle instanceof HTMLElement) {
+    dashboardHabitActionsActiveToggle.setAttribute("aria-expanded", "false");
+    if (restoreFocus) {
+      dashboardHabitActionsActiveToggle.focus();
+    }
+  }
+
+  dashboardHabitActionsActiveToggle = null;
+}
+
+function positionDashboardHabitActionsMenu(toggle, menu) {
+  if (!(toggle instanceof HTMLElement) || !(menu instanceof HTMLElement))
+    return;
+
+  const gap = 8;
+  const rect = toggle.getBoundingClientRect();
+  const menuRect = menu.getBoundingClientRect();
+
+  let left = rect.right - menuRect.width;
+  let top = rect.bottom + gap;
+
+  if (left < gap) {
+    left = gap;
+  }
+  if (left + menuRect.width > window.innerWidth - gap) {
+    left = window.innerWidth - menuRect.width - gap;
+  }
+
+  if (top + menuRect.height > window.innerHeight - gap) {
+    top = rect.top - menuRect.height - gap;
+  }
+  if (top < gap) {
+    top = gap;
+  }
+
+  menu.style.left = `${Math.round(left)}px`;
+  menu.style.top = `${Math.round(top)}px`;
+}
+
+function runDashboardHabitAction(action, habitId) {
+  if (!habitId || !window.HabitApp) return;
+
+  if (action === "move-up") {
+    window.HabitApp.moveHabit?.(habitId, "up");
+    return;
+  }
+  if (action === "move-down") {
+    window.HabitApp.moveHabit?.(habitId, "down");
+    return;
+  }
+  if (action === "edit") {
+    window.HabitApp.editHabit?.(habitId);
+    return;
+  }
+  if (action === "delete") {
+    window.HabitApp.deleteHabit?.(habitId);
+  }
+}
+
+function ensureDashboardHabitActionsMenu() {
+  if (
+    dashboardHabitActionsMenu instanceof HTMLElement &&
+    document.body.contains(dashboardHabitActionsMenu)
+  ) {
+    return dashboardHabitActionsMenu;
+  }
+
+  const menu = document.createElement("div");
+  menu.id = "dashboardHabitActionsMenu";
+  menu.className = "habit-actions-popover";
+  menu.setAttribute("role", "menu");
+  menu.setAttribute("aria-label", "Habit actions");
+  menu.setAttribute("aria-hidden", "true");
+  menu.hidden = true;
+  menu.innerHTML =
+    "<button type='button' class='habit-action-item' data-action='move-up' role='menuitem'>Move up</button><button type='button' class='habit-action-item' data-action='move-down' role='menuitem'>Move down</button><button type='button' class='habit-action-item' data-action='edit' role='menuitem'>Edit</button><button type='button' class='habit-action-item delete' data-action='delete' role='menuitem'>Delete</button>";
+  document.body.appendChild(menu);
+
+  dashboardHabitActionsMenu = menu;
+
+  if (!dashboardHabitActionsBound) {
+    document.addEventListener("click", (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+
+      const toggle = target.closest(".habit-actions-toggle");
+      if (toggle instanceof HTMLElement) {
+        const menuEl = ensureDashboardHabitActionsMenu();
+        const isSameToggle =
+          dashboardHabitActionsActiveToggle === toggle && !menuEl.hidden;
+
+        if (isSameToggle) {
+          closeDashboardHabitActionsMenu({ restoreFocus: false });
+          return;
+        }
+
+        closeDashboardHabitActionsMenu({ restoreFocus: false });
+        dashboardHabitActionsActiveToggle = toggle;
+        toggle.setAttribute("aria-expanded", "true");
+
+        menuEl.dataset.habitId = toggle.dataset.habitId || "";
+
+        const canMoveUp = toggle.dataset.canMoveUp === "true";
+        const canMoveDown = toggle.dataset.canMoveDown === "true";
+        const moveUpBtn = menuEl.querySelector(
+          ".habit-action-item[data-action='move-up']",
+        );
+        const moveDownBtn = menuEl.querySelector(
+          ".habit-action-item[data-action='move-down']",
+        );
+        if (moveUpBtn instanceof HTMLButtonElement) {
+          moveUpBtn.disabled = !canMoveUp;
+        }
+        if (moveDownBtn instanceof HTMLButtonElement) {
+          moveDownBtn.disabled = !canMoveDown;
+        }
+
+        menuEl.hidden = false;
+        menuEl.setAttribute("aria-hidden", "false");
+        positionDashboardHabitActionsMenu(toggle, menuEl);
+        return;
+      }
+
+      const actionBtn = target.closest(".habit-action-item");
+      if (actionBtn instanceof HTMLButtonElement) {
+        if (actionBtn.disabled) return;
+        const menuEl = ensureDashboardHabitActionsMenu();
+        const habitId = menuEl.dataset.habitId || "";
+        const action = actionBtn.dataset.action || "";
+        closeDashboardHabitActionsMenu({ restoreFocus: false });
+        runDashboardHabitAction(action, habitId);
+        return;
+      }
+
+      if (target.closest("#dashboardHabitActionsMenu")) return;
+
+      closeDashboardHabitActionsMenu({ restoreFocus: false });
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") return;
+      closeDashboardHabitActionsMenu({ restoreFocus: true });
+    });
+
+    window.addEventListener("resize", () => {
+      closeDashboardHabitActionsMenu({ restoreFocus: false });
+    });
+
+    window.addEventListener(
+      "scroll",
+      () => {
+        closeDashboardHabitActionsMenu({ restoreFocus: false });
+      },
+      true,
+    );
+
+    dashboardHabitActionsBound = true;
+  }
+
+  return dashboardHabitActionsMenu;
+}
+
 export function switchView(viewId) {
   document
     .querySelectorAll(".view")
@@ -755,8 +928,12 @@ function computeGlobalComboStreak() {
 }
 
 export function renderDailyHabitsGrid() {
+  closeDashboardHabitActionsMenu({ restoreFocus: false });
+
   const grid = document.getElementById("dailyHabitsGrid");
   if (!grid) return;
+
+  ensureDashboardHabitActionsMenu();
 
   const monthData = getCurrentMonthData();
   const habits = getSortedDailyHabits();
@@ -812,8 +989,7 @@ export function renderDailyHabitsGrid() {
       .forEach((cell) => cell.classList.toggle("day-complete", !!isComplete));
   }
 
-  let html =
-    "<thead><tr><th class='habit-name-col'><span>Habits</span></th>";
+  let html = "<thead><tr><th class='habit-name-col'><span>Habits</span></th>";
   for (let day = 1; day <= totalDays; day++) {
     const isToday = day === todayDay;
     const isComplete = completedDays[day];
@@ -829,9 +1005,11 @@ export function renderDailyHabitsGrid() {
   }
   html += "</tr></thead><tbody>";
 
-  habits.forEach((habit) => {
+  habits.forEach((habit, idx) => {
     const emoji = sanitize(getHabitEmoji(habit));
-    html += `<tr><td class='habit-name-cell'><span class='habit-title' title='${sanitize(habit.name)}'>${emoji} ${sanitize(habit.name)}</span><span class='streak-badge' data-streak-habit='${habit.id}' data-streak-current='0' data-streak-best='0' title='Current 0d | Best 0d' aria-label='Current 0d | Best 0d'>Current 0d | Best 0d</span></td>`;
+    const canMoveUp = idx > 0;
+    const canMoveDown = idx < habits.length - 1;
+    html += `<tr><td class='habit-name-cell'><div class='habit-name-cell-inner'><div class='habit-name-main'><span class='habit-title' title='${sanitize(habit.name)}'>${emoji} ${sanitize(habit.name)}</span><span class='streak-badge' data-streak-habit='${habit.id}' data-streak-current='0' data-streak-best='0' title='Current 0d | Best 0d' aria-label='Current 0d | Best 0d'>Current 0d | Best 0d</span></div><button type='button' class='habit-actions-toggle' data-habit-id='${habit.id}' data-can-move-up='${canMoveUp ? "true" : "false"}' data-can-move-down='${canMoveDown ? "true" : "false"}' aria-label='Open actions for ${sanitize(habit.name)}' aria-haspopup='menu' aria-expanded='false'>⋯</button></div></td>`;
     for (let day = 1; day <= totalDays; day++) {
       const isToday = day === todayDay;
       const isComplete = completedDays[day];
