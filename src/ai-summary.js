@@ -13,7 +13,12 @@ import {
 import { appendLogEntry, maybeAutoDownloadLogs } from "./logging.js";
 import { idbGetPdfBlob } from "./idb.js";
 import { ensurePdfJsLibLoaded } from "./pdf-reader.js";
-import { getApiKeyForSummary, getBookAiSettings } from "./encryption.js";
+import {
+  getApiKeyForSummary,
+  getBookAiSettings,
+  hasStoredEncryptedApiKey,
+  unlockStoredApiKeyInteractive,
+} from "./encryption.js";
 import {
   getBookById,
   getBookmarkById,
@@ -1209,10 +1214,17 @@ export async function runBookmarkSummary(bookId, bookmarkId, runMode) {
     }
 
     settings = getBookAiSettings();
-    const runtimeApiKey = getApiKeyForSummary();
+    let runtimeApiKey = getApiKeyForSummary();
+    if (!runtimeApiKey && hasStoredEncryptedApiKey()) {
+      const unlocked = await unlockStoredApiKeyInteractive();
+      if (!unlocked) {
+        return;
+      }
+      runtimeApiKey = getApiKeyForSummary();
+    }
     if (!runtimeApiKey) {
       alert(
-        "Unlock your saved Gemini API key in Books > Summary AI Settings first.",
+        "Save and unlock a Gemini API key in Books > Summary AI Settings first.",
       );
       return;
     }

@@ -256,9 +256,7 @@ async function runLegacyMigration() {
 
   // If the auto-restore JSON carried base64-encoded PDFs, decode and upload.
   if (bundle.backupBlobsBase64) {
-    for (const [fileId, encoded] of Object.entries(
-      bundle.backupBlobsBase64,
-    )) {
+    for (const [fileId, encoded] of Object.entries(bundle.backupBlobsBase64)) {
       if (typeof encoded !== "string" || !encoded.trim()) continue;
       try {
         const binary = atob(encoded);
@@ -324,13 +322,14 @@ async function init() {
   bindEvents();
   await initSidebarCollapse();
   applyBookSummarySettingsToInputs();
-  await maybeMigrateLegacyApiKey();
-  await tryUnlockOnStartup();
 
   const inReaderMode = await initReaderMode();
   if (inReaderMode) {
     return;
   }
+
+  await maybeMigrateLegacyApiKey();
+  await tryUnlockOnStartup();
 
   initTopClock();
   callRenderer("renderAll");

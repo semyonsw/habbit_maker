@@ -1,6 +1,6 @@
 "use strict";
 
-import { GEMINI_MODELS } from "./constants.js";
+import { GEMINI_MODELS, API_KEY_CACHE_KEY } from "./constants.js";
 import { state, secureSettings, runtimeSecrets, globals } from "./state.js";
 import {
   isPlainObject,
@@ -13,7 +13,8 @@ import {
 import { appendLogEntry } from "./logging.js";
 import * as db from "./db.js";
 
-const RUNTIME_KEY_CACHE_KEY = "habitTracker_summary_api_key_cache_v1";
+const RUNTIME_KEY_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const RUNTIME_KEY_CACHE_VERSION = 1;
 
 export async function loadSecureSettings() {
   try {
@@ -75,27 +76,199 @@ export function clearRuntimeApiKey() {
 }
 
 export function isApiKeyDeviceCacheEnabled() {
-  if (!state || !state.books || !state.books.ai) return false;
-  return state.books.ai.rememberOnDevice === true;
+  return true;
+}
+
+function readSessionRuntimeApiKeyCacheRaw() {
+  try {
+    return String(sessionStorage.getItem(API_KEY_CACHE_KEY) || "");
+  } catch (_) {
+    return "";
+  }
+}
+
+function writeSessionRuntimeApiKeyCache(payload) {
+  try {
+    sessionStorage.setItem(API_KEY_CACHE_KEY, JSON.stringify(payload));
+  } catch (_) {
+    /* session storage can be unavailable in restricted contexts */
+  }
+}
+
+function clearSessionRuntimeApiKeyCache() {
+  try {
+    sessionStorage.removeItem(API_KEY_CACHE_KEY);
+  } catch (_) {
+    /* session storage can be unavailable in restricted contexts */
+  }
+}
+
+function parseRuntimeApiKeyCachePayload(rawPayload) {
+  if (!rawPayload) return null;
+
+  if (typeof rawPayload === "string") {
+    const legacyValue = rawPayload.trim();
+    if (!legacyValue) return null;
+    const now = Date.now();
+    return {
+      version: RUNTIME_KEY_CACHE_VERSION,
+      apiKey: legacyValue,
+      cachedAt: new Date(now).toISOString(),
+      expiresAt: new Date(now + RUNTIME_KEY_CACHE_TTL_MS).toISOString(),
+      _normalized: true,
+    };
+  }
+
+  if (!isPlainObject(rawPayload)) return null;
+
+  const apiKey = String(rawPayload.apiKey || "").trim();
+  const parsedExpiresAt = Date.parse(String(rawPayload.expiresAt || ""));
+  if (!apiKey || !Number.isFinite(parsedExpiresAt)) {
+    return null;
+  }
+
+  const cachedAtCandidate = Date.parse(String(rawPayload.cachedAt || ""));
+  const cachedAt = Number.isFinite(cachedAtCandidate)
+    ? new Date(cachedAtCandidate).toISOString()
+    : nowIso();
+  const normalizedVersion =
+    Number(rawPayload.version) === RUNTIME_KEY_CACHE_VERSION
+      ? RUNTIME_KEY_CACHE_VERSION
+      : RUNTIME_KEY_CACHE_VERSION;
+
+  const parsed = {
+    version: normalizedVersion,
+    apiKey,
+    cachedAt,
+    expiresAt: new Date(parsedExpiresAt).toISOString(),
+  };
+
+  if (
+    Number(rawPayload.version) !== RUNTIME_KEY_CACHE_VERSION ||
+    !String(rawPayload.cachedAt || "").trim()
+  ) {
+    parsed._normalized = true;
+  }
+
+  return parsed;
+}
+
+function buildRuntimeApiKeyCachePayload(apiKey) {
+  const value = String(apiKey || "").trim();
+  if (!value) return null;
+  const now = Date.now();
+  return {
+    version: RUNTIME_KEY_CACHE_VERSION,
+    apiKey: value,
+    cachedAt: new Date(now).toISOString(),
+    expiresAt: new Date(now + RUNTIME_KEY_CACHE_TTL_MS).toISOString(),
+  };
+}
+
+function isRuntimeApiKeyCacheValid(payload) {
+  const expiresAtMs = Date.parse(String(payload && payload.expiresAt));
+  return Number.isFinite(expiresAtMs) && expiresAtMs > Date.now();
+}
+
+function hydrateRuntimeApiKeyFromCache(payload) {
+  runtimeSecrets.apiKey = String(payload.apiKey || "").trim();
+  runtimeSecrets.unlockedAt = nowIso();
 }
 
 function persistRuntimeApiKeyCache(apiKey) {
-  const value = String(apiKey || "").trim();
-  if (!value || !isApiKeyDeviceCacheEnabled()) {
-    sessionStorage.removeItem(RUNTIME_KEY_CACHE_KEY);
-    return;
+  const payload = buildRuntimeApiKeyCachePayload(apiKey);
+
+  if (!payload) {
+    clearSessionRuntimeApiKeyCache();
+    return db.patchPrefs({ [API_KEY_CACHE_KEY]: null }).catch((error) => {
+      appendLogEntry({
+        level: "warn",
+        component: "secure-settings",
+        operation: "persistRuntimeApiKeyCache.clear",
+        message: "Failed to clear persisted API key cache.",
+        error,
+      });
+    });
   }
-  sessionStorage.setItem(RUNTIME_KEY_CACHE_KEY, value);
+
+  writeSessionRuntimeApiKeyCache(payload);
+  return db.patchPrefs({ [API_KEY_CACHE_KEY]: payload }).catch((error) => {
+    appendLogEntry({
+      level: "warn",
+      component: "secure-settings",
+      operation: "persistRuntimeApiKeyCache.persist",
+      message: "Failed to persist API key cache.",
+      error,
+    });
+  });
 }
 
-function loadRuntimeApiKeyCache() {
-  const cached = String(
-    sessionStorage.getItem(RUNTIME_KEY_CACHE_KEY) || "",
-  ).trim();
-  if (!cached) return false;
-  runtimeSecrets.apiKey = cached;
-  runtimeSecrets.unlockedAt = nowIso();
-  return true;
+async function loadRuntimeApiKeyCache() {
+  const sessionRaw = readSessionRuntimeApiKeyCacheRaw();
+  if (sessionRaw) {
+    let parsedSession = null;
+    try {
+      parsedSession = JSON.parse(sessionRaw);
+    } catch (_) {
+      parsedSession = sessionRaw;
+    }
+    const payload = parseRuntimeApiKeyCachePayload(parsedSession);
+    if (payload && isRuntimeApiKeyCacheValid(payload)) {
+      hydrateRuntimeApiKeyFromCache(payload);
+      if (payload._normalized) {
+        writeSessionRuntimeApiKeyCache(payload);
+      }
+      return true;
+    }
+    clearSessionRuntimeApiKeyCache();
+  }
+
+  let prefs = null;
+  try {
+    prefs = await db.getPrefs();
+  } catch (error) {
+    appendLogEntry({
+      level: "warn",
+      component: "secure-settings",
+      operation: "loadRuntimeApiKeyCache.getPrefs",
+      message: "Failed to read persisted API key cache.",
+      error,
+    });
+    return false;
+  }
+
+  const persistedRaw = isPlainObject(prefs) ? prefs[API_KEY_CACHE_KEY] : null;
+  const payload = parseRuntimeApiKeyCachePayload(persistedRaw);
+  if (payload && isRuntimeApiKeyCacheValid(payload)) {
+    hydrateRuntimeApiKeyFromCache(payload);
+    writeSessionRuntimeApiKeyCache(payload);
+    if (payload._normalized) {
+      db.patchPrefs({ [API_KEY_CACHE_KEY]: payload }).catch((error) => {
+        appendLogEntry({
+          level: "warn",
+          component: "secure-settings",
+          operation: "loadRuntimeApiKeyCache.normalize",
+          message: "Failed to normalize persisted API key cache.",
+          error,
+        });
+      });
+    }
+    return true;
+  }
+
+  if (persistedRaw !== null && persistedRaw !== undefined) {
+    db.patchPrefs({ [API_KEY_CACHE_KEY]: null }).catch((error) => {
+      appendLogEntry({
+        level: "warn",
+        component: "secure-settings",
+        operation: "loadRuntimeApiKeyCache.clearExpired",
+        message: "Failed to clear expired API key cache.",
+        error,
+      });
+    });
+  }
+
+  return false;
 }
 
 async function derivePassphraseKey(passphrase, salt, iterations) {
@@ -177,19 +350,14 @@ export function applySummaryApiKeyUiState() {
 
   const hasEncrypted = hasStoredEncryptedApiKey();
   const isUnlocked = !!getApiKeyForSummary();
-  const hasCachedRuntimeKey = !!String(
-    sessionStorage.getItem(RUNTIME_KEY_CACHE_KEY) || "",
-  ).trim();
-  const cacheEnabled = isApiKeyDeviceCacheEnabled();
   if (hasEncrypted && isUnlocked) {
     savedLabel.textContent =
-      "API key is saved (encrypted) and unlocked for this session.";
+      "API key is saved (encrypted) and unlocked. Device cache stays valid for 7 days.";
   } else if (hasEncrypted) {
     savedLabel.textContent =
-      "API key is saved (encrypted). Unlock with passphrase to run summaries.";
-  } else if (cacheEnabled && hasCachedRuntimeKey && isUnlocked) {
-    savedLabel.textContent =
-      "API key is cached locally and ready to use on this device.";
+      "API key is saved (encrypted). You will only re-enter passphrase when cache expires.";
+  } else if (isUnlocked) {
+    savedLabel.textContent = "API key is loaded for this session.";
   } else {
     savedLabel.textContent = "No API key saved yet.";
   }
@@ -218,7 +386,7 @@ export async function unlockStoredApiKeyInteractive() {
     const decrypted = await decryptApiKeyWithPassphrase(passphrase);
     runtimeSecrets.apiKey = String(decrypted || "").trim();
     runtimeSecrets.unlockedAt = nowIso();
-    persistRuntimeApiKeyCache(runtimeSecrets.apiKey);
+    await persistRuntimeApiKeyCache(runtimeSecrets.apiKey);
     applySummaryApiKeyUiState();
     appendLogEntry({
       level: "info",
@@ -229,6 +397,7 @@ export async function unlockStoredApiKeyInteractive() {
     return true;
   } catch (error) {
     clearRuntimeApiKey();
+    await persistRuntimeApiKeyCache("");
     applySummaryApiKeyUiState();
     appendLogEntry({
       level: "warn",
@@ -243,49 +412,12 @@ export async function unlockStoredApiKeyInteractive() {
 }
 
 export async function tryUnlockOnStartup() {
-  if (isApiKeyDeviceCacheEnabled() && loadRuntimeApiKeyCache()) {
+  if (await loadRuntimeApiKeyCache()) {
     applySummaryApiKeyUiState();
     return;
   }
-  if (!hasStoredEncryptedApiKey()) {
-    applySummaryApiKeyUiState();
-    return;
-  }
-  const passphrase = window.prompt(
-    "Enter passphrase to unlock your saved Gemini API key for this session:",
-    "",
-  );
-  if (!passphrase) {
-    clearRuntimeApiKey();
-    applySummaryApiKeyUiState();
-    return;
-  }
-  try {
-    const decrypted = await decryptApiKeyWithPassphrase(passphrase);
-    runtimeSecrets.apiKey = String(decrypted || "").trim();
-    runtimeSecrets.unlockedAt = nowIso();
-    persistRuntimeApiKeyCache(runtimeSecrets.apiKey);
-    appendLogEntry({
-      level: "info",
-      component: "secure-settings",
-      operation: "tryUnlockOnStartup",
-      message: "Encrypted API key unlocked on app startup.",
-    });
-  } catch (error) {
-    clearRuntimeApiKey();
-    appendLogEntry({
-      level: "warn",
-      component: "secure-settings",
-      operation: "tryUnlockOnStartup",
-      message: "Startup unlock failed.",
-      error,
-    });
-    alert(
-      "Could not unlock saved API key. You can retry from Summary AI settings.",
-    );
-  } finally {
-    applySummaryApiKeyUiState();
-  }
+  clearRuntimeApiKey();
+  applySummaryApiKeyUiState();
 }
 
 export async function maybeMigrateLegacyApiKey() {
@@ -328,7 +460,7 @@ export async function maybeMigrateLegacyApiKey() {
     await encryptApiKeyWithPassphrase(legacyKey, passphrase);
     runtimeSecrets.apiKey = legacyKey;
     runtimeSecrets.unlockedAt = nowIso();
-    persistRuntimeApiKeyCache(runtimeSecrets.apiKey);
+    await persistRuntimeApiKeyCache(runtimeSecrets.apiKey);
     const settings = getBookAiSettings();
     settings.apiKeySaved = true;
     settings.apiKeyLastUpdated = secureSettings.keyUpdatedAt || nowIso();
@@ -397,7 +529,7 @@ export function getBookAiSettings() {
       apiKeyMode: "encrypted",
       apiKeySaved: false,
       apiKeyLastUpdated: "",
-      rememberOnDevice: false,
+      rememberOnDevice: true,
       model: "gemini-2.5-flash",
       summaryLanguage: "English",
       consolidateMode: true,
@@ -406,7 +538,7 @@ export function getBookAiSettings() {
   state.books.ai.apiKey = "";
   state.books.ai.apiKeyMode = "encrypted";
   state.books.ai.apiKeySaved = hasStoredEncryptedApiKey();
-  state.books.ai.rememberOnDevice = state.books.ai.rememberOnDevice === true;
+  state.books.ai.rememberOnDevice = true;
   state.books.ai.model = ensureModelAllowed(state.books.ai.model);
   state.books.ai.summaryLanguage = ensureSummaryLanguageAllowed(
     state.books.ai.summaryLanguage,
@@ -449,7 +581,8 @@ export function applyBookSummarySettingsToInputs() {
     );
   }
   if (rememberToggle) {
-    rememberToggle.checked = settings.rememberOnDevice === true;
+    rememberToggle.checked = true;
+    rememberToggle.disabled = true;
   }
   if (consolidateToggle) {
     consolidateToggle.checked = settings.consolidateMode !== false;
@@ -462,7 +595,6 @@ export async function saveBookSummarySettingsFromInputs() {
   const keyInput = document.getElementById("summaryApiKeyInput");
   const modelInput = document.getElementById("summaryModelInput");
   const languageInput = document.getElementById("summaryLanguageInput");
-  const rememberToggle = document.getElementById("summaryRememberApiKeyToggle");
   const consolidateToggle = document.getElementById("summaryConsolidateToggle");
 
   const enteredKey = keyInput ? String(keyInput.value || "").trim() : "";
@@ -473,7 +605,7 @@ export async function saveBookSummarySettingsFromInputs() {
     languageInput ? String(languageInput.value || "") : "",
   );
 
-  settings.rememberOnDevice = rememberToggle ? rememberToggle.checked : false;
+  settings.rememberOnDevice = true;
 
   settings.consolidateMode = consolidateToggle
     ? consolidateToggle.checked
@@ -497,7 +629,7 @@ export async function saveBookSummarySettingsFromInputs() {
       await encryptApiKeyWithPassphrase(enteredKey, passphrase);
       runtimeSecrets.apiKey = enteredKey;
       runtimeSecrets.unlockedAt = nowIso();
-      persistRuntimeApiKeyCache(runtimeSecrets.apiKey);
+      await persistRuntimeApiKeyCache(runtimeSecrets.apiKey);
       settings.apiKeySaved = true;
       settings.apiKeyLastUpdated = secureSettings.keyUpdatedAt || nowIso();
     } else {
@@ -518,10 +650,9 @@ export async function saveBookSummarySettingsFromInputs() {
   settings.apiKey = "";
   settings.apiKeyMode = "encrypted";
 
-  if (settings.rememberOnDevice) {
-    persistRuntimeApiKeyCache(getApiKeyForSummary());
-  } else {
-    persistRuntimeApiKeyCache("");
+  const runtimeApiKey = getApiKeyForSummary();
+  if (runtimeApiKey) {
+    await persistRuntimeApiKeyCache(runtimeApiKey);
   }
 
   saveStateImported();
