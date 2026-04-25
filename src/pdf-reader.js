@@ -12,6 +12,11 @@ import {
   toggleReaderDarkTheme,
   setReaderDarkMode,
 } from "./preferences.js";
+import {
+  showGlobalLoader,
+  hideGlobalLoader,
+  waitForNextPaint,
+} from "./loading-ui.js";
 import * as db from "./db.js";
 
 export function loadScriptTag(url) {
@@ -136,65 +141,72 @@ export async function initReaderMode() {
     return false;
   }
 
-  document.getElementById("app").style.display = "none";
-  const readerRoot = document.getElementById("readerMode");
-  readerRoot.style.display = "block";
-  await loadReaderThemePreferences();
-  applyReaderThemeClasses();
+  showGlobalLoader("Opening bookmark...");
+  await waitForNextPaint();
 
-  const bookId = params.get("book") || "";
-  const targetPage = Math.max(1, parseInt(params.get("page"), 10) || 1);
-  const sourceBookmarkId = params.get("bookmark") || "";
-  const book = getBookById(bookId);
-  if (!book) {
-    document.getElementById("readerStatusText").textContent =
-      "Book metadata not found.";
-    return true;
-  }
-
-  readerState.book = book;
-  readerState.sourceBookmarkId = sourceBookmarkId || null;
-  readerState.sourcePage = targetPage;
-  document.getElementById("readerBookTitle").textContent = book.title;
-
-  let blob = null;
   try {
-    blob = await idbGetPdfBlob(book.fileId);
-  } catch (_) {
-    blob = null;
-  }
-  if (!blob) {
-    document.getElementById("readerStatusText").textContent =
-      "PDF file is missing in IndexedDB for this browser.";
+    document.getElementById("app").style.display = "none";
+    const readerRoot = document.getElementById("readerMode");
+    readerRoot.style.display = "block";
+    await loadReaderThemePreferences();
+    applyReaderThemeClasses();
+
+    const bookId = params.get("book") || "";
+    const targetPage = Math.max(1, parseInt(params.get("page"), 10) || 1);
+    const sourceBookmarkId = params.get("bookmark") || "";
+    const book = getBookById(bookId);
+    if (!book) {
+      document.getElementById("readerStatusText").textContent =
+        "Book metadata not found.";
+      return true;
+    }
+
+    readerState.book = book;
+    readerState.sourceBookmarkId = sourceBookmarkId || null;
+    readerState.sourcePage = targetPage;
+    document.getElementById("readerBookTitle").textContent = book.title;
+
+    let blob = null;
+    try {
+      blob = await idbGetPdfBlob(book.fileId);
+    } catch (_) {
+      blob = null;
+    }
+    if (!blob) {
+      document.getElementById("readerStatusText").textContent =
+        "PDF file is missing in IndexedDB for this browser.";
+      return true;
+    }
+
+    const pdfjsLib = await ensurePdfJsLibLoaded();
+    if (!pdfjsLib) {
+      document.getElementById("readerStatusText").textContent =
+        "PDF.js failed to load. Check your internet and refresh.";
+      return true;
+    }
+
+    pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_URL;
+
+    const url = URL.createObjectURL(blob);
+    try {
+      const loadingTask = pdfjsLib.getDocument(url);
+      readerState.pdfDoc = await loadingTask.promise;
+      readerState.totalPages = readerState.pdfDoc.numPages;
+      document.getElementById("readerStatusText").textContent = "Loaded";
+      await renderReaderPage(Math.min(targetPage, readerState.totalPages));
+    } catch (_) {
+      document.getElementById("readerStatusText").textContent =
+        "Failed to open PDF.";
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+
+    bindReaderEvents();
+    updateReaderThemeControls();
     return true;
-  }
-
-  const pdfjsLib = await ensurePdfJsLibLoaded();
-  if (!pdfjsLib) {
-    document.getElementById("readerStatusText").textContent =
-      "PDF.js failed to load. Check your internet and refresh.";
-    return true;
-  }
-
-  pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_URL;
-
-  const url = URL.createObjectURL(blob);
-  try {
-    const loadingTask = pdfjsLib.getDocument(url);
-    readerState.pdfDoc = await loadingTask.promise;
-    readerState.totalPages = readerState.pdfDoc.numPages;
-    document.getElementById("readerStatusText").textContent = "Loaded";
-    await renderReaderPage(Math.min(targetPage, readerState.totalPages));
-  } catch (_) {
-    document.getElementById("readerStatusText").textContent =
-      "Failed to open PDF.";
   } finally {
-    URL.revokeObjectURL(url);
+    hideGlobalLoader();
   }
-
-  bindReaderEvents();
-  updateReaderThemeControls();
-  return true;
 }
 
 export async function renderReaderPage(pageNumber) {

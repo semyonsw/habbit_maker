@@ -45,6 +45,7 @@ import {
   viewBookmarkSummary,
   selectSummaryForModal,
 } from "./ai-summary.js";
+import { runWithGlobalLoader } from "./loading-ui.js";
 import * as db from "./db.js";
 
 // Import render modules so they register themselves
@@ -332,7 +333,9 @@ async function init() {
   await tryUnlockOnStartup();
 
   initTopClock();
-  callRenderer("renderAll");
+  await runWithGlobalLoader("Loading Dashboard...", async () => {
+    callRenderer("renderAll");
+  });
   callRenderer("renderBooksView");
   callRenderer("renderLogsView");
   setBookUploadStatus("No file uploaded yet.", "");

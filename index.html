@@ -1229,6 +1229,24 @@
         <canvas id="readerCanvas"></canvas>
       </div>
     </section>
+
+    <div
+      id="globalLoadingOverlay"
+      class="global-loading-overlay"
+      aria-hidden="true"
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+    >
+      <div class="global-loading-card">
+        <span class="global-loading-spinner" aria-hidden="true"></span>
+        <p class="global-loading-title">Please wait</p>
+        <p id="globalLoadingMessage" class="global-loading-message">
+          Loading...
+        </p>
+      </div>
+    </div>
+
     <button class="mobile-menu-toggle" id="mobileMenuToggle">
       <svg
         width="24"

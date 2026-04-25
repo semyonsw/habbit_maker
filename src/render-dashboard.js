@@ -23,6 +23,11 @@ import {
   getHabitScheduleMode,
 } from "./habits.js";
 import { registerRenderer, callRenderer } from "./render-registry.js";
+import {
+  showGlobalLoader,
+  hideGlobalLoader,
+  waitForNextPaint,
+} from "./loading-ui.js";
 
 function syncStreakBadgeText(badge) {
   if (!(badge instanceof HTMLElement)) return;
@@ -216,7 +221,7 @@ function ensureDashboardHabitActionsMenu() {
   return dashboardHabitActionsMenu;
 }
 
-export function switchView(viewId) {
+export async function switchView(viewId) {
   document
     .querySelectorAll(".view")
     .forEach((view) => view.classList.remove("active"));
@@ -248,7 +253,13 @@ export function switchView(viewId) {
   }
 
   if (viewId === "dashboard") {
-    renderAll();
+    showGlobalLoader("Loading Dashboard...");
+    await waitForNextPaint();
+    try {
+      renderAll();
+    } finally {
+      hideGlobalLoader();
+    }
   }
 }
 
