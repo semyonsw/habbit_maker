@@ -27,8 +27,8 @@ export async function loadSecureSettings() {
         typeof parsed.saltBase64 === "string" ? parsed.saltBase64 : null,
       ivBase64: typeof parsed.ivBase64 === "string" ? parsed.ivBase64 : null,
       kdfIterations: Number.isFinite(Number(parsed.kdfIterations))
-        ? Math.max(120000, Number(parsed.kdfIterations))
-        : 200000,
+        ? Math.max(200000, Number(parsed.kdfIterations))
+        : 600000,
       keyUpdatedAt:
         typeof parsed.keyUpdatedAt === "string" ? parsed.keyUpdatedAt : null,
     });
@@ -299,7 +299,7 @@ export async function encryptApiKeyWithPassphrase(apiKey, passphrase) {
   }
   const salt = window.crypto.getRandomValues(new Uint8Array(16));
   const iv = window.crypto.getRandomValues(new Uint8Array(12));
-  const iterations = 200000;
+  const iterations = 600000;
   const key = await derivePassphraseKey(passphrase, salt, iterations);
   const encrypted = await window.crypto.subtle.encrypt(
     { name: "AES-GCM", iv },

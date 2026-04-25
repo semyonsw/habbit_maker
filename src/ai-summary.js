@@ -650,7 +650,7 @@ export async function callGeminiGenerateText({ apiKey, model, prompt }) {
     throw new Error("Gemini model is missing.");
   }
 
-  const endpoint = `${GEMINI_API_BASE_URL}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const endpoint = `${GEMINI_API_BASE_URL}/models/${encodeURIComponent(model)}:generateContent`;
   const retries = 2;
   const startedAt = performance.now();
   const timeoutMs = clampNumber(
@@ -668,6 +668,7 @@ export async function callGeminiGenerateText({ apiKey, model, prompt }) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "x-goog-api-key": apiKey,
         },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],

@@ -18,17 +18,20 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import unquote, urlparse
 
-HOST = "127.0.0.1"
-PORT = 3000
-MAX_PDF_BYTES = 80 * 1024 * 1024  # 80 MiB; client cap is 70 MiB
+HOST = os.environ.get("HABIT_HOST", "127.0.0.1")
+PORT = int(os.environ.get("HABIT_PORT", "3000"))
+MAX_PDF_BYTES = int(
+    os.environ.get("HABIT_MAX_PDF_BYTES", str(80 * 1024 * 1024))
+)  # 80 MiB; client cap is 70 MiB
 MAX_BOOKMARK_HISTORY = 200
 MAX_LOG_RECORDS = 1000
+MIN_KDF_ITERATIONS = 200_000  # OWASP-aligned floor for PBKDF2-SHA256.
 CHUNK = 64 * 1024
 PDF_FILE_ID_RE = re.compile(r"^[A-Za-z0-9_\-]{1,128}$")
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DB_PATH = os.path.join(ROOT_DIR, "data.db")
-BOOKS_DIR = os.path.join(ROOT_DIR, "books")
+DB_PATH = os.environ.get("HABIT_DB_PATH") or os.path.join(ROOT_DIR, "data.db")
+BOOKS_DIR = os.environ.get("HABIT_BOOKS_DIR") or os.path.join(ROOT_DIR, "books")
 MIGRATIONS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "migrations.sql")
 
 DB_LOCK = threading.Lock()
@@ -534,6 +537,18 @@ class Handler(BaseHTTPRequestHandler):
         body = self._read_json_body(max_bytes=256 * 1024)
         if not isinstance(body, dict):
             return self._send_json(HTTPStatus.BAD_REQUEST, {"error": "expected_object"})
+        if "kdfIterations" in body and body["kdfIterations"] is not None:
+            try:
+                iterations = int(body["kdfIterations"])
+            except (TypeError, ValueError):
+                return self._send_json(
+                    HTTPStatus.BAD_REQUEST, {"error": "invalid_kdf_iterations"}
+                )
+            if iterations < MIN_KDF_ITERATIONS:
+                return self._send_json(
+                    HTTPStatus.BAD_REQUEST, {"error": "kdf_iterations_too_low"}
+                )
+            body["kdfIterations"] = iterations
         with DB_LOCK:
             conn = get_conn()
             try:
