@@ -1,8 +1,8 @@
 "use strict";
 
-import { SIDEBAR_COLLAPSE_KEY } from "./constants.js";
 import { globals } from "./state.js";
 import { formatTopClockDateTime } from "./utils.js?v=2";
+import * as db from "./db.js";
 
 export function isDesktopViewport() {
   return window.innerWidth > 768;
@@ -17,18 +17,27 @@ export function applySidebarCollapseState() {
   toggle.setAttribute("aria-expanded", String(!effective));
 }
 
-export function initSidebarCollapse() {
-  globals.sidebarCollapsed = localStorage.getItem(SIDEBAR_COLLAPSE_KEY) === "1";
+export function initSidebarCollapseFromBlob(prefs) {
+  const blob = prefs && typeof prefs === "object" ? prefs : {};
+  globals.sidebarCollapsed = blob.sidebarCollapsed === true;
   applySidebarCollapseState();
+}
+
+export async function initSidebarCollapse() {
+  try {
+    const prefs = await db.getPrefs();
+    initSidebarCollapseFromBlob(prefs);
+  } catch (_) {
+    initSidebarCollapseFromBlob({});
+  }
 }
 
 export function setSidebarCollapsed(collapsed, persist = true) {
   globals.sidebarCollapsed = !!collapsed;
   applySidebarCollapseState();
   if (persist) {
-    localStorage.setItem(
-      SIDEBAR_COLLAPSE_KEY,
-      globals.sidebarCollapsed ? "1" : "0",
+    db.patchPrefs({ sidebarCollapsed: globals.sidebarCollapsed }).catch(
+      () => {},
     );
   }
 }

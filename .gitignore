@@ -21,3 +21,11 @@ habit-tracker-backup-*.json
 # Environment files
 .env
 .env.*
+
+# SQLite database and PDF storage
+data.db
+data.db-journal
+data.db-wal
+data.db-shm
+books/*.pdf
+books/*.tmp

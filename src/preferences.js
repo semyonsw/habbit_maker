@@ -1,26 +1,29 @@
 "use strict";
 
-import {
-  READER_DARK_ENABLED_KEY,
-  READER_DARK_MODE_KEY,
-  ANALYTICS_DISPLAY_MODE_KEY,
-} from "./constants.js";
 import { readerState, analyticsState } from "./state.js";
 import { callRenderer } from "./render-registry.js";
+import * as db from "./db.js";
 
-export function loadReaderThemePreferences() {
-  readerState.darkEnabled =
-    localStorage.getItem(READER_DARK_ENABLED_KEY) === "1";
-  const savedMode = localStorage.getItem(READER_DARK_MODE_KEY);
-  readerState.darkMode = savedMode === "text" ? "text" : "full";
+export function loadReaderThemePreferencesFromBlob(prefs) {
+  const blob = prefs && typeof prefs === "object" ? prefs : {};
+  readerState.darkEnabled = blob.readerDarkEnabled === true;
+  readerState.darkMode = blob.readerDarkMode === "text" ? "text" : "full";
+}
+
+export async function loadReaderThemePreferences() {
+  try {
+    const prefs = await db.getPrefs();
+    loadReaderThemePreferencesFromBlob(prefs);
+  } catch (_) {
+    loadReaderThemePreferencesFromBlob({});
+  }
 }
 
 export function persistReaderThemePreferences() {
-  localStorage.setItem(
-    READER_DARK_ENABLED_KEY,
-    readerState.darkEnabled ? "1" : "0",
-  );
-  localStorage.setItem(READER_DARK_MODE_KEY, readerState.darkMode);
+  db.patchPrefs({
+    readerDarkEnabled: readerState.darkEnabled === true,
+    readerDarkMode: readerState.darkMode === "text" ? "text" : "full",
+  }).catch(() => {});
 }
 
 export function applyReaderThemeClasses() {
@@ -69,16 +72,26 @@ export function setReaderDarkMode(mode) {
   updateReaderThemeControls();
 }
 
-export function loadAnalyticsPreferences() {
-  const savedMode = localStorage.getItem(ANALYTICS_DISPLAY_MODE_KEY);
-  analyticsState.displayMode = savedMode === "raw" ? "raw" : "percent";
+export function loadAnalyticsPreferencesFromBlob(prefs) {
+  const blob = prefs && typeof prefs === "object" ? prefs : {};
+  analyticsState.displayMode =
+    blob.analyticsDisplayMode === "raw" ? "raw" : "percent";
+}
+
+export async function loadAnalyticsPreferences() {
+  try {
+    const prefs = await db.getPrefs();
+    loadAnalyticsPreferencesFromBlob(prefs);
+  } catch (_) {
+    loadAnalyticsPreferencesFromBlob({});
+  }
 }
 
 export function persistAnalyticsPreferences() {
-  localStorage.setItem(
-    ANALYTICS_DISPLAY_MODE_KEY,
-    analyticsState.displayMode,
-  );
+  db.patchPrefs({
+    analyticsDisplayMode:
+      analyticsState.displayMode === "raw" ? "raw" : "percent",
+  }).catch(() => {});
 }
 
 export function getAnalyticsDisplayMode() {

@@ -2,7 +2,7 @@
 
 import { appLogs, setAppLogs } from "./state.js";
 import { sanitize, formatIsoForDisplay } from "./utils.js?v=2";
-import { enableLiveLogFile, disableLiveLogFile, updateLiveLogFileStatus, exportLogsAsJson, exportLogsAsCsv, persistLogs } from "./logging.js";
+import { enableLiveLogFile, disableLiveLogFile, updateLiveLogFileStatus, exportLogsAsJson, exportLogsAsCsv, clearAllLogs } from "./logging.js";
 import { registerRenderer } from "./render-registry.js";
 
 export function getFilteredLogs() {
@@ -102,7 +102,7 @@ export function bindLogsControls() {
       const ok = window.confirm("Clear all debug logs?");
       if (!ok) return;
       setAppLogs([]);
-      persistLogs();
+      clearAllLogs();
       renderLogsView();
     });
   }

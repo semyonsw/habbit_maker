@@ -12,6 +12,7 @@ import {
   toggleReaderDarkTheme,
   setReaderDarkMode,
 } from "./preferences.js";
+import * as db from "./db.js";
 
 export function loadScriptTag(url) {
   return new Promise((resolve, reject) => {
@@ -138,7 +139,7 @@ export async function initReaderMode() {
   document.getElementById("app").style.display = "none";
   const readerRoot = document.getElementById("readerMode");
   readerRoot.style.display = "block";
-  loadReaderThemePreferences();
+  await loadReaderThemePreferences();
   applyReaderThemeClasses();
 
   const bookId = params.get("book") || "";
@@ -263,19 +264,23 @@ export function bindReaderEvents() {
   zoomIn.addEventListener("click", () => {
     zoomLevel = Math.min(zoomLevel + 0.1, 2.5);
     applyZoom();
-    localStorage.setItem("readerZoomLevel", zoomLevel);
+    db.patchPrefs({ readerZoomLevel: zoomLevel }).catch(() => {});
   });
   zoomOut.addEventListener("click", () => {
     zoomLevel = Math.max(zoomLevel - 0.1, 0.5);
     applyZoom();
-    localStorage.setItem("readerZoomLevel", zoomLevel);
+    db.patchPrefs({ readerZoomLevel: zoomLevel }).catch(() => {});
   });
   // Load zoom from storage
-  const savedZoom = parseFloat(localStorage.getItem("readerZoomLevel"));
-  if (!isNaN(savedZoom)) {
-    zoomLevel = savedZoom;
-    applyZoom();
-  }
+  db.getPrefs()
+    .then((prefs) => {
+      const savedZoom = parseFloat(prefs && prefs.readerZoomLevel);
+      if (!isNaN(savedZoom)) {
+        zoomLevel = savedZoom;
+        applyZoom();
+      }
+    })
+    .catch(() => {});
 
   function scrollBookToTop() {
     if (bookContainer) {

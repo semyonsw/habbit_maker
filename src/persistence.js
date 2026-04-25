@@ -1,7 +1,6 @@
 "use strict";
 
 import {
-  STORAGE_KEY,
   SCHEMA_VERSION,
   ALL_WEEKDAYS,
   MAX_BOOKMARK_HISTORY,
@@ -24,6 +23,7 @@ import {
   ensureSummaryLanguageAllowed,
   _bindSaveState,
 } from "./encryption.js";
+import * as db from "./db.js";
 
 export function getDefaultMonthData() {
   return {
@@ -381,11 +381,11 @@ export function getCurrentMonthData() {
   return state.months[monthKey(state.currentYear, state.currentMonth)];
 }
 
-export function loadState() {
+export async function loadState() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      setState(JSON.parse(raw));
+    const remote = await db.getState();
+    if (remote && Object.keys(remote).length > 0) {
+      setState(remote);
       migrateState();
       const now = new Date();
       state.currentYear = now.getFullYear();
@@ -425,7 +425,15 @@ export function loadState() {
 }
 
 export function saveState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  db.putState(state).catch((error) => {
+    appendLogEntry({
+      level: "error",
+      component: "state",
+      operation: "saveState",
+      message: "Failed to persist state to backend.",
+      error,
+    });
+  });
 }
 
 // Bind saveState to encryption module to break circular dependency

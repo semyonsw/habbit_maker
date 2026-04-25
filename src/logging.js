@@ -1,25 +1,37 @@
 "use strict";
 
-import { LOGS_STORAGE_KEY, MAX_LOG_RECORDS } from "./constants.js";
+import { MAX_LOG_RECORDS } from "./constants.js";
 import { appLogs, setAppLogs, liveLogFileState, globals } from "./state.js";
 import { uid, nowIso, sanitizeErrorForLog, redactForLogs } from "./utils.js?v=2";
+import * as db from "./db.js";
 
-export function loadLogs() {
+export async function loadLogs() {
   try {
-    const raw = localStorage.getItem(LOGS_STORAGE_KEY);
-    if (!raw) {
-      setAppLogs([]);
-      return;
-    }
-    const parsed = JSON.parse(raw);
-    setAppLogs(Array.isArray(parsed) ? parsed.slice(-MAX_LOG_RECORDS) : []);
+    const remote = await db.getLogs();
+    setAppLogs(
+      Array.isArray(remote) ? remote.slice(-MAX_LOG_RECORDS) : [],
+    );
   } catch (_) {
     setAppLogs([]);
   }
 }
 
-export function persistLogs() {
-  localStorage.setItem(LOGS_STORAGE_KEY, JSON.stringify(appLogs));
+// Fire-and-forget single-row append. The .catch() must NOT call
+// appendLogEntry, or a backend outage would create an infinite loop.
+function persistLogEntry(entry) {
+  db.appendLog(entry).catch((err) => {
+    if (typeof console !== "undefined" && console.warn) {
+      console.warn("Failed to persist log entry to backend:", err);
+    }
+  });
+}
+
+export function clearAllLogs() {
+  db.clearLogs().catch((err) => {
+    if (typeof console !== "undefined" && console.warn) {
+      console.warn("Failed to clear logs on backend:", err);
+    }
+  });
 }
 
 export function appendLogEntry({
@@ -51,7 +63,7 @@ export function appendLogEntry({
   if (appLogs.length > MAX_LOG_RECORDS) {
     setAppLogs(appLogs.slice(appLogs.length - MAX_LOG_RECORDS));
   }
-  persistLogs();
+  persistLogEntry(payload);
   appendLiveLogEntryToFile(payload);
   return payload;
 }

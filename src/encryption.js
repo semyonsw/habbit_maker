@@ -1,10 +1,6 @@
 "use strict";
 
-import {
-  SECURE_SETTINGS_KEY,
-  API_KEY_CACHE_KEY,
-  GEMINI_MODELS,
-} from "./constants.js";
+import { GEMINI_MODELS } from "./constants.js";
 import { state, secureSettings, runtimeSecrets, globals } from "./state.js";
 import {
   isPlainObject,
@@ -15,12 +11,13 @@ import {
   stringFromBytes,
 } from "./utils.js?v=2";
 import { appendLogEntry } from "./logging.js";
+import * as db from "./db.js";
 
-export function loadSecureSettings() {
+const RUNTIME_KEY_CACHE_KEY = "habitTracker_summary_api_key_cache_v1";
+
+export async function loadSecureSettings() {
   try {
-    const raw = localStorage.getItem(SECURE_SETTINGS_KEY);
-    if (!raw) return;
-    const parsed = JSON.parse(raw);
+    const parsed = await db.getSecureSettings();
     if (!isPlainObject(parsed)) return;
     Object.assign(secureSettings, {
       keyCiphertext:
@@ -46,7 +43,21 @@ export function loadSecureSettings() {
 }
 
 export function persistSecureSettings() {
-  localStorage.setItem(SECURE_SETTINGS_KEY, JSON.stringify(secureSettings));
+  db.putSecureSettings({
+    keyCiphertext: secureSettings.keyCiphertext,
+    saltBase64: secureSettings.saltBase64,
+    ivBase64: secureSettings.ivBase64,
+    kdfIterations: secureSettings.kdfIterations,
+    keyUpdatedAt: secureSettings.keyUpdatedAt,
+  }).catch((error) => {
+    appendLogEntry({
+      level: "error",
+      component: "secure-settings",
+      operation: "persistSecureSettings",
+      message: "Failed to persist secure settings to backend.",
+      error,
+    });
+  });
 }
 
 export function hasStoredEncryptedApiKey() {
@@ -71,14 +82,16 @@ export function isApiKeyDeviceCacheEnabled() {
 function persistRuntimeApiKeyCache(apiKey) {
   const value = String(apiKey || "").trim();
   if (!value || !isApiKeyDeviceCacheEnabled()) {
-    localStorage.removeItem(API_KEY_CACHE_KEY);
+    sessionStorage.removeItem(RUNTIME_KEY_CACHE_KEY);
     return;
   }
-  localStorage.setItem(API_KEY_CACHE_KEY, value);
+  sessionStorage.setItem(RUNTIME_KEY_CACHE_KEY, value);
 }
 
 function loadRuntimeApiKeyCache() {
-  const cached = String(localStorage.getItem(API_KEY_CACHE_KEY) || "").trim();
+  const cached = String(
+    sessionStorage.getItem(RUNTIME_KEY_CACHE_KEY) || "",
+  ).trim();
   if (!cached) return false;
   runtimeSecrets.apiKey = cached;
   runtimeSecrets.unlockedAt = nowIso();
@@ -165,7 +178,7 @@ export function applySummaryApiKeyUiState() {
   const hasEncrypted = hasStoredEncryptedApiKey();
   const isUnlocked = !!getApiKeyForSummary();
   const hasCachedRuntimeKey = !!String(
-    localStorage.getItem(API_KEY_CACHE_KEY) || "",
+    sessionStorage.getItem(RUNTIME_KEY_CACHE_KEY) || "",
   ).trim();
   const cacheEnabled = isApiKeyDeviceCacheEnabled();
   if (hasEncrypted && isUnlocked) {
@@ -403,10 +416,16 @@ export function getBookAiSettings() {
   return state.books.ai;
 }
 
-// Import saveState lazily to avoid circular dependency
+// Import saveState lazily to avoid circular dependency.
+// Persistence is bound by persistence.js after both modules load; until then
+// callers must not run state mutations through saveStateImported.
 let saveStateImported = () => {
-  const { STORAGE_KEY: key } = { STORAGE_KEY: "habitTracker_v1" };
-  localStorage.setItem(key, JSON.stringify(state));
+  appendLogEntry({
+    level: "warn",
+    component: "secure-settings",
+    operation: "saveStateImported",
+    message: "saveState callback invoked before binding; ignoring.",
+  });
 };
 export function _bindSaveState(fn) {
   saveStateImported = fn;

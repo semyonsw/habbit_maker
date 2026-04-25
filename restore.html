@@ -8,9 +8,6 @@
 (async function() {
   const status = document.getElementById('status');
   try {
-    // Clear any existing data first
-    localStorage.removeItem('habitTracker_v1');
-
     const resp = await fetch('habit-tracker-backup-2026-03.json');
     if (!resp.ok) {
       status.textContent = 'ERROR: Could not fetch backup file (HTTP ' + resp.status + ')';
@@ -21,23 +18,49 @@
     status.textContent = 'Fetched ' + text.length + ' chars. Parsing...';
 
     const data = JSON.parse(text);
-    status.textContent = 'Parsed OK. Keys: ' + Object.keys(data).join(', ') + '. Saving to localStorage...';
+    status.textContent = 'Parsed OK. Keys: ' + Object.keys(data).join(', ') + '. Importing into local SQLite database...';
 
-    localStorage.setItem('habitTracker_v1', JSON.stringify(data));
+    const pdfBlobs = (data && typeof data === 'object' && data.pdfBlobs) ? data.pdfBlobs : null;
+    if (pdfBlobs) delete data.pdfBlobs;
 
-    // Verify
-    const verify = localStorage.getItem('habitTracker_v1');
-    if (!verify) {
-      status.textContent = 'ERROR: localStorage.setItem succeeded but getItem returned null!';
+    const importResp = await fetch('/api/import-legacy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ state: data, force: true }),
+    });
+    if (!importResp.ok) {
+      const errText = await importResp.text();
+      status.textContent = 'ERROR: Backend import failed (HTTP ' + importResp.status + '): ' + errText.slice(0, 300);
       status.style.color = '#f44';
       return;
     }
 
-    status.textContent = 'Backup restored! (' + verify.length + ' chars in localStorage). Redirecting...';
+    if (pdfBlobs && typeof pdfBlobs === 'object') {
+      let uploaded = 0;
+      for (const [fileId, encoded] of Object.entries(pdfBlobs)) {
+        if (typeof encoded !== 'string' || !encoded.trim()) continue;
+        try {
+          const binary = atob(encoded);
+          const bytes = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+          const blob = new Blob([bytes], { type: 'application/pdf' });
+          const r = await fetch('/api/pdf/' + encodeURIComponent(fileId), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/pdf' },
+            body: blob,
+          });
+          if (r.ok) uploaded += 1;
+        } catch (_) { /* keep going on per-file failures */ }
+      }
+      status.textContent = 'Backup restored to data.db. Uploaded ' + uploaded + ' embedded PDF(s). Redirecting...';
+    } else {
+      status.textContent = 'Backup restored to data.db. Redirecting...';
+    }
+
     status.style.color = '#4f4';
-    setTimeout(() => { window.location.href = 'index.html'; }, 2000);
+    setTimeout(() => { window.location.href = 'index.html'; }, 1500);
   } catch(e) {
-    status.textContent = 'ERROR: ' + e.message + '\n' + e.stack;
+    status.textContent = 'ERROR: ' + e.message + '\n' + (e.stack || '');
     status.style.color = '#f44';
   }
 })();
