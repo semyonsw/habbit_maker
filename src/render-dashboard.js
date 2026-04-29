@@ -366,6 +366,169 @@ export function renderDonut(canvasId, pct) {
   });
 }
 
+
+function buildDailyCompletionMountainSeries() {
+  const monthData = getCurrentMonthData();
+  const habits = getSortedDailyHabits();
+  const totalDays = daysInMonth(state.currentYear, state.currentMonth);
+  const labels = [];
+  const values = [];
+  const days = [];
+
+  for (let day = 1; day <= totalDays; day += 1) {
+    let done = 0;
+    let possible = 0;
+
+    habits.forEach((habit) => {
+      if (
+        !isHabitTrackedOnDate(habit, state.currentYear, state.currentMonth, day)
+      ) {
+        return;
+      }
+
+      possible += 1;
+      if (
+        monthData.dailyCompletions[habit.id] &&
+        monthData.dailyCompletions[habit.id][day]
+      ) {
+        done += 1;
+      }
+    });
+
+    const rate = possible > 0 ? Math.round((done / possible) * 100) : 0;
+    labels.push(String(day));
+    values.push(rate);
+    days.push({ day, done, possible, rate });
+  }
+
+  return { labels, values, days };
+}
+
+function renderDailyCompletionMountainChart() {
+  if (typeof Chart === "undefined") return;
+
+  const canvasId = "dailyCompletionMountainChart";
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+
+  if (chartInstances[canvasId]) {
+    chartInstances[canvasId].destroy();
+  }
+
+  const { labels, values, days } = buildDailyCompletionMountainSeries();
+  const averageValue = values.length
+    ? values.reduce((sum, value) => sum + value, 0) / values.length
+    : 0;
+  const accentColor = getValueColor(averageValue, 100, 0.95);
+
+  const ctx = canvas.getContext("2d");
+  chartInstances[canvasId] = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels,
+      datasets: [
+        {
+          data: values,
+          borderColor: accentColor,
+          borderWidth: 3,
+          backgroundColor(context) {
+            const chart = context.chart;
+            const { chartArea, ctx: chartCtx } = chart;
+            if (!chartArea) {
+              return getValueColor(averageValue, 100, 0.18);
+            }
+
+            const gradient = chartCtx.createLinearGradient(
+              0,
+              chartArea.top,
+              0,
+              chartArea.bottom,
+            );
+            gradient.addColorStop(0, getValueColor(averageValue, 100, 0.42));
+            gradient.addColorStop(1, getValueColor(averageValue, 100, 0.03));
+            return gradient;
+          },
+          fill: true,
+          tension: 0.42,
+          cubicInterpolationMode: "monotone",
+          pointRadius: 0,
+          pointHoverRadius: 4,
+          pointHitRadius: 12,
+          pointBackgroundColor: values.map((value) =>
+            getValueColor(value, 100, 0.95),
+          ),
+          pointBorderColor: values.map((value) =>
+            getValueColor(value, 100, 1),
+          ),
+          spanGaps: true,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: {
+        duration: 280,
+      },
+      interaction: {
+        mode: "index",
+        intersect: false,
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title(items) {
+              const day = days[items[0].dataIndex];
+              return day ? `Day ${day.day}` : "";
+            },
+            label(context) {
+              const day = days[context.dataIndex] || {
+                done: 0,
+                possible: 0,
+                rate: 0,
+              };
+              if (day.possible === 0) {
+                return "No scheduled habits";
+              }
+              return `${day.rate}% completion · ${day.done}/${day.possible} habits`;
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          grid: {
+            display: false,
+          },
+          ticks: {
+            color: "rgba(213, 226, 245, 0.72)",
+            maxRotation: 0,
+            autoSkip: true,
+            maxTicksLimit: 10,
+          },
+          border: {
+            display: false,
+          },
+        },
+        y: {
+          beginAtZero: true,
+          max: 100,
+          grid: {
+            color: "rgba(255, 255, 255, 0.08)",
+            drawBorder: false,
+          },
+          ticks: {
+            color: "rgba(213, 226, 245, 0.72)",
+            callback(value) {
+              return `${Math.round(value)}%`;
+            },
+          },
+        },
+      },
+    },
+  });
+}
 function clearLinkedHoverHighlights() {
   document
     .querySelectorAll(
@@ -379,7 +542,6 @@ function clearLinkedHoverHighlights() {
       );
     });
 }
-
 function ensureLinkedHoverTooltip() {
   let tooltip = document.getElementById("linkedHoverTooltip");
   if (tooltip) return tooltip;
@@ -1099,6 +1261,7 @@ export function renderDailyHabitsGrid() {
       saveState();
       renderSummary();
       renderWeeklySummaryCards();
+      renderDailyCompletionMountainChart();
       callRenderer("renderAnalyticsView");
       updateHabitStreak(habitId);
 
@@ -1170,6 +1333,7 @@ export function renderAll() {
   renderSummary();
   renderWeeklySummaryCards();
   renderDailyHabitsGrid();
+  renderDailyCompletionMountainChart();
   renderManageView();
 
   if (document.getElementById("view-analytics")?.classList.contains("active")) {
