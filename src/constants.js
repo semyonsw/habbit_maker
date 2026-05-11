@@ -54,6 +54,17 @@ export const SUMMARY_MAX_CHARS_PER_CHUNK_DEFAULT = 12000;
 export const SUMMARY_MAX_PAGES_PER_RUN_DEFAULT = 120;
 export const MAX_LOG_RECORDS = 1000;
 
+export const APP_VERSION = "1.0.0";
+export const FEEDBACK_GITHUB_REPO = "semyonsw/habbit_maker";
+export const FEEDBACK_EMAIL = "semyonsw@gmail.com";
+export const FEEDBACK_URL_LENGTH_WARNING_THRESHOLD = 7500;
+
+export const EMAILJS_API_URL = "https://api.emailjs.com/api/v1.0/email/send";
+export const EMAILJS_PUBLIC_KEY_STORAGE = "habitTracker_emailjs_publicKey_v1";
+export const EMAILJS_SERVICE_ID_STORAGE = "habitTracker_emailjs_serviceId_v1";
+export const EMAILJS_TEMPLATE_ID_STORAGE = "habitTracker_emailjs_templateId_v1";
+export const GEMINI_POLISH_MODEL = "gemini-2.5-flash-lite";
+
 export const DEFAULT_CATEGORIES = [
   { id: "cat_health", name: "Health", emoji: "\u2764\uFE0F", color: "#3E85B5" },
   {

@@ -50,10 +50,20 @@ Built for people who want their data to live on their own disk: no account, no c
 - Per-bookmark summaries; incremental mode that builds on previous summaries.
 - Multi-model picker.
 
+**Send feedback, three ways**
+- **GitHub Issue** — opens a pre-filled issue in a new tab; nothing is sent automatically.
+- **Email instead** — uses your default mail client via `mailto:` (the zero-setup option).
+- **Real email via EmailJS** *(optional)* — configure three IDs once and the app POSTs feedback directly to the maintainer's inbox, no mail client required. Credentials are validated by a real test email at save time, so a wrong template ID surfaces immediately instead of failing silently on submit.
+- **AI-polished feedback** *(optional)* — if you already have a Gemini key configured, the Email path routes your raw title and description through `gemini-2.5-flash-lite` and shows an **editable** preview of a clean subject + body before sending. Skips automatically when no key is set.
+
+**Activity logs**
+- A built-in **Logs** view (sidebar → *Logs*) records every meaningful action — feedback sent, AI summary attempted, encryption unlocked, import/export — with ISO 8601 timestamps, level pills (debug / info / warn / error), and component tags.
+- Filter by level, component, or free text. Export as JSON or CSV. Optional live `.log` file via the File System Access API for long-running debugging.
+
 **Data ownership**
 - One SQLite file (`data.db`) holds everything except PDF binaries (which sit in `books/`).
 - One-click JSON export and import.
-- Nothing leaves your machine unless you opt into AI summaries.
+- Nothing leaves your machine unless you opt into AI summaries or real-email feedback delivery.
 
 ---
 
@@ -302,6 +312,101 @@ This produces a single `.json` file containing categories, habits, all month dat
 2. Open a bookmark, choose a model, set the page range, click **Summarize**.
 3. The key is decrypted only for the duration of the request. The decrypted copy is cached in `sessionStorage` for up to 7 days so you don't re-enter the passphrase on every summary.
 
+### Sending feedback
+
+Click the **Send feedback** button in the sidebar footer. Fill in **Type** (Bug / Feature / Other), **Title**, and **Description**, then choose how to deliver it:
+
+- **Open GitHub Issue** — opens a pre-filled issue in a new tab; you submit it yourself.
+- **Email instead** — uses your default mail client via `mailto:` *unless* you have EmailJS configured (see below), in which case the app posts the feedback as a real email.
+- If you have a **Gemini API key** configured, the Email path first polishes your title and description into a clean professional email via `gemini-2.5-flash-lite` and shows an editable preview. You can edit anything before sending.
+
+Every submit, AI polish, and validation attempt is recorded under component **`feedback`** in the **Logs** sidebar view with an ISO timestamp — useful when something looks wrong.
+
+### Setting up real email delivery (EmailJS)
+
+By default the feedback form falls back to `mailto:`, which only works if your browser has a default mail client. To send feedback as a *real* email straight from the browser — no mail client needed — you can wire the app to [EmailJS](https://www.emailjs.com/). The free tier covers 200 emails per month, which is plenty for personal use.
+
+You need three credentials from EmailJS: a **Public Key**, a **Service ID**, and a **Template ID**. Here's how to obtain each:
+
+#### Step 1 — Create a free EmailJS account
+
+1. Go to <https://www.emailjs.com/> and click **Sign up** (top-right).
+2. Verify your email and finish onboarding. You land on the EmailJS dashboard at <https://dashboard.emailjs.com/admin>.
+
+#### Step 2 — Add an email service (gets you the **Service ID**)
+
+EmailJS needs to know *which* inbox to send mail through. You typically connect a Gmail / Outlook / Yahoo / custom SMTP account that EmailJS will use as the sender.
+
+1. In the dashboard, open **Email Services** (left sidebar) → **Add New Service**.
+2. Pick a provider — for most people **Gmail** is the simplest. Click it.
+3. Click **Connect Account** and grant EmailJS permission to send mail on behalf of that Gmail account.
+4. Leave the **Service ID** as auto-generated (it will look like `service_z0ur4tn`). Click **Create Service**.
+5. Copy the **Service ID** shown in the services list — you'll paste it into the app later.
+
+> The Gmail account you connect here is the *sender*. The recipient (where your feedback lands) is configured in the next step's template.
+
+#### Step 3 — Create an email template (gets you the **Template ID**)
+
+The template defines the subject and body shape of the emails that will be sent. The Habit Maker app fills in three variables: `{{subject}}`, `{{message}}`, and `{{to_email}}`.
+
+1. In the dashboard, open **Email Templates** (left sidebar) → **Create New Template**.
+2. In the **Subject** field at the top, type: `{{subject}}`
+3. In the **Content** area (the big text box), type the body. The simplest version is just:
+   ```
+   {{message}}
+   ```
+   That's it — one line. EmailJS will substitute the polished feedback body in.
+4. Open the **Settings** tab of the template (top of the page) and configure:
+   - **To Email**: `{{to_email}}` *(this lets the app set the destination dynamically — it will always be the maintainer's address; you don't need to hardcode it here).*
+   - **From Name**: anything you like, e.g. `Habit Maker feedback`.
+   - **Reply To**: leave blank or use `{{from_email}}` if you want.
+5. Click **Save**.
+6. Copy the **Template ID** shown at the top of the template page (it will look like `template_htxepod`).
+
+> If you skip step 4's "To Email = `{{to_email}}`" detail, EmailJS will send to whatever fixed address you put there instead. The app sends `to_email` set to the maintainer's address (`semyonsw@gmail.com`); change that constant in [src/constants.js](src/constants.js#L59) if you want feedback delivered elsewhere.
+
+#### Step 4 — Copy the **Public Key**
+
+1. In the dashboard, open **Account** (left sidebar) → **General**.
+2. Scroll to the **API Keys** section.
+3. Copy the value labelled **Public Key** (it looks like `s7Dk0zX2dZXXUKWQ3`). This is safe to use in the browser — it is *not* a secret. EmailJS limits abuse via the allowed-origins list and rate limiting, not via key secrecy.
+
+#### Step 5 — Paste the three values into Habit Maker
+
+1. Open the app, click **Send feedback** in the sidebar footer.
+2. Expand **▾ Email delivery settings (EmailJS) — optional** at the top of the form.
+3. Paste your three values:
+   - **EmailJS public key** → the value from Step 4.
+   - **EmailJS service ID** → the value from Step 2 (starts with `service_`).
+   - **EmailJS template ID** → the value from Step 3 (starts with `template_`).
+4. Click **Save EmailJS settings**.
+5. The app immediately sends a clearly-marked test email to verify the three IDs work together:
+   - On success → green ✓ "Saved and validated — a test email was sent." Check the maintainer's inbox; an email with subject **`[Habit Maker] EmailJS credentials test — please ignore`** should arrive within seconds.
+   - On failure → red ✗ "Validation failed." Open the **Logs** sidebar, filter component = `feedback`, and look at the most recent `emailjs-validate-fail` row — its context column shows the exact error from EmailJS (e.g. "The template ID not found"), pointing you at the right fix.
+
+That's it. From now on, every "Email instead" submission goes through EmailJS as a real email, and the three IDs persist in your browser's `localStorage` — you won't need to re-enter them. On every modal open, you'll see a passive green "✓ Credentials saved on this browser." confirming they're still in place.
+
+#### Allowed origins (recommended)
+
+For extra safety, lock the public key to your local origin so nobody else can use it:
+
+1. EmailJS dashboard → **Account** → **Security**.
+2. Add `http://localhost:3000` (and `http://127.0.0.1:3000` if you use that host) to the **Allow EmailJS API for following hostnames** list.
+3. Save.
+
+After this, requests from any origin other than the ones you listed will be rejected by EmailJS, even if someone scrapes your public key.
+
+#### Troubleshooting common errors
+
+| EmailJS error (visible in the Logs view) | What it means | Fix |
+|---|---|---|
+| `400 The template ID not found` | The Template ID you pasted doesn't exist in your EmailJS account. | Re-copy the ID from the **Email Templates** page; make sure you saved the template after creating it. |
+| `400 The service ID not found` | The Service ID you pasted doesn't exist. | Re-copy from the **Email Services** page. |
+| `403 The public key is invalid` | Public Key typo or the key was rotated. | Re-copy from **Account → General → API Keys**. |
+| `403 ... not allowed for this origin` | The "Allow hostnames" list doesn't include your origin. | Add `http://localhost:3000` (or whatever you use) to **Account → Security**. |
+| `400 The Gmail_API service ... is not connected` | The Gmail account you connected in Step 2 was disconnected or its OAuth token expired. | Open **Email Services**, click the affected service, click **Reconnect Account**. |
+| `429 Too many requests` | You hit the free-tier rate limit (200 emails / month, or per-minute throttle). | Wait, or upgrade your EmailJS plan. |
+
 ### API examples
 
 ```bash
@@ -332,6 +437,11 @@ Frontend constants ([src/constants.js](src/constants.js)) you may want to change
 | `SUMMARY_MAX_PAGES_PER_RUN_DEFAULT` | `120` | Page cap per single summary call. |
 | `MAX_LOG_RECORDS` | `1000` | Client log retention. |
 | `GEMINI_MODELS` | (list) | Models offered in the model picker. Add or remove freely. |
+| `GEMINI_POLISH_MODEL` | `gemini-2.5-flash-lite` | Model used to polish feedback subject + body. Cheapest Flash variant; change here if you want to use a different one. |
+| `FEEDBACK_EMAIL` | `semyonsw@gmail.com` | Destination address used as `to_email` in the EmailJS template and the `mailto:` fallback. If you fork the app, update this. |
+| `EMAILJS_API_URL` | `https://api.emailjs.com/api/v1.0/email/send` | EmailJS REST endpoint. Only change if EmailJS publishes a new API version. |
+
+EmailJS credentials are not constants — they are stored per-browser in `localStorage` under three keys (`habitTracker_emailjs_publicKey_v1`, `_serviceId_v1`, `_templateId_v1`) and entered through the **Send feedback** form, not the source code.
 
 Backend constants ([server/app.py](server/app.py)):
 
@@ -351,10 +461,14 @@ Each of these can be overridden by an OS env var of the same name prefixed with 
 ## Storage and Privacy
 
 - **Where your data lives.** All habit, bookmark, and summary data is in `data.db` (SQLite). PDF binaries sit in `books/`. Both are in the project directory and never sent anywhere by default.
-- **What leaves the machine.** Only AI summaries — and only if you enable them and provide a Gemini API key. The PDF text for the requested page range is sent to Google's Gemini API. Habit data is **never** sent.
+- **What leaves the machine.** Three opt-in paths, and only what you ask for:
+  1. **AI summaries** — PDF text for the requested page range goes to Google's Gemini API. Habit data is never included.
+  2. **AI feedback polish** — your feedback title and description (no other app data) are sent to Gemini's `gemini-2.5-flash-lite` model to produce a polished subject and body. You see the result *before* anything is sent further.
+  3. **EmailJS feedback delivery** — if you configured EmailJS, the polished (or raw) subject and body are POSTed to `api.emailjs.com`, which relays the message to the maintainer through the Gmail/SMTP service you connected in your EmailJS dashboard. Habit data, notes, and PDFs are never sent.
 - **API key handling.** The Gemini key is encrypted with AES-256-GCM using a key derived from your passphrase via PBKDF2-SHA256 (600,000 iterations by default; existing keys keep their original iteration count and remain decryptable). The plaintext key never touches disk and is sent to Gemini only via the `x-goog-api-key` request header.
-- **Passphrase cache.** After you unlock once, the decrypted key sits in your browser's `sessionStorage` for up to 7 days so summaries don't prompt every time. Closing the browser tab does not clear it; only TTL expiry or an explicit lock does.
-- **No telemetry.** There is no analytics SDK, no error reporter, no ping. The only outbound network call ever issued is to `generativelanguage.googleapis.com`, and only when you click **Summarize**.
+- **EmailJS credentials.** The Public Key, Service ID, and Template ID live in your browser's `localStorage` in plaintext — this is by design. EmailJS public keys are *not* secrets (they're rate-limited and origin-locked, not access-controlled), so encryption would add a passphrase prompt for no real security benefit.
+- **Passphrase cache.** After you unlock once, the decrypted Gemini key sits in `sessionStorage` for up to 7 days so summaries don't prompt every time. Closing the browser tab does not clear it; only TTL expiry or an explicit lock does.
+- **No telemetry.** There is no analytics SDK, no error reporter, no ping. Outbound network calls are limited to `generativelanguage.googleapis.com` (when you summarize or polish feedback) and `api.emailjs.com` (when you send feedback via EmailJS) — and only at the moment you trigger those actions.
 
 ---
 
@@ -385,9 +499,17 @@ Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full g
 - Prefer pure functions; isolate DOM mutation in the `render-*` modules.
 - No new runtime dependencies without discussion — the project's value proposition is "vanilla and inspectable."
 
-**Reporting bugs**
+**Reporting bugs / requesting features**
 
-Open an issue with steps to reproduce, expected vs. actual behavior, and (if possible) a JSON export of the smallest state that triggers the bug. Do **not** attach a real `data.db` — it may contain personal data.
+The fastest way is from inside the app: click the **Send feedback** button in the sidebar footer, fill in the form, and pick a delivery path:
+
+- **Open GitHub Issue** — opens a pre-filled issue in a new tab for you to review and submit.
+- **Email instead** — uses your default mail client via `mailto:`, or (if you've set up EmailJS — see [Setting up real email delivery (EmailJS)](#setting-up-real-email-delivery-emailjs)) sends a real email straight from the browser.
+- If you have a Gemini API key configured, you'll see an **editable AI-polished preview** of the subject and body before anything is sent.
+
+You stay in control — nothing is sent automatically and your habits, notes, and PDFs are never included.
+
+You can also open an issue directly at the [Issues page](https://github.com/semyonsw/habbit_maker/issues). Include steps to reproduce, expected vs. actual behavior, and (if possible) a JSON export of the smallest state that triggers the bug. Do **not** attach a real `data.db` — it may contain personal data.
 
 **Security disclosures**
 

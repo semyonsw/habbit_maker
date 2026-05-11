@@ -48,6 +48,18 @@ import {
   copySelectedSummaryToClipboard,
 } from "./ai-summary.js";
 import { appendLogEntry } from "./logging.js";
+import {
+  openFeedbackPanel,
+  bindFeedbackForm,
+  submitFeedbackToGithub,
+  submitFeedbackToMail,
+  saveEmailJsConfigFromInputs,
+  sendFromPreview,
+  previewBackToForm,
+  retryAiPolish,
+  sendRawWithoutAi,
+  errorBackToForm,
+} from "./feedback.js";
 
 export function bindEvents() {
   document.querySelectorAll(".nav-tab").forEach((tab) => {
@@ -300,6 +312,54 @@ export function bindEvents() {
     .addEventListener("click", () => {
       setSidebarCollapsed(!globals.sidebarCollapsed);
     });
+
+  const settingsBtn = document.getElementById("btnOpenSettings");
+  if (settingsBtn) {
+    settingsBtn.addEventListener("click", openFeedbackPanel);
+  }
+  const settingsClose = document.getElementById("settingsModalClose");
+  if (settingsClose) {
+    settingsClose.addEventListener("click", () => closeModal("settingsModal"));
+  }
+  const settingsCancel = document.getElementById("settingsModalCancel");
+  if (settingsCancel) {
+    settingsCancel.addEventListener("click", () =>
+      closeModal("settingsModal"),
+    );
+  }
+  const feedbackGithubBtn = document.getElementById("feedbackSubmitGithub");
+  if (feedbackGithubBtn) {
+    feedbackGithubBtn.addEventListener("click", submitFeedbackToGithub);
+  }
+  const feedbackMailtoBtn = document.getElementById("feedbackSubmitMailto");
+  if (feedbackMailtoBtn) {
+    feedbackMailtoBtn.addEventListener("click", submitFeedbackToMail);
+  }
+  const emailjsSaveBtn = document.getElementById("emailjsSave");
+  if (emailjsSaveBtn) {
+    emailjsSaveBtn.addEventListener("click", saveEmailJsConfigFromInputs);
+  }
+  const previewSendBtn = document.getElementById("feedbackPreviewSend");
+  if (previewSendBtn) {
+    previewSendBtn.addEventListener("click", sendFromPreview);
+  }
+  const previewBackBtn = document.getElementById("feedbackPreviewBack");
+  if (previewBackBtn) {
+    previewBackBtn.addEventListener("click", previewBackToForm);
+  }
+  const errorRetryBtn = document.getElementById("feedbackErrorRetry");
+  if (errorRetryBtn) {
+    errorRetryBtn.addEventListener("click", retryAiPolish);
+  }
+  const errorSendRawBtn = document.getElementById("feedbackErrorSendRaw");
+  if (errorSendRawBtn) {
+    errorSendRawBtn.addEventListener("click", sendRawWithoutAi);
+  }
+  const errorCancelBtn = document.getElementById("feedbackErrorCancel");
+  if (errorCancelBtn) {
+    errorCancelBtn.addEventListener("click", errorBackToForm);
+  }
+  bindFeedbackForm();
 
   window.addEventListener("resize", applySidebarCollapseState);
 

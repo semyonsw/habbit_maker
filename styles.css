@@ -2933,6 +2933,10 @@ body.is-global-loading {
   flex-shrink: 0;
 }
 
+.modal-footer[hidden] {
+  display: none;
+}
+
 .modal-overlay.open .modal-footer > button {
   animation: modalFooterRise var(--transition-slow);
 }
@@ -3631,3 +3635,216 @@ body.is-global-loading {
     border: 1px solid #ccc;
   }
 }
+
+.btn-settings {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(133, 194, 231, 0.12);
+  border: 1px solid rgba(169, 227, 255, 0.25);
+  color: rgba(236, 247, 255, 0.92);
+  padding: 10px 14px;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-family: var(--font-body);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  transition:
+    transform var(--transition-fast),
+    background-color var(--transition-fast),
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast);
+}
+
+.btn-settings:hover {
+  background: rgba(133, 194, 231, 0.2);
+  border-color: rgba(186, 232, 255, 0.52);
+  color: var(--white);
+  transform: translateY(-1px);
+  box-shadow: 0 10px 18px rgba(2, 8, 20, 0.26);
+}
+
+@media (min-width: 901px) {
+  .sidebar.collapsed .sidebar-footer .btn-settings span {
+    display: none;
+  }
+  .sidebar.collapsed .btn-settings {
+    justify-content: center;
+    padding: 8px;
+    gap: 0;
+  }
+}
+
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.settings-section[hidden] {
+  display: none;
+}
+
+.settings-section h4 {
+  margin: 0 0 4px;
+  font-family: var(--font-display);
+  color: var(--gray-900);
+  font-size: 1.1rem;
+}
+
+.settings-help-text {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: var(--gray-500);
+}
+
+.settings-footnote {
+  font-size: 0.8rem;
+  font-style: italic;
+}
+
+.settings-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.88rem;
+  color: var(--gray-400);
+  cursor: pointer;
+  user-select: none;
+}
+
+.settings-toggle-row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.settings-warning {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  background: rgba(245, 158, 11, 0.08);
+  color: #fbbf24;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.settings-warning[hidden] {
+  display: none;
+}
+
+.settings-mailto-hint {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(96, 165, 250, 0.35);
+  background: rgba(96, 165, 250, 0.08);
+  color: #93c5fd;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.settings-mailto-hint[hidden] {
+  display: none;
+}
+
+.feedback-emailjs-details {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.feedback-emailjs-details > summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--gray-300, #cbd5e1);
+  user-select: none;
+  list-style: revert;
+}
+
+.feedback-emailjs-details[open] > summary {
+  margin-bottom: 8px;
+}
+
+.feedback-emailjs-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.feedback-emailjs-status {
+  font-size: 0.8rem;
+  color: var(--gray-300, #cbd5e1);
+}
+
+.feedback-emailjs-status.is-success {
+  color: #6ee7b7;
+}
+
+.feedback-emailjs-status.is-error {
+  color: #fca5a5;
+}
+
+.feedback-emailjs-status[hidden] {
+  display: none;
+}
+
+.feedback-preview-ai-note {
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(167, 139, 250, 0.35);
+  background: rgba(167, 139, 250, 0.08);
+  color: #c4b5fd;
+}
+
+.feedback-preview-ai-note[hidden] {
+  display: none;
+}
+
+.feedback-loading-view {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 28px 12px;
+}
+
+.feedback-loading-spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid rgba(255, 255, 255, 0.12);
+  border-top-color: #93c5fd;
+  border-radius: 50%;
+  animation: feedbackSpin 0.9s linear infinite;
+}
+
+@keyframes feedbackSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.modal-overlay#settingsModal.is-feedback-expanded .modal {
+  max-width: 720px;
+  transition: max-width 0.25s ease;
+}
+
+.modal-overlay#settingsModal.is-feedback-expanded .modal-body {
+  padding-top: 20px;
+  padding-bottom: 20px;
+}
+
+.modal-overlay#settingsModal.is-feedback-expanded #feedbackPreviewBody {
+  min-height: 240px;
+  resize: vertical;
+}
+
+.modal-overlay#settingsModal.is-feedback-expanded #feedbackPreviewSubject {
+  font-size: 0.95rem;
+}
+

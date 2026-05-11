@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/semyonsw/habbit_maker/blob/main/SECURITY.md
+    about: Please do NOT file a public issue for security bugs. See SECURITY.md for the private disclosure process.
+  - name: Question or general feedback
+    url: https://github.com/semyonsw/habbit_maker/discussions
+    about: For open-ended questions or feedback that isn't a bug or feature request, prefer Discussions if enabled.
