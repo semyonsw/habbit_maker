@@ -45,7 +45,11 @@ import {
   viewBookmarkSummary,
   selectSummaryForModal,
 } from "./ai-summary.js";
-import { runWithGlobalLoader } from "./loading-ui.js";
+import {
+  setGlobalLoaderMessage,
+  hideGlobalLoader,
+  waitForNextPaint,
+} from "./loading-ui.js";
 import * as db from "./db.js";
 
 // Import render modules so they register themselves
@@ -284,61 +288,74 @@ async function runLegacyMigration() {
 // -------------------------------------------------------------------------
 
 async function init() {
-  let status = null;
+  const appRoot = document.getElementById("app");
   try {
-    status = await db.getMigrationStatus();
-  } catch (err) {
-    appendLogEntry({
-      level: "error",
-      component: "app",
-      operation: "init",
-      message:
-        "Backend unreachable. Start the local server (start.bat) before opening this page.",
-      error: err,
-    });
-    alert(
-      "The Habit Tracker backend is not reachable. Please run start.bat first, then refresh this page.",
-    );
-    return;
-  }
+    setGlobalLoaderMessage("Loading...");
 
-  if (!status.legacy_imported) {
+    let status = null;
     try {
-      await runLegacyMigration();
+      status = await db.getMigrationStatus();
     } catch (err) {
       appendLogEntry({
         level: "error",
         component: "app",
-        operation: "runLegacyMigration",
-        message: "Legacy migration failed; continuing with default state.",
+        operation: "init",
+        message:
+          "Backend unreachable. Start the local server (start.bat) before opening this page.",
         error: err,
       });
+      if (appRoot) appRoot.style.display = "";
+      hideGlobalLoader();
+      alert(
+        "The Habit Tracker backend is not reachable. Please run start.bat first, then refresh this page.",
+      );
+      return;
     }
-  }
 
-  await loadLogs();
-  await loadSecureSettings();
-  await loadState();
-  await loadAnalyticsPreferences();
-  bindEvents();
-  await initSidebarCollapse();
-  applyBookSummarySettingsToInputs();
+    if (!status.legacy_imported) {
+      try {
+        await runLegacyMigration();
+      } catch (err) {
+        appendLogEntry({
+          level: "error",
+          component: "app",
+          operation: "runLegacyMigration",
+          message: "Legacy migration failed; continuing with default state.",
+          error: err,
+        });
+      }
+    }
 
-  const inReaderMode = await initReaderMode();
-  if (inReaderMode) {
-    return;
-  }
+    await loadLogs();
+    await loadSecureSettings();
+    await loadState();
+    await loadAnalyticsPreferences();
+    bindEvents();
+    await initSidebarCollapse();
+    applyBookSummarySettingsToInputs();
 
-  await maybeMigrateLegacyApiKey();
-  await tryUnlockOnStartup();
+    const inReaderMode = await initReaderMode();
+    if (inReaderMode) {
+      return;
+    }
 
-  initTopClock();
-  await runWithGlobalLoader("Loading Dashboard...", async () => {
+    await maybeMigrateLegacyApiKey();
+    await tryUnlockOnStartup();
+
+    initTopClock();
+
+    setGlobalLoaderMessage("Loading Dashboard...");
+    await waitForNextPaint();
     callRenderer("renderAll");
-  });
-  callRenderer("renderBooksView");
-  callRenderer("renderLogsView");
-  setBookUploadStatus("No file uploaded yet.", "");
+    callRenderer("renderBooksView");
+    callRenderer("renderLogsView");
+    setBookUploadStatus("No file uploaded yet.", "");
+
+    if (appRoot) appRoot.style.display = "";
+    await waitForNextPaint();
+  } finally {
+    hideGlobalLoader();
+  }
 }
 
 if (document.readyState === "loading") {

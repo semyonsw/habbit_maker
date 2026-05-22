@@ -36,7 +36,7 @@
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css"
     />
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <link rel="stylesheet" href="styles.css" />
     <link
       rel="icon"
@@ -44,7 +44,23 @@
     />
   </head>
   <body>
-    <div id="app">
+    <div
+      id="globalLoadingOverlay"
+      class="global-loading-overlay open"
+      aria-hidden="false"
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+    >
+      <div class="global-loading-card">
+        <span class="global-loading-spinner" aria-hidden="true"></span>
+        <p class="global-loading-title">Please wait</p>
+        <p id="globalLoadingMessage" class="global-loading-message">
+          Loading...
+        </p>
+      </div>
+    </div>
+    <div id="app" style="display: none">
       <nav class="sidebar">
         <div class="sidebar-logo">
           <button
@@ -1463,23 +1479,6 @@
         <canvas id="readerCanvas"></canvas>
       </div>
     </section>
-
-    <div
-      id="globalLoadingOverlay"
-      class="global-loading-overlay"
-      aria-hidden="true"
-      role="status"
-      aria-live="polite"
-      aria-atomic="true"
-    >
-      <div class="global-loading-card">
-        <span class="global-loading-spinner" aria-hidden="true"></span>
-        <p class="global-loading-title">Please wait</p>
-        <p id="globalLoadingMessage" class="global-loading-message">
-          Loading...
-        </p>
-      </div>
-    </div>
 
     <button class="mobile-menu-toggle" id="mobileMenuToggle">
       <svg
