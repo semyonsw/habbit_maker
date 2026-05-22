@@ -1,7 +1,7 @@
 "use strict";
 
 import { MONTH_NAMES } from "./constants.js";
-import { state, globals } from "./state.js";
+import { state, globals, readerHistoryPickerState } from "./state.js";
 import { monthKey } from "./utils.js?v=2";
 import { navigateMonth } from "./habits.js";
 import {
@@ -247,6 +247,22 @@ export function bindEvents() {
         confirmButton.classList.remove("is-loading");
       });
   });
+
+  document
+    .getElementById("readerHistoryPickerClose")
+    .addEventListener("click", () => closeModal("readerHistoryPickerModal"));
+  document
+    .getElementById("readerHistoryPickerCancel")
+    .addEventListener("click", () => closeModal("readerHistoryPickerModal"));
+  document
+    .getElementById("readerHistoryPickerCreateNew")
+    .addEventListener("click", () => {
+      const { bookId, page } = readerHistoryPickerState;
+      closeModal("readerHistoryPickerModal");
+      if (bookId) {
+        openBookmarkModal(bookId, null, { prefillPdfPage: page });
+      }
+    });
 
   document
     .getElementById("monthlyReviewSave")

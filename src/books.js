@@ -7,7 +7,7 @@ import {
   PDFJS_WORKER_URL,
 } from "./constants.js";
 import { state, setBooksBlobStatus, readerState } from "./state.js";
-import { uid, nowIso, isPlainObject, formatRealBookPage } from "./utils.js?v=2";
+import { uid, nowIso, isPlainObject } from "./utils.js?v=2";
 import { appendLogEntry } from "./logging.js";
 import { idbGetPdfBlob, idbSavePdfBlob } from "./idb.js";
 import { saveState } from "./persistence.js";
@@ -441,40 +441,7 @@ export function addBookmarkOnCurrentReaderPage() {
     return;
   }
 
-  const useExisting = window.confirm(
-    "Add to an existing bookmark history?\n\nOK: Existing bookmark\nCancel: Create new bookmark on this page",
-  );
-
-  if (!useExisting) {
-    callRenderer("openBookmarkModal", book.bookId, null, {
-      prefillPdfPage: page,
-    });
-    return;
-  }
-
-  const options = book.bookmarks
-    .map(
-      (bm, idx) =>
-        `${idx + 1}. ${bm.label} (PDF ${bm.pdfPage}, Real ${formatRealBookPage(bm.realPage)})`,
-    )
-    .join("\n");
-  const picked = window.prompt(
-    `Pick bookmark number to append history:\n${options}`,
-    "1",
-  );
-  if (picked === null) {
-    return;
-  }
-  const index = parseInt(picked, 10) - 1;
-  if (!Number.isInteger(index) || index < 0 || index >= book.bookmarks.length) {
-    alert("Invalid bookmark selection.");
-    return;
-  }
-
-  const selected = book.bookmarks[index];
-  addReaderHistoryToBookmark(book, selected, page);
-  document.getElementById("readerStatusText").textContent =
-    `History added to \"${selected.label}\".`;
+  callRenderer("openReaderHistoryPicker", book.bookId, page);
 }
 
 export function openBookmarkInNewTab(bookId, page, bookmarkId) {

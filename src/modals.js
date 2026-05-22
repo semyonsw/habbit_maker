@@ -8,12 +8,15 @@ import {
   bookModalState,
   bookmarkModalState,
   historyEventModalState,
+  readerHistoryPickerState,
 } from "./state.js";
 import {
   uid,
   nowIso,
   sanitize,
   formatDateKey,
+  formatIsoForDisplay,
+  formatRealBookPage,
   normalizeWeekdayArray,
   normalizeMonthDayArray,
 } from "./utils.js?v=2";
@@ -33,6 +36,7 @@ import {
 import {
   getBookById,
   addBookmarkHistoryEvent,
+  addReaderHistoryToBookmark,
   refreshBookBlobStatus,
   clearBookCoverPreview,
 } from "./books.js";
@@ -618,8 +622,88 @@ export function renderMonthlyReview() {
   document.getElementById("monthlyFocus").value = review.focus || "";
 }
 
+export function openReaderHistoryPicker(bookId, page) {
+  const book = getBookById(bookId);
+  if (!book) return;
+
+  const safePage = Math.max(1, parseInt(page, 10) || 1);
+  const bookmarks = Array.isArray(book.bookmarks) ? book.bookmarks : [];
+
+  if (bookmarks.length === 0) {
+    openBookmarkModal(bookId, null, { prefillPdfPage: safePage });
+    return;
+  }
+
+  Object.assign(readerHistoryPickerState, {
+    bookId,
+    page: safePage,
+  });
+
+  const subtitle = document.getElementById("readerHistoryPickerSubtitle");
+  if (subtitle) {
+    subtitle.textContent = "";
+    subtitle.append("You're on PDF page ");
+    const strong = document.createElement("strong");
+    strong.textContent = String(safePage);
+    subtitle.appendChild(strong);
+    subtitle.append(
+      ". Tap a bookmark to add this session to it, or create a new one.",
+    );
+  }
+
+  const listEl = document.getElementById("readerHistoryPickerList");
+  if (!listEl) return;
+  listEl.textContent = "";
+
+  bookmarks.forEach((bm) => {
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "reader-history-picker-item";
+    card.dataset.bookmarkId = bm.bookmarkId;
+    card.setAttribute("role", "listitem");
+
+    const labelEl = document.createElement("div");
+    labelEl.className = "reader-history-picker-item__label";
+    labelEl.textContent = bm.label || "Bookmark";
+
+    const metaEl = document.createElement("div");
+    metaEl.className = "reader-history-picker-item__meta";
+
+    const pdfSpan = document.createElement("span");
+    pdfSpan.textContent = `PDF ${bm.pdfPage}`;
+    metaEl.appendChild(pdfSpan);
+
+    const realSpan = document.createElement("span");
+    realSpan.textContent = `Real ${formatRealBookPage(bm.realPage)}`;
+    metaEl.appendChild(realSpan);
+
+    if (bm.updatedAt) {
+      const updatedSpan = document.createElement("span");
+      updatedSpan.textContent = `Updated ${formatIsoForDisplay(bm.updatedAt)}`;
+      metaEl.appendChild(updatedSpan);
+    }
+
+    card.appendChild(labelEl);
+    card.appendChild(metaEl);
+
+    card.addEventListener("click", () => {
+      addReaderHistoryToBookmark(book, bm, safePage);
+      const statusText = document.getElementById("readerStatusText");
+      if (statusText) {
+        statusText.textContent = `History added to "${bm.label || "Bookmark"}".`;
+      }
+      closeModal("readerHistoryPickerModal");
+    });
+
+    listEl.appendChild(card);
+  });
+
+  openModal("readerHistoryPickerModal");
+}
+
 // Register openConfirm so other modules can call it via callRenderer
 registerRenderer("openConfirm", openConfirm);
 registerRenderer("openBookmarkModal", openBookmarkModal);
+registerRenderer("openReaderHistoryPicker", openReaderHistoryPicker);
 registerRenderer("renderMonthlyReview", renderMonthlyReview);
 registerRenderer("openNoteModal", openNoteModal);

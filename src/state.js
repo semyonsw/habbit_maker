@@ -32,6 +32,10 @@ export const historyEventModalState = {
   editingBookmarkId: null,
   editingEventId: null,
 };
+export const readerHistoryPickerState = {
+  bookId: null,
+  page: 1,
+};
 export const summaryModalState = {
   bookId: null,
   bookmarkId: null,
