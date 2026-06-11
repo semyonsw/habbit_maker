@@ -309,24 +309,33 @@ async function init() {
   try {
     setGlobalLoaderMessage("Loading...");
 
-    // Ask the browser to keep our IndexedDB data (and PDFs) from being evicted
-    // under storage pressure. On an installed PWA this is granted silently.
-    requestPersistentStorage();
+    // On the phone/PWA build we persist in on-device IndexedDB; ask the browser
+    // to keep it from being evicted. The PC (server) build doesn't need this.
+    if (db.getBackendMode() === "idb") {
+      requestPersistentStorage();
+    }
 
     let status = null;
     try {
       status = await db.getMigrationStatus();
     } catch (err) {
-      // On-device storage (IndexedDB) is the source of truth now; if its status
-      // can't be read we log and carry on with defaults rather than blocking.
       appendLogEntry({
         level: "error",
         component: "app",
         operation: "init",
-        message:
-          "Could not read on-device storage status; continuing with defaults.",
+        message: "Could not read migration status.",
         error: err,
       });
+      if (db.getBackendMode() === "rest") {
+        // PC build: the local Python server is expected but not reachable.
+        if (appRoot) appRoot.style.display = "";
+        hideGlobalLoader();
+        alert(
+          "The Habit Tracker backend is not reachable. Please run start.bat first, then refresh this page.",
+        );
+        return;
+      }
+      // Phone/PWA build: on-device storage unavailable -> carry on with defaults.
       status = { legacy_imported: true, schemaVersion: 1 };
     }
 

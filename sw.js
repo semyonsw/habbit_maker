@@ -9,7 +9,7 @@
  */
 "use strict";
 
-const CACHE_VERSION = "v1";
+const CACHE_VERSION = "v2";
 const CACHE_NAME = `habit-shell-${CACHE_VERSION}`;
 
 // Core shell precached on install. The woff2 font binaries (Inter / Playfair /
@@ -31,6 +31,8 @@ const PRECACHE = [
   "src/constants.js",
   "src/data-io.js",
   "src/db.js",
+  "src/db-rest.js",
+  "src/db-idb.js",
   "src/encryption.js",
   "src/events.js",
   "src/feedback.js",
@@ -102,6 +104,7 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return; // let cross-origin pass through
+  if (/\/api\//.test(url.pathname)) return; // never cache the SQLite REST backend
 
   event.respondWith(
     // ignoreSearch so any future ?v= cache-busting suffix still hits the cache.

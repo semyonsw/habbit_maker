@@ -1569,13 +1569,20 @@
       });
     </script>
     <script>
-      // Register the service worker for offline use + installability.
-      // Relative path so the scope is the GitHub Pages project subpath.
-      if ("serviceWorker" in navigator) {
-        window.addEventListener("load", function () {
-          navigator.serviceWorker.register("sw.js").catch(function () {});
-        });
-      }
+      // Register the service worker for offline use + installability, but ONLY
+      // off-localhost. The PC build is served by the Python server on localhost
+      // and must stay cache-free so it behaves exactly as before (and so the
+      // service worker never sits in front of the /api SQLite backend).
+      (function () {
+        var h = location.hostname;
+        var isLocal =
+          h === "localhost" || h === "127.0.0.1" || h === "[::1]" || h === "::1";
+        if ("serviceWorker" in navigator && !isLocal) {
+          window.addEventListener("load", function () {
+            navigator.serviceWorker.register("sw.js").catch(function () {});
+          });
+        }
+      })();
     </script>
     <script type="module" src="src/app.js"></script>
   </body>
