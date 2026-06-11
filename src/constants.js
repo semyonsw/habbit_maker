@@ -27,15 +27,25 @@ export const MAX_PDF_FILE_SIZE_MB = 70;
 export const MAX_PDF_FILE_SIZE_BYTES = MAX_PDF_FILE_SIZE_MB * 1024 * 1024;
 export const EMBEDDED_EXPORT_SIZE_WARN_BYTES = 50 * 1024 * 1024;
 export const MAX_BOOKMARK_HISTORY = 200;
+// Legacy browser PDF store (pre-server era). Kept so app.js's one-shot legacy
+// migration can still read PDFs out of the old IndexedDB database.
 export const PDF_DB_NAME = "habitTracker_books_pdf_v1";
 export const PDF_DB_VERSION = 1;
 export const PDF_STORE_NAME = "pdfFiles";
-export const PDFJS_SCRIPT_URLS = [
-  "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js",
-  "https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.min.js",
-];
-export const PDFJS_WORKER_URL =
-  "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+// On-device persistence (replaces the Python/SQLite backend for the PWA build).
+// One database, three stores: a generic key-value store (app state blob, prefs,
+// secure settings, meta flags), an append-only logs store, and a PDF-blob store.
+export const IDB_NAME = "habitTracker_store_v1";
+export const IDB_VERSION = 1;
+export const IDB_KV_STORE = "kv";
+export const IDB_LOGS_STORE = "logs";
+export const IDB_PDF_STORE = "pdfs";
+
+// Vendored offline copies (see vendor/). Relative paths resolve against the
+// document base URL, so they work under a GitHub Pages project subpath too.
+export const PDFJS_SCRIPT_URLS = ["vendor/pdfjs/pdf.min.js"];
+export const PDFJS_WORKER_URL = "vendor/pdfjs/pdf.worker.min.js";
 export const READER_DARK_ENABLED_KEY = "habitTracker_readerDarkEnabled_v1";
 export const READER_DARK_MODE_KEY = "habitTracker_readerDarkMode_v1";
 export const ANALYTICS_DISPLAY_MODE_KEY = "habitTracker_analyticsDisplayMode_v1";

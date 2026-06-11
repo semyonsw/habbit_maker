@@ -287,29 +287,47 @@ async function runLegacyMigration() {
 
 // -------------------------------------------------------------------------
 
+// Best-effort request for durable (non-evictable) storage. Fire-and-forget:
+// never blocks boot and never throws into the caller.
+function requestPersistentStorage() {
+  try {
+    if (navigator.storage && typeof navigator.storage.persist === "function") {
+      navigator.storage
+        .persisted()
+        .then((already) => {
+          if (!already) navigator.storage.persist().catch(() => {});
+        })
+        .catch(() => {});
+    }
+  } catch (_) {
+    /* storage manager unavailable; ignore */
+  }
+}
+
 async function init() {
   const appRoot = document.getElementById("app");
   try {
     setGlobalLoaderMessage("Loading...");
 
+    // Ask the browser to keep our IndexedDB data (and PDFs) from being evicted
+    // under storage pressure. On an installed PWA this is granted silently.
+    requestPersistentStorage();
+
     let status = null;
     try {
       status = await db.getMigrationStatus();
     } catch (err) {
+      // On-device storage (IndexedDB) is the source of truth now; if its status
+      // can't be read we log and carry on with defaults rather than blocking.
       appendLogEntry({
         level: "error",
         component: "app",
         operation: "init",
         message:
-          "Backend unreachable. Start the local server (start.bat) before opening this page.",
+          "Could not read on-device storage status; continuing with defaults.",
         error: err,
       });
-      if (appRoot) appRoot.style.display = "";
-      hideGlobalLoader();
-      alert(
-        "The Habit Tracker backend is not reachable. Please run start.bat first, then refresh this page.",
-      );
-      return;
+      status = { legacy_imported: true, schemaVersion: 1 };
     }
 
     if (!status.legacy_imported) {
