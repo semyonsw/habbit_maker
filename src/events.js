@@ -60,9 +60,13 @@ import {
   sendRawWithoutAi,
   errorBackToForm,
 } from "./feedback.js";
+import {
+  bindUiAppearanceControls,
+  syncUiAppearanceControls,
+} from "./ui-prefs.js";
 
 export function bindEvents() {
-  document.querySelectorAll(".nav-tab").forEach((tab) => {
+  document.querySelectorAll(".nav-tab, .bottom-nav-btn").forEach((tab) => {
     tab.addEventListener("click", () =>
       callRenderer("switchView", tab.dataset.view),
     );
@@ -331,7 +335,10 @@ export function bindEvents() {
 
   const settingsBtn = document.getElementById("btnOpenSettings");
   if (settingsBtn) {
-    settingsBtn.addEventListener("click", openFeedbackPanel);
+    settingsBtn.addEventListener("click", () => {
+      syncUiAppearanceControls();
+      openFeedbackPanel();
+    });
   }
   const settingsClose = document.getElementById("settingsModalClose");
   if (settingsClose) {
@@ -376,6 +383,7 @@ export function bindEvents() {
     errorCancelBtn.addEventListener("click", errorBackToForm);
   }
   bindFeedbackForm();
+  bindUiAppearanceControls();
 
   window.addEventListener("resize", applySidebarCollapseState);
 

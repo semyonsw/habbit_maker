@@ -9,7 +9,7 @@
  */
 "use strict";
 
-const CACHE_VERSION = "v2";
+const CACHE_VERSION = "v3";
 const CACHE_NAME = `habit-shell-${CACHE_VERSION}`;
 
 // Core shell precached on install. The woff2 font binaries (Inter / Playfair /
@@ -46,6 +46,7 @@ const PRECACHE = [
   "src/pdf-reader.js",
   "src/persistence.js",
   "src/preferences.js",
+  "src/ui-prefs.js",
   "src/render-analytics.js",
   "src/render-books.js",
   "src/render-dashboard.js",

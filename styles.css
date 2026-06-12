@@ -3932,3 +3932,388 @@ body.is-global-loading {
   font-size: 0.95rem;
 }
 
+/* =========================================================================
+   Mobile-comfort UI features (user-configurable via Settings → Appearance).
+   Each feature reads a data-ui-* attribute on <html>: "on" = always active,
+   "off" = never, "auto"/unset = active only at phone widths (<= 768px).
+   Desktop is untouched unless a feature is explicitly set to "on".
+   ========================================================================= */
+
+/* ---- Settings: segmented Auto/On/Off controls (always visible) ---- */
+.ui-appearance-section .ui-pref-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.ui-appearance-section .ui-pref-row > label {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--gray-700);
+}
+.segmented {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.05);
+}
+.segmented .seg-option {
+  position: relative;
+  margin: 0;
+}
+.segmented .seg-option input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.segmented .seg-option span {
+  display: block;
+  padding: 6px 14px;
+  border-radius: var(--radius-pill);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--gray-500);
+  cursor: pointer;
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast);
+}
+.segmented .seg-option input:checked + span {
+  background: var(--purple-600);
+  color: var(--white);
+}
+.segmented .seg-option input:focus-visible + span {
+  box-shadow: var(--focus-ring);
+}
+
+/* ---- Feature 1: bottom tab navigation ---- */
+.bottom-nav {
+  display: none;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 300;
+  justify-content: space-around;
+  align-items: stretch;
+  gap: 2px;
+  padding: 6px 6px calc(6px + env(safe-area-inset-bottom));
+  background: var(--glass-surface-strong);
+  border-top: 1px solid var(--glass-border);
+  backdrop-filter: blur(14px);
+}
+.bottom-nav-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-height: 52px;
+  padding: 6px 2px;
+  border: none;
+  border-radius: 12px;
+  background: none;
+  color: var(--gray-500);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition:
+    color var(--transition-fast),
+    background var(--transition-fast);
+}
+.bottom-nav-btn svg {
+  width: 22px;
+  height: 22px;
+}
+.bottom-nav-btn span {
+  line-height: 1;
+}
+.bottom-nav-btn.active {
+  color: var(--white);
+}
+.bottom-nav-btn.active svg {
+  stroke: var(--purple-400);
+}
+.bottom-nav-btn:active {
+  background: rgba(255, 255, 255, 0.06);
+}
+html[data-ui-bottomnav="on"] .bottom-nav {
+  display: flex;
+}
+html[data-ui-bottomnav="on"] .main-content {
+  padding-bottom: calc(72px + env(safe-area-inset-bottom));
+}
+@media (max-width: 768px) {
+  html[data-ui-bottomnav="auto"] .bottom-nav,
+  html:not([data-ui-bottomnav]) .bottom-nav {
+    display: flex;
+  }
+  html[data-ui-bottomnav="auto"] .main-content,
+  html:not([data-ui-bottomnav]) .main-content {
+    padding-bottom: calc(72px + env(safe-area-inset-bottom));
+  }
+}
+
+/* ---- Feature 2: comfortable touch sizes (+ grid polish) ----
+   Declarations are duplicated across the "on" arm and the media "auto/unset"
+   arm because CSS can't share a rule body across the two contexts. */
+html[data-ui-comforttouch="on"] .habit-actions-toggle {
+  width: 44px;
+  height: 44px;
+}
+html[data-ui-comforttouch="on"] .month-nav {
+  width: 48px;
+  height: 48px;
+}
+html[data-ui-comforttouch="on"] .emoji-option {
+  width: 44px;
+  height: 44px;
+}
+html[data-ui-comforttouch="on"] .color-option {
+  width: 40px;
+  height: 40px;
+}
+html[data-ui-comforttouch="on"] .nav-tab {
+  padding: 14px;
+}
+html[data-ui-comforttouch="on"] .habits-grid th.day-col,
+html[data-ui-comforttouch="on"] .habits-grid td.day-cell {
+  width: 44px;
+  min-width: 44px;
+}
+html[data-ui-comforttouch="on"] .habit-check {
+  width: 30px;
+  height: 30px;
+}
+html[data-ui-comforttouch="on"] .note-btn {
+  width: 30px;
+  height: 30px;
+}
+@media (max-width: 768px) {
+  html[data-ui-comforttouch="auto"] .habit-actions-toggle,
+  html:not([data-ui-comforttouch]) .habit-actions-toggle {
+    width: 44px;
+    height: 44px;
+  }
+  html[data-ui-comforttouch="auto"] .month-nav,
+  html:not([data-ui-comforttouch]) .month-nav {
+    width: 48px;
+    height: 48px;
+  }
+  html[data-ui-comforttouch="auto"] .emoji-option,
+  html:not([data-ui-comforttouch]) .emoji-option {
+    width: 44px;
+    height: 44px;
+  }
+  html[data-ui-comforttouch="auto"] .color-option,
+  html:not([data-ui-comforttouch]) .color-option {
+    width: 40px;
+    height: 40px;
+  }
+  html[data-ui-comforttouch="auto"] .nav-tab,
+  html:not([data-ui-comforttouch]) .nav-tab {
+    padding: 14px;
+  }
+  html[data-ui-comforttouch="auto"] .habits-grid th.day-col,
+  html[data-ui-comforttouch="auto"] .habits-grid td.day-cell,
+  html:not([data-ui-comforttouch]) .habits-grid th.day-col,
+  html:not([data-ui-comforttouch]) .habits-grid td.day-cell {
+    width: 44px;
+    min-width: 44px;
+  }
+  html[data-ui-comforttouch="auto"] .habit-check,
+  html:not([data-ui-comforttouch]) .habit-check {
+    width: 30px;
+    height: 30px;
+  }
+  html[data-ui-comforttouch="auto"] .note-btn,
+  html:not([data-ui-comforttouch]) .note-btn {
+    width: 30px;
+    height: 30px;
+  }
+}
+
+/* ---- Safe-area insets on phones (always; harmless when insets are 0) ---- */
+@media (max-width: 768px) {
+  .mobile-menu-toggle {
+    top: calc(12px + env(safe-area-inset-top));
+    left: calc(12px + env(safe-area-inset-left));
+  }
+  .main-content {
+    padding-top: calc(60px + env(safe-area-inset-top));
+  }
+  .reader-topbar {
+    padding-top: calc(10px + env(safe-area-inset-top));
+  }
+  .undo-toast {
+    bottom: calc(16px + env(safe-area-inset-bottom));
+  }
+}
+/* lift the toast above the bottom bar when it's active */
+html[data-ui-bottomnav="on"] .undo-toast {
+  bottom: calc(84px + env(safe-area-inset-bottom));
+}
+@media (max-width: 768px) {
+  html[data-ui-bottomnav="auto"] .undo-toast,
+  html:not([data-ui-bottomnav]) .undo-toast {
+    bottom: calc(84px + env(safe-area-inset-bottom));
+  }
+}
+
+/* ---- Feature 3: Today quick-check list ---- */
+.today-quickcheck {
+  display: none;
+  margin-bottom: 18px;
+  padding: 14px 16px;
+  border-radius: var(--radius-lg);
+  background: var(--glass-surface-strong);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(12px);
+  box-shadow: var(--shadow-md);
+}
+.today-quickcheck-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.today-quickcheck-title {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  color: var(--white);
+}
+.today-quickcheck-count {
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--gray-500);
+}
+.today-quickcheck-empty {
+  margin: 4px 0 0;
+  color: var(--gray-500);
+  font-size: 0.85rem;
+}
+.today-quickcheck-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.today-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 56px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--glass-border);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--white);
+  font-size: 0.98rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast);
+}
+.today-row-check {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--gray-400);
+  border-radius: 50%;
+  transition: all var(--transition-fast);
+}
+.today-row-emoji {
+  font-size: 1.25rem;
+}
+.today-row-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.today-row.is-done {
+  border-color: rgba(16, 185, 129, 0.5);
+  background: rgba(16, 185, 129, 0.1);
+}
+.today-row.is-done .today-row-check {
+  background: var(--success);
+  border-color: var(--success);
+}
+.today-row.is-done .today-row-check::after {
+  content: "✓";
+  color: #04211a;
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+.today-row.is-done .today-row-name {
+  color: var(--gray-600);
+}
+html[data-ui-todaylist="on"] .today-quickcheck {
+  display: block;
+}
+@media (max-width: 768px) {
+  html[data-ui-todaylist="auto"] .today-quickcheck,
+  html:not([data-ui-todaylist]) .today-quickcheck {
+    display: block;
+  }
+}
+
+/* ---- Feature 4: bottom-sheet modals ---- */
+@keyframes sheetSlideUp {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+html[data-ui-bottomsheets="on"] .modal-overlay {
+  align-items: flex-end;
+  padding: 0;
+}
+html[data-ui-bottomsheets="on"] .modal {
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  max-height: 92vh;
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  padding-bottom: env(safe-area-inset-bottom);
+  animation: sheetSlideUp var(--motion-base) var(--ease-emphasized);
+}
+@media (max-width: 768px) {
+  html[data-ui-bottomsheets="auto"] .modal-overlay,
+  html:not([data-ui-bottomsheets]) .modal-overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+  html[data-ui-bottomsheets="auto"] .modal,
+  html:not([data-ui-bottomsheets]) .modal {
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
+    max-height: 92vh;
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    padding-bottom: env(safe-area-inset-bottom);
+    animation: sheetSlideUp var(--motion-base) var(--ease-emphasized);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-ui-bottomsheets] .modal {
+    animation: none;
+  }
+}
+

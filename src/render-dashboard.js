@@ -226,14 +226,15 @@ export async function switchView(viewId) {
     .querySelectorAll(".view")
     .forEach((view) => view.classList.remove("active"));
   document
-    .querySelectorAll(".nav-tab")
+    .querySelectorAll(".nav-tab, .bottom-nav-btn")
     .forEach((tab) => tab.classList.remove("active"));
 
   const viewEl = document.getElementById(`view-${viewId}`);
   if (viewEl) viewEl.classList.add("active");
 
-  const tabEl = document.querySelector(`.nav-tab[data-view="${viewId}"]`);
-  if (tabEl) tabEl.classList.add("active");
+  document
+    .querySelectorAll(`.nav-tab[data-view="${viewId}"], .bottom-nav-btn[data-view="${viewId}"]`)
+    .forEach((tab) => tab.classList.add("active"));
 
   document.querySelector(".sidebar").classList.remove("open");
 
@@ -1151,17 +1152,6 @@ export function renderDailyHabitsGrid() {
     completedDays[day] = isDayFullyCompleted(day);
   }
 
-  function syncDayCompletionClass(day, isComplete) {
-    const dayHeader = grid.querySelector(`th.day-col[data-day='${day}']`);
-    if (dayHeader) {
-      dayHeader.classList.toggle("day-complete", !!isComplete);
-    }
-
-    grid
-      .querySelectorAll(`td.day-cell[data-day='${day}']`)
-      .forEach((cell) => cell.classList.toggle("day-complete", !!isComplete));
-  }
-
   let html = "<thead><tr><th class='habit-name-col'><span>Habits</span></th>";
   for (let day = 1; day <= totalDays; day++) {
     const isToday = day === todayDay;
@@ -1253,19 +1243,11 @@ export function renderDailyHabitsGrid() {
 
   grid.querySelectorAll(".habit-check").forEach((cb) => {
     cb.addEventListener("change", function () {
-      const habitId = this.dataset.habit;
-      const day = parseInt(this.dataset.day, 10);
-      if (!monthData.dailyCompletions[habitId])
-        monthData.dailyCompletions[habitId] = {};
-      monthData.dailyCompletions[habitId][day] = this.checked;
-      saveState();
-      renderSummary();
-      renderWeeklySummaryCards();
-      renderDailyCompletionMountainChart();
-      callRenderer("renderAnalyticsView");
-      updateHabitStreak(habitId);
-
-      syncDayCompletionClass(day, isDayFullyCompleted(day));
+      setHabitDayCompletion(
+        this.dataset.habit,
+        parseInt(this.dataset.day, 10),
+        this.checked,
+      );
     });
   });
 
@@ -1282,6 +1264,123 @@ export function renderDailyHabitsGrid() {
   bindDailyGridHoverInteractions(grid);
 
   habits.forEach((h) => updateHabitStreak(h.id));
+}
+
+// Module-scope check used by the incremental update path (the per-render
+// closure version lives inside renderDailyHabitsGrid for the initial build).
+function computeDayFullyCompleted(day) {
+  const monthData = getCurrentMonthData();
+  const habits = getSortedDailyHabits();
+  let required = 0;
+  let checked = 0;
+  habits.forEach((habit) => {
+    if (
+      !isHabitTrackedOnDate(habit, state.currentYear, state.currentMonth, day)
+    ) {
+      return;
+    }
+    required += 1;
+    if (
+      monthData.dailyCompletions[habit.id] &&
+      monthData.dailyCompletions[habit.id][day]
+    ) {
+      checked += 1;
+    }
+  });
+  return required > 0 && checked === required;
+}
+
+// Single write path for toggling a habit's completion on a given day. Both the
+// month grid checkbox and the Today quick-check list call this, so there is no
+// double-counting and both views stay in sync. Patches the grid in place
+// (rather than re-rendering it) so already-checked boxes don't replay their pop
+// animation on every toggle.
+export function setHabitDayCompletion(habitId, day, checked) {
+  const monthData = getCurrentMonthData();
+  if (!monthData.dailyCompletions[habitId]) {
+    monthData.dailyCompletions[habitId] = {};
+  }
+  monthData.dailyCompletions[habitId][day] = !!checked;
+  saveState();
+  renderSummary();
+  renderWeeklySummaryCards();
+  renderDailyCompletionMountainChart();
+  callRenderer("renderAnalyticsView");
+  updateHabitStreak(habitId);
+
+  const grid = document.getElementById("dailyHabitsGrid");
+  if (grid) {
+    const cb = grid.querySelector(
+      `.habit-check[data-habit='${habitId}'][data-day='${day}']`,
+    );
+    if (cb && cb.checked !== !!checked) cb.checked = !!checked;
+    const complete = computeDayFullyCompleted(day);
+    const header = grid.querySelector(`th.day-col[data-day='${day}']`);
+    if (header) header.classList.toggle("day-complete", complete);
+    grid
+      .querySelectorAll(`td.day-cell[data-day='${day}']`)
+      .forEach((cell) => cell.classList.toggle("day-complete", complete));
+  }
+
+  renderTodayQuickCheck();
+}
+
+// "Today" quick-check list: large tap-to-complete rows for today's active
+// habits, so the daily check-in doesn't require the wide month grid. Always
+// rendered; CSS controls whether it's visible (per the uiTodayList pref).
+export function renderTodayQuickCheck() {
+  const container = document.getElementById("todayQuickCheck");
+  if (!container) return;
+
+  const today = new Date();
+  const isCurrentMonthView =
+    today.getFullYear() === state.currentYear &&
+    today.getMonth() === state.currentMonth;
+  const todayDay = today.getDate();
+  const head =
+    "<div class='today-quickcheck-head'><span class='today-quickcheck-title'>Today</span>";
+
+  if (!isCurrentMonthView) {
+    container.innerHTML = `${head}</div><p class='today-quickcheck-empty'>Switch to the current month to check off today.</p>`;
+    return;
+  }
+
+  const monthData = getCurrentMonthData();
+  const habits = getSortedDailyHabits().filter((h) =>
+    isHabitTrackedOnDate(h, state.currentYear, state.currentMonth, todayDay),
+  );
+
+  if (habits.length === 0) {
+    container.innerHTML = `${head}</div><p class='today-quickcheck-empty'>No habits scheduled for today.</p>`;
+    return;
+  }
+
+  const isDone = (h) =>
+    !!(
+      monthData.dailyCompletions[h.id] &&
+      monthData.dailyCompletions[h.id][todayDay]
+    );
+  const doneCount = habits.filter(isDone).length;
+
+  let html = `${head}<span class='today-quickcheck-count'>${doneCount}/${habits.length}</span></div><div class='today-quickcheck-list'>`;
+  habits.forEach((h) => {
+    const done = isDone(h);
+    html += `<button type='button' class='today-row ${done ? "is-done" : ""}' data-habit='${h.id}' data-day='${todayDay}' aria-pressed='${done}'><span class='today-row-check' aria-hidden='true'></span><span class='today-row-emoji'>${sanitize(getHabitEmoji(h))}</span><span class='today-row-name'>${sanitize(h.name)}</span></button>`;
+  });
+  html += "</div>";
+  container.innerHTML = html;
+
+  container.querySelectorAll(".today-row").forEach((row) => {
+    row.addEventListener("click", function () {
+      const habitId = this.dataset.habit;
+      const day = parseInt(this.dataset.day, 10);
+      const md = getCurrentMonthData();
+      const current = !!(
+        md.dailyCompletions[habitId] && md.dailyCompletions[habitId][day]
+      );
+      setHabitDayCompletion(habitId, day, !current);
+    });
+  });
 }
 
 function renderCategoriesList() {
@@ -1333,6 +1432,7 @@ export function renderAll() {
   renderSummary();
   renderWeeklySummaryCards();
   renderDailyHabitsGrid();
+  renderTodayQuickCheck();
   renderDailyCompletionMountainChart();
   renderManageView();
 
@@ -1346,3 +1446,4 @@ registerRenderer("renderAll", renderAll);
 registerRenderer("renderManageView", renderManageView);
 registerRenderer("switchView", switchView);
 registerRenderer("renderDailyHabitsGrid", renderDailyHabitsGrid);
+registerRenderer("renderTodayQuickCheck", renderTodayQuickCheck);

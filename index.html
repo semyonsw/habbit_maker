@@ -191,7 +191,7 @@
           <button
             class="btn-secondary btn-settings"
             id="btnOpenSettings"
-            title="Send feedback"
+            title="Settings"
             type="button"
           >
             <svg
@@ -207,7 +207,7 @@
                 d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
               />
             </svg>
-            <span>Send feedback</span>
+            <span>Settings</span>
           </button>
           <p class="backup-status" id="backupStatus" aria-live="polite"></p>
           <input
@@ -256,6 +256,11 @@
               </svg>
             </button>
           </div>
+          <section
+            class="today-quickcheck"
+            id="todayQuickCheck"
+            aria-label="Today's habits"
+          ></section>
           <div class="summary-row">
             <div class="summary-card summary-main">
               <h3>Summary</h3>
@@ -711,6 +716,53 @@
           </div>
         </section>
       </main>
+      <nav class="bottom-nav" aria-label="Primary">
+        <button type="button" class="bottom-nav-btn active" data-view="dashboard">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="7" rx="1" />
+            <rect x="14" y="3" width="7" height="7" rx="1" />
+            <rect x="3" y="14" width="7" height="7" rx="1" />
+            <rect x="14" y="14" width="7" height="7" rx="1" />
+          </svg>
+          <span>Habits</span>
+        </button>
+        <button type="button" class="bottom-nav-btn" data-view="books">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 4h13a3 3 0 0 1 3 3v13H7a3 3 0 0 1-3-3z" />
+            <path d="M7 4v13" />
+            <path d="M10 9h7" />
+            <path d="M10 13h7" />
+          </svg>
+          <span>Books</span>
+        </button>
+        <button type="button" class="bottom-nav-btn" data-view="analytics">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 19h16" />
+            <path d="M7 16V8" />
+            <path d="M12 16V5" />
+            <path d="M17 16v-6" />
+          </svg>
+          <span>Stats</span>
+        </button>
+        <button type="button" class="bottom-nav-btn" data-view="manage">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          </svg>
+          <span>Manage</span>
+        </button>
+        <button type="button" class="bottom-nav-btn" data-view="logs">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 5h18" />
+            <path d="M3 12h18" />
+            <path d="M3 19h18" />
+            <circle cx="7" cy="5" r="1" fill="currentColor" />
+            <circle cx="7" cy="12" r="1" fill="currentColor" />
+            <circle cx="7" cy="19" r="1" fill="currentColor" />
+          </svg>
+          <span>Logs</span>
+        </button>
+      </nav>
     </div>
     <div class="modal-overlay" id="habitModal">
       <div class="modal">
@@ -1245,10 +1297,50 @@
     <div class="modal-overlay" id="settingsModal">
       <div class="modal">
         <div class="modal-header">
-          <h3>Send feedback</h3>
+          <h3>Settings</h3>
           <button class="modal-close" id="settingsModalClose">&times;</button>
         </div>
         <div class="modal-body">
+          <section class="settings-section ui-appearance-section">
+            <h4>Appearance &amp; mobile comfort</h4>
+            <p class="settings-help-text">
+              Choose how the UI behaves. <strong>Auto</strong> applies each
+              feature on phone-sized screens only; <strong>On</strong> = always,
+              <strong>Off</strong> = never.
+            </p>
+            <div class="form-group ui-pref-row">
+              <label>Bottom tab bar</label>
+              <div class="segmented" role="radiogroup" aria-label="Bottom tab bar">
+                <label class="seg-option"><input type="radio" name="uiBottomNav" value="auto" /><span>Auto</span></label>
+                <label class="seg-option"><input type="radio" name="uiBottomNav" value="on" /><span>On</span></label>
+                <label class="seg-option"><input type="radio" name="uiBottomNav" value="off" /><span>Off</span></label>
+              </div>
+            </div>
+            <div class="form-group ui-pref-row">
+              <label>Comfortable touch sizes</label>
+              <div class="segmented" role="radiogroup" aria-label="Comfortable touch sizes">
+                <label class="seg-option"><input type="radio" name="uiComfortTouch" value="auto" /><span>Auto</span></label>
+                <label class="seg-option"><input type="radio" name="uiComfortTouch" value="on" /><span>On</span></label>
+                <label class="seg-option"><input type="radio" name="uiComfortTouch" value="off" /><span>Off</span></label>
+              </div>
+            </div>
+            <div class="form-group ui-pref-row">
+              <label>Today quick-check list</label>
+              <div class="segmented" role="radiogroup" aria-label="Today quick-check list">
+                <label class="seg-option"><input type="radio" name="uiTodayList" value="auto" /><span>Auto</span></label>
+                <label class="seg-option"><input type="radio" name="uiTodayList" value="on" /><span>On</span></label>
+                <label class="seg-option"><input type="radio" name="uiTodayList" value="off" /><span>Off</span></label>
+              </div>
+            </div>
+            <div class="form-group ui-pref-row">
+              <label>Bottom-sheet dialogs</label>
+              <div class="segmented" role="radiogroup" aria-label="Bottom-sheet dialogs">
+                <label class="seg-option"><input type="radio" name="uiBottomSheets" value="auto" /><span>Auto</span></label>
+                <label class="seg-option"><input type="radio" name="uiBottomSheets" value="on" /><span>On</span></label>
+                <label class="seg-option"><input type="radio" name="uiBottomSheets" value="off" /><span>Off</span></label>
+              </div>
+            </div>
+          </section>
           <section class="settings-section" id="feedbackFormView">
             <h4>Send Feedback</h4>
             <p class="settings-help-text">

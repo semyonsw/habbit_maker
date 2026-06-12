@@ -24,6 +24,7 @@ import {
 import { loadState } from "./persistence.js";
 import { loadAnalyticsPreferences } from "./preferences.js";
 import { initSidebarCollapse, initTopClock } from "./layout.js";
+import { initUiPrefs } from "./ui-prefs.js";
 import { bindEvents } from "./events.js";
 import { initReaderMode } from "./pdf-reader.js";
 import { setBookUploadStatus } from "./books.js";
@@ -357,6 +358,7 @@ async function init() {
     await loadSecureSettings();
     await loadState();
     await loadAnalyticsPreferences();
+    await initUiPrefs();
     bindEvents();
     await initSidebarCollapse();
     applyBookSummarySettingsToInputs();
