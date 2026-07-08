@@ -1,64 +1,77 @@
 "use strict";
 
-// User-configurable mobile-comfort UI preferences.
+// User-configurable UI "Version" switch.
 //
-// Four independent toggles, each "auto" | "on" | "off" (default "auto"):
-//   uiBottomNav    - bottom tab navigation bar
-//   uiComfortTouch - bigger touch targets + safe-area insets
-//   uiTodayList    - "Today" quick-check list on the dashboard
-//   uiBottomSheets - bottom-sheet modals + larger grid cells
+// A single preference, uiMode ∈ {"auto", "mobile", "desktop"} (default "auto"):
+//   auto    - comfortable mobile layout on phone-sized screens, classic
+//             desktop layout otherwise (preserves the historical behaviour)
+//   mobile  - always use the mobile layout (even on a desktop)
+//   desktop - always use the classic desktop layout (even on a phone)
 //
-// Each pref is mirrored onto <html> as a data attribute (data-ui-bottomnav,
-// data-ui-comforttouch, data-ui-todaylist, data-ui-bottomsheets). CSS resolves
-// "auto" against the @media (max-width: 768px) breakpoint, so toggling a pref
-// reflows the layout live with no reload, and desktop is untouched unless a
-// pref is explicitly set to "on". Prefs persist through db.patchPrefs, which is
-// identical on both backends (PC SQLite + phone IndexedDB).
+// The RESOLVED layout ("mobile" | "desktop") is mirrored onto <html> as
+// data-ui-mode; every mobile rule in styles.css is gated on
+// html[data-ui-mode="mobile"]. In "auto" we follow the (max-width: 768px)
+// breakpoint live via matchMedia, so rotating/resizing reflows the layout with
+// no reload. The preference persists through db.patchPrefs, which is identical
+// on both backends (PC SQLite + phone IndexedDB).
 
 import * as db from "./db.js";
 import { callRenderer } from "./render-registry.js";
 
-const UI_PREF_KEYS = [
-  "uiBottomNav",
-  "uiComfortTouch",
-  "uiTodayList",
-  "uiBottomSheets",
-];
-const VALID = new Set(["auto", "on", "off"]);
-
-// pref key -> document.documentElement.dataset property (camelCase of the
-// kebab-case data-ui-* attribute).
-const DATASET_PROP = {
-  uiBottomNav: "uiBottomnav",
-  uiComfortTouch: "uiComforttouch",
-  uiTodayList: "uiTodaylist",
-  uiBottomSheets: "uiBottomsheets",
-};
+const VALID = new Set(["auto", "mobile", "desktop"]);
+const MOBILE_QUERY = "(max-width: 768px)";
 
 export const uiPrefs = {
-  uiBottomNav: "auto",
-  uiComfortTouch: "auto",
-  uiTodayList: "auto",
-  uiBottomSheets: "auto",
+  uiMode: "auto",
 };
+
+let mql = null;
 
 function normalize(value) {
   return VALID.has(value) ? value : "auto";
 }
 
-export function applyUiPrefAttributes() {
+function viewportIsNarrow() {
+  if (typeof window === "undefined" || !window.matchMedia) return false;
+  return window.matchMedia(MOBILE_QUERY).matches;
+}
+
+// Resolve the abstract preference to a concrete layout for the current viewport.
+function resolveMode() {
+  if (uiPrefs.uiMode === "mobile") return "mobile";
+  if (uiPrefs.uiMode === "desktop") return "desktop";
+  return viewportIsNarrow() ? "mobile" : "desktop";
+}
+
+export function applyUiMode() {
   if (typeof document === "undefined") return;
-  for (const key of UI_PREF_KEYS) {
-    document.documentElement.dataset[DATASET_PROP[key]] = uiPrefs[key];
+  const resolved = resolveMode();
+  const prev = document.documentElement.dataset.uiMode;
+  document.documentElement.dataset.uiMode = resolved;
+  // The "Today" quick-check list is JS-rendered and only shown in the mobile
+  // layout; refresh it whenever the resolved layout changes (auto crossing the
+  // breakpoint, or the user flipping the switch) so it is never stale.
+  if (prev !== resolved) {
+    callRenderer("renderTodayQuickCheck");
   }
+}
+
+// In "auto" mode, follow the breakpoint live (orientation change / resize).
+function ensureBreakpointListener() {
+  if (mql || typeof window === "undefined" || !window.matchMedia) return;
+  mql = window.matchMedia(MOBILE_QUERY);
+  const onChange = () => {
+    if (uiPrefs.uiMode === "auto") applyUiMode();
+  };
+  if (mql.addEventListener) mql.addEventListener("change", onChange);
+  else if (mql.addListener) mql.addListener(onChange); // older Safari
 }
 
 export function initUiPrefsFromBlob(prefs) {
   const blob = prefs && typeof prefs === "object" ? prefs : {};
-  for (const key of UI_PREF_KEYS) {
-    uiPrefs[key] = normalize(blob[key]);
-  }
-  applyUiPrefAttributes();
+  uiPrefs.uiMode = normalize(blob.uiMode);
+  ensureBreakpointListener();
+  applyUiMode();
 }
 
 export async function initUiPrefs() {
@@ -69,39 +82,29 @@ export async function initUiPrefs() {
   }
 }
 
-export function setUiPref(key, value, persist = true) {
-  if (!UI_PREF_KEYS.includes(key)) return;
-  uiPrefs[key] = normalize(value);
-  applyUiPrefAttributes();
-  // The Today list is JS-rendered (not pure CSS), so refresh it when toggled
-  // live; the other three are resolved entirely in CSS.
-  if (key === "uiTodayList") {
-    callRenderer("renderTodayQuickCheck");
-  }
+export function setUiMode(value, persist = true) {
+  uiPrefs.uiMode = normalize(value);
+  applyUiMode();
   if (persist) {
-    db.patchPrefs({ [key]: uiPrefs[key] }).catch(() => {});
+    db.patchPrefs({ uiMode: uiPrefs.uiMode }).catch(() => {});
   }
 }
 
-// Reflect current pref values into the Appearance radio controls.
+// Reflect the current preference into the Version segmented control.
 export function syncUiAppearanceControls() {
   if (typeof document === "undefined") return;
-  for (const key of UI_PREF_KEYS) {
-    document.querySelectorAll(`input[name="${key}"]`).forEach((input) => {
-      input.checked = input.value === uiPrefs[key];
-    });
-  }
+  document.querySelectorAll('input[name="uiMode"]').forEach((input) => {
+    input.checked = input.value === uiPrefs.uiMode;
+  });
 }
 
-// Wire the Appearance radios: reflect current state and persist + apply on change.
+// Wire the Version radios: reflect current state and persist + apply on change.
 export function bindUiAppearanceControls() {
   if (typeof document === "undefined") return;
-  for (const key of UI_PREF_KEYS) {
-    document.querySelectorAll(`input[name="${key}"]`).forEach((input) => {
-      input.addEventListener("change", () => {
-        if (input.checked) setUiPref(key, input.value);
-      });
+  document.querySelectorAll('input[name="uiMode"]').forEach((input) => {
+    input.addEventListener("change", () => {
+      if (input.checked) setUiMode(input.value);
     });
-  }
+  });
   syncUiAppearanceControls();
 }

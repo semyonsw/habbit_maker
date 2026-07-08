@@ -3933,13 +3933,18 @@ body.is-global-loading {
 }
 
 /* =========================================================================
-   Mobile-comfort UI features (user-configurable via Settings → Appearance).
-   Each feature reads a data-ui-* attribute on <html>: "on" = always active,
-   "off" = never, "auto"/unset = active only at phone widths (<= 768px).
-   Desktop is untouched unless a feature is explicitly set to "on".
+   VERSION SWITCH — a single uiMode preference (Settings → Version) is resolved
+   to data-ui-mode="mobile" | "desktop" on <html> by src/ui-prefs.js.
+
+   Everything under "MOBILE LAYOUT" is gated on html[data-ui-mode="mobile"] and
+   is self-sufficient (no @media dependency), so the mobile layout works even
+   when forced on a wide screen. The desktop layout is the app's default
+   styling and is left completely untouched. When "Desktop" is forced on a
+   phone, none of these rules apply and the app's pre-existing responsive
+   @media (max-width: 768px) rules provide the fallback.
    ========================================================================= */
 
-/* ---- Settings: segmented Auto/On/Off controls (always visible) ---- */
+/* ---- Settings: segmented Auto / Mobile / Desktop control ---- */
 .ui-appearance-section .ui-pref-row {
   display: flex;
   align-items: center;
@@ -3972,9 +3977,9 @@ body.is-global-loading {
 }
 .segmented .seg-option span {
   display: block;
-  padding: 6px 14px;
+  padding: 7px 16px;
   border-radius: var(--radius-pill);
-  font-size: 0.78rem;
+  font-size: 0.8rem;
   font-weight: 600;
   color: var(--gray-500);
   cursor: pointer;
@@ -3990,7 +3995,7 @@ body.is-global-loading {
   box-shadow: var(--focus-ring);
 }
 
-/* ---- Feature 1: bottom tab navigation ---- */
+/* ---- Shared component skins (hidden until the mobile layout activates) ---- */
 .bottom-nav {
   display: none;
   position: fixed;
@@ -4001,35 +4006,37 @@ body.is-global-loading {
   justify-content: space-around;
   align-items: stretch;
   gap: 2px;
-  padding: 6px 6px calc(6px + env(safe-area-inset-bottom));
+  padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
   background: var(--glass-surface-strong);
   border-top: 1px solid var(--glass-border);
   backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
 }
 .bottom-nav-btn {
-  flex: 1;
+  flex: 1 1 0;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 3px;
-  min-height: 52px;
+  gap: 4px;
+  min-height: 54px;
   padding: 6px 2px;
   border: none;
   border-radius: 12px;
   background: none;
   color: var(--gray-500);
-  font-size: 0.62rem;
+  font-size: 0.66rem;
   font-weight: 600;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.01em;
   cursor: pointer;
   transition:
     color var(--transition-fast),
     background var(--transition-fast);
 }
 .bottom-nav-btn svg {
-  width: 22px;
-  height: 22px;
+  width: 23px;
+  height: 23px;
 }
 .bottom-nav-btn span {
   line-height: 1;
@@ -4041,194 +4048,76 @@ body.is-global-loading {
   stroke: var(--purple-400);
 }
 .bottom-nav-btn:active {
-  background: rgba(255, 255, 255, 0.06);
-}
-html[data-ui-bottomnav="on"] .bottom-nav {
-  display: flex;
-}
-html[data-ui-bottomnav="on"] .main-content {
-  padding-bottom: calc(72px + env(safe-area-inset-bottom));
-}
-@media (max-width: 768px) {
-  html[data-ui-bottomnav="auto"] .bottom-nav,
-  html:not([data-ui-bottomnav]) .bottom-nav {
-    display: flex;
-  }
-  html[data-ui-bottomnav="auto"] .main-content,
-  html:not([data-ui-bottomnav]) .main-content {
-    padding-bottom: calc(72px + env(safe-area-inset-bottom));
-  }
+  background: rgba(255, 255, 255, 0.08);
 }
 
-/* ---- Feature 2: comfortable touch sizes (+ grid polish) ----
-   Declarations are duplicated across the "on" arm and the media "auto/unset"
-   arm because CSS can't share a rule body across the two contexts. */
-html[data-ui-comforttouch="on"] .habit-actions-toggle {
-  width: 44px;
-  height: 44px;
-}
-html[data-ui-comforttouch="on"] .month-nav {
-  width: 48px;
-  height: 48px;
-}
-html[data-ui-comforttouch="on"] .emoji-option {
-  width: 44px;
-  height: 44px;
-}
-html[data-ui-comforttouch="on"] .color-option {
-  width: 40px;
-  height: 40px;
-}
-html[data-ui-comforttouch="on"] .nav-tab {
-  padding: 14px;
-}
-html[data-ui-comforttouch="on"] .habits-grid th.day-col,
-html[data-ui-comforttouch="on"] .habits-grid td.day-cell {
-  width: 44px;
-  min-width: 44px;
-}
-html[data-ui-comforttouch="on"] .habit-check {
-  width: 30px;
-  height: 30px;
-}
-html[data-ui-comforttouch="on"] .note-btn {
-  width: 30px;
-  height: 30px;
-}
-@media (max-width: 768px) {
-  html[data-ui-comforttouch="auto"] .habit-actions-toggle,
-  html:not([data-ui-comforttouch]) .habit-actions-toggle {
-    width: 44px;
-    height: 44px;
-  }
-  html[data-ui-comforttouch="auto"] .month-nav,
-  html:not([data-ui-comforttouch]) .month-nav {
-    width: 48px;
-    height: 48px;
-  }
-  html[data-ui-comforttouch="auto"] .emoji-option,
-  html:not([data-ui-comforttouch]) .emoji-option {
-    width: 44px;
-    height: 44px;
-  }
-  html[data-ui-comforttouch="auto"] .color-option,
-  html:not([data-ui-comforttouch]) .color-option {
-    width: 40px;
-    height: 40px;
-  }
-  html[data-ui-comforttouch="auto"] .nav-tab,
-  html:not([data-ui-comforttouch]) .nav-tab {
-    padding: 14px;
-  }
-  html[data-ui-comforttouch="auto"] .habits-grid th.day-col,
-  html[data-ui-comforttouch="auto"] .habits-grid td.day-cell,
-  html:not([data-ui-comforttouch]) .habits-grid th.day-col,
-  html:not([data-ui-comforttouch]) .habits-grid td.day-cell {
-    width: 44px;
-    min-width: 44px;
-  }
-  html[data-ui-comforttouch="auto"] .habit-check,
-  html:not([data-ui-comforttouch]) .habit-check {
-    width: 30px;
-    height: 30px;
-  }
-  html[data-ui-comforttouch="auto"] .note-btn,
-  html:not([data-ui-comforttouch]) .note-btn {
-    width: 30px;
-    height: 30px;
-  }
-}
-
-/* ---- Safe-area insets on phones (always; harmless when insets are 0) ---- */
-@media (max-width: 768px) {
-  .mobile-menu-toggle {
-    top: calc(12px + env(safe-area-inset-top));
-    left: calc(12px + env(safe-area-inset-left));
-  }
-  .main-content {
-    padding-top: calc(60px + env(safe-area-inset-top));
-  }
-  .reader-topbar {
-    padding-top: calc(10px + env(safe-area-inset-top));
-  }
-  .undo-toast {
-    bottom: calc(16px + env(safe-area-inset-bottom));
-  }
-}
-/* lift the toast above the bottom bar when it's active */
-html[data-ui-bottomnav="on"] .undo-toast {
-  bottom: calc(84px + env(safe-area-inset-bottom));
-}
-@media (max-width: 768px) {
-  html[data-ui-bottomnav="auto"] .undo-toast,
-  html:not([data-ui-bottomnav]) .undo-toast {
-    bottom: calc(84px + env(safe-area-inset-bottom));
-  }
-}
-
-/* ---- Feature 3: Today quick-check list ---- */
 .today-quickcheck {
   display: none;
   margin-bottom: 18px;
-  padding: 14px 16px;
+  padding: 16px;
   border-radius: var(--radius-lg);
   background: var(--glass-surface-strong);
   border: 1px solid var(--glass-border);
   backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   box-shadow: var(--shadow-md);
 }
 .today-quickcheck-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 .today-quickcheck-title {
   font-family: var(--font-display);
-  font-size: 1.15rem;
+  font-size: 1.25rem;
   color: var(--white);
 }
 .today-quickcheck-count {
-  padding: 3px 10px;
+  padding: 4px 12px;
   border-radius: var(--radius-pill);
-  background: rgba(255, 255, 255, 0.06);
-  font-size: 0.8rem;
+  background: rgba(255, 255, 255, 0.07);
+  font-size: 0.82rem;
   font-weight: 700;
   color: var(--gray-500);
 }
 .today-quickcheck-empty {
   margin: 4px 0 0;
   color: var(--gray-500);
-  font-size: 0.85rem;
+  font-size: 0.88rem;
 }
 .today-quickcheck-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 .today-row {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   width: 100%;
-  min-height: 56px;
-  padding: 12px 14px;
+  min-height: 60px;
+  padding: 14px 16px;
   border-radius: var(--radius-md);
   border: 1px solid var(--glass-border);
   background: rgba(255, 255, 255, 0.03);
   color: var(--white);
-  font-size: 0.98rem;
+  font-size: 1rem;
   font-weight: 600;
   text-align: left;
   cursor: pointer;
   transition:
     background var(--transition-fast),
-    border-color var(--transition-fast);
+    border-color var(--transition-fast),
+    transform var(--transition-fast);
+}
+.today-row:active {
+  transform: scale(0.985);
 }
 .today-row-check {
   flex: 0 0 auto;
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -4237,7 +4126,8 @@ html[data-ui-bottomnav="on"] .undo-toast {
   transition: all var(--transition-fast);
 }
 .today-row-emoji {
-  font-size: 1.25rem;
+  font-size: 1.3rem;
+  flex: 0 0 auto;
 }
 .today-row-name {
   flex: 1;
@@ -4256,23 +4146,15 @@ html[data-ui-bottomnav="on"] .undo-toast {
 .today-row.is-done .today-row-check::after {
   content: "✓";
   color: #04211a;
-  font-size: 0.95rem;
+  font-size: 1rem;
   font-weight: 800;
 }
 .today-row.is-done .today-row-name {
   color: var(--gray-600);
-}
-html[data-ui-todaylist="on"] .today-quickcheck {
-  display: block;
-}
-@media (max-width: 768px) {
-  html[data-ui-todaylist="auto"] .today-quickcheck,
-  html:not([data-ui-todaylist]) .today-quickcheck {
-    display: block;
-  }
+  text-decoration: line-through;
+  text-decoration-color: rgba(16, 185, 129, 0.6);
 }
 
-/* ---- Feature 4: bottom-sheet modals ---- */
 @keyframes sheetSlideUp {
   from {
     transform: translateY(100%);
@@ -4281,11 +4163,175 @@ html[data-ui-todaylist="on"] .today-quickcheck {
     transform: translateY(0);
   }
 }
-html[data-ui-bottomsheets="on"] .modal-overlay {
+
+/* =========================================================================
+   MOBILE LAYOUT — active only when html[data-ui-mode="mobile"]
+   ========================================================================= */
+
+/* ---- Shell: sidebar becomes a drawer, content goes full-width ---- */
+html[data-ui-mode="mobile"] .sidebar {
+  width: var(--sidebar-width);
+  transform: translateX(-100%);
+  z-index: 400;
+}
+html[data-ui-mode="mobile"] .sidebar.open {
+  transform: translateX(0);
+}
+html[data-ui-mode="mobile"] .sidebar.open::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: -1;
+}
+html[data-ui-mode="mobile"] .sidebar-collapse-toggle {
+  display: none;
+}
+html[data-ui-mode="mobile"] .mobile-menu-toggle {
+  display: flex;
+  top: calc(12px + env(safe-area-inset-top));
+  left: calc(12px + env(safe-area-inset-left));
+}
+html[data-ui-mode="mobile"] .main-content {
+  margin-left: 0;
+  padding: calc(64px + env(safe-area-inset-top)) 14px
+    calc(80px + env(safe-area-inset-bottom));
+}
+
+/* ---- Bottom tab navigation ---- */
+html[data-ui-mode="mobile"] .bottom-nav {
+  display: flex;
+}
+
+/* ---- Month header ---- */
+html[data-ui-mode="mobile"] .month-header {
+  gap: 10px;
+  margin-bottom: 18px;
+}
+html[data-ui-mode="mobile"] .month-title h2 {
+  font-size: 1.7rem;
+}
+html[data-ui-mode="mobile"] .month-nav {
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
+}
+
+/* ---- Today quick-check list (primary daily action on mobile) ---- */
+html[data-ui-mode="mobile"] .today-quickcheck {
+  display: block;
+}
+
+/* ---- Summary: stack the donut card above the weekly cards ---- */
+html[data-ui-mode="mobile"] .summary-row {
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+html[data-ui-mode="mobile"] .summary-main {
+  min-width: 0;
+}
+html[data-ui-mode="mobile"] .summary-main-content {
+  gap: 18px;
+}
+
+/* Weekly cards: swipeable carousel instead of cramped side-by-side */
+html[data-ui-mode="mobile"] .weekly-summary-cards {
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 8px;
+}
+html[data-ui-mode="mobile"] .week-card {
+  flex: 0 0 72%;
+  min-width: 180px;
+  scroll-snap-align: start;
+}
+
+/* ---- Habits section ---- */
+html[data-ui-mode="mobile"] .habits-section {
+  margin-bottom: 18px;
+}
+html[data-ui-mode="mobile"] .habits-header {
+  flex-wrap: wrap;
+  gap: 10px;
+}
+html[data-ui-mode="mobile"] .btn-add {
+  min-height: 44px;
+}
+
+/* The month grid is the SECONDARY surface on mobile (the Today list above is
+   primary). Keep it usable: a slimmer sticky name column leaves room for the
+   day cells, the cells/checkboxes are finger-sized, and the per-row streak
+   badge is hidden to cut clutter while scrolling. */
+html[data-ui-mode="mobile"] .habits-grid {
+  font-size: 0.9rem;
+}
+html[data-ui-mode="mobile"] .habits-grid th.habit-name-col,
+html[data-ui-mode="mobile"] .habits-grid td.habit-name-cell {
+  min-width: 144px;
+  max-width: 160px;
+  white-space: normal;
+}
+html[data-ui-mode="mobile"] .habits-grid .streak-badge {
+  display: none;
+}
+html[data-ui-mode="mobile"] .habits-grid th.day-col,
+html[data-ui-mode="mobile"] .habits-grid td.day-cell {
+  width: 44px;
+  min-width: 44px;
+}
+html[data-ui-mode="mobile"] .habit-check {
+  width: 30px;
+  height: 30px;
+}
+html[data-ui-mode="mobile"] .note-btn {
+  width: 28px;
+  height: 28px;
+  font-size: 13px;
+}
+html[data-ui-mode="mobile"] .habit-actions-toggle {
+  width: 40px;
+  height: 40px;
+}
+
+/* ---- Completion mountains card ---- */
+html[data-ui-mode="mobile"] .habit-mountains-card {
+  padding: 16px 14px 14px;
+}
+
+/* ---- Drawer nav tabs + modal pickers: finger-sized ---- */
+html[data-ui-mode="mobile"] .nav-tab {
+  padding: 14px;
+}
+html[data-ui-mode="mobile"] .emoji-option {
+  width: 44px;
+  height: 44px;
+}
+html[data-ui-mode="mobile"] .color-option {
+  width: 40px;
+  height: 40px;
+}
+
+/* ---- Reader top bar clears the notch ---- */
+html[data-ui-mode="mobile"] .reader-topbar {
+  padding-top: calc(10px + env(safe-area-inset-top));
+}
+
+/* ---- Toast sits above the bottom nav ---- */
+html[data-ui-mode="mobile"] .undo-toast {
+  left: 14px;
+  right: 14px;
+  bottom: calc(84px + env(safe-area-inset-bottom));
+  justify-content: space-between;
+}
+
+/* ---- Dialogs become bottom sheets ---- */
+html[data-ui-mode="mobile"] .modal-overlay {
   align-items: flex-end;
   padding: 0;
 }
-html[data-ui-bottomsheets="on"] .modal {
+html[data-ui-mode="mobile"] .modal {
   width: 100%;
   max-width: 100%;
   margin: 0;
@@ -4294,26 +4340,8 @@ html[data-ui-bottomsheets="on"] .modal {
   padding-bottom: env(safe-area-inset-bottom);
   animation: sheetSlideUp var(--motion-base) var(--ease-emphasized);
 }
-@media (max-width: 768px) {
-  html[data-ui-bottomsheets="auto"] .modal-overlay,
-  html:not([data-ui-bottomsheets]) .modal-overlay {
-    align-items: flex-end;
-    padding: 0;
-  }
-  html[data-ui-bottomsheets="auto"] .modal,
-  html:not([data-ui-bottomsheets]) .modal {
-    width: 100%;
-    max-width: 100%;
-    margin: 0;
-    max-height: 92vh;
-    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
-    padding-bottom: env(safe-area-inset-bottom);
-    animation: sheetSlideUp var(--motion-base) var(--ease-emphasized);
-  }
-}
 @media (prefers-reduced-motion: reduce) {
-  html[data-ui-bottomsheets] .modal {
+  html[data-ui-mode="mobile"] .modal {
     animation: none;
   }
 }
-

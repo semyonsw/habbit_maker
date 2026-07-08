@@ -1327,7 +1327,7 @@ export function setHabitDayCompletion(habitId, day, checked) {
 
 // "Today" quick-check list: large tap-to-complete rows for today's active
 // habits, so the daily check-in doesn't require the wide month grid. Always
-// rendered; CSS controls whether it's visible (per the uiTodayList pref).
+// rendered; CSS shows it only in the mobile layout (html[data-ui-mode=mobile]).
 export function renderTodayQuickCheck() {
   const container = document.getElementById("todayQuickCheck");
   if (!container) return;
