@@ -114,6 +114,45 @@ export function daysInMonth(year, month) {
   return new Date(year, month + 1, 0).getDate();
 }
 
+// Whole-day difference (date2 - date1) computed in UTC so DST transitions never
+// shift the count. Used by custom-sequence scheduling to find a date's phase.
+export function daysBetweenDates(y1, m1, d1, y2, m2, d2) {
+  return Math.round(
+    (Date.UTC(y2, m2, d2) - Date.UTC(y1, m1, d1)) / 86400000,
+  );
+}
+
+// Parse a "YYYY-MM-DD" key into {year, month(0-based), day}, or null if invalid.
+export function parseDateKey(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || "").trim());
+  if (!match) return null;
+  const year = parseInt(match[1], 10);
+  const month = parseInt(match[2], 10) - 1;
+  const day = parseInt(match[3], 10);
+  if (month < 0 || month > 11 || day < 1 || day > 31) return null;
+  return { year, month, day };
+}
+
+// Cap on how long a custom-sequence cycle can be (keeps the checkbox grid sane).
+export const MAX_SEQUENCE_LENGTH = 60;
+
+export function normalizeSequenceLength(value) {
+  const parsed = parseInt(value, 10);
+  if (!Number.isInteger(parsed) || parsed < 1) return 1;
+  return Math.min(MAX_SEQUENCE_LENGTH, parsed);
+}
+
+export function normalizeSequencePositions(values, length) {
+  const max = normalizeSequenceLength(length);
+  return [
+    ...new Set(
+      (Array.isArray(values) ? values : [])
+        .map((n) => parseInt(n, 10))
+        .filter((n) => Number.isInteger(n) && n >= 0 && n < max),
+    ),
+  ].sort((a, b) => a - b);
+}
+
 export function normalizeWeekdayArray(values) {
   return [
     ...new Set(

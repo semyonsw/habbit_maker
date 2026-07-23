@@ -37,10 +37,13 @@ import {
   openBookModal,
   openBookmarkModal,
   openHistoryEventModal,
+  openReportModal,
+  deleteReport,
   deleteBook,
   deleteBookmark,
   deleteHistoryEvent,
 } from "./modals.js";
+import { openReportAttachment } from "./render-report.js";
 import {
   summarizeBookmark,
   viewBookmarkSummary,
@@ -58,6 +61,7 @@ import "./render-dashboard.js";
 import "./render-analytics.js";
 import "./render-books.js";
 import "./render-logs.js";
+import "./render-report.js";
 
 window.HabitApp = {
   editHabit(id) {
@@ -94,6 +98,11 @@ window.HabitApp = {
   selectSummary(bookId, bookmarkId, summaryId) {
     selectSummaryForModal(bookId, bookmarkId, summaryId);
   },
+  editReport(reportId) {
+    openReportModal(reportId);
+  },
+  deleteReport,
+  openReportAttachment,
 };
 
 // ---- Legacy bundle collection (one-shot, runs only on first launch) ------

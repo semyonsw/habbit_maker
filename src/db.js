@@ -53,3 +53,7 @@ export const clearLogs = (...a) => impl.clearLogs(...a);
 export const uploadPdf = (...a) => impl.uploadPdf(...a);
 export const getPdfBlob = (...a) => impl.getPdfBlob(...a);
 export const deletePdf = (...a) => impl.deletePdf(...a);
+// Generic attachment blobs (any MIME type) -- used by the Report section.
+export const uploadFile = (...a) => impl.uploadFile(...a);
+export const getFileBlob = (...a) => impl.getFileBlob(...a);
+export const deleteFile = (...a) => impl.deleteFile(...a);

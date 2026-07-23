@@ -3431,6 +3431,21 @@ body.is-global-loading {
   grid-template-columns: repeat(8, minmax(0, 1fr));
 }
 
+#habitSequenceActive.schedule-days-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.form-sublabel {
+  margin-top: 12px;
+}
+
+.form-hint {
+  margin-top: 8px;
+  font-size: 0.78rem;
+  color: var(--gray-500);
+  line-height: 1.4;
+}
+
 .schedule-day-option {
   display: inline-flex;
   align-items: center;
@@ -3465,6 +3480,110 @@ body.is-global-loading {
 }
 .empty-state p {
   font-size: 0.9rem;
+}
+
+/* Reports view */
+.reports-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.report-card {
+  padding: 16px;
+}
+
+.report-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.report-card-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--gray-800);
+  word-break: break-word;
+}
+
+.report-card-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.report-card-meta {
+  margin-top: 4px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 0.78rem;
+  color: var(--gray-500);
+}
+
+.report-card-note {
+  margin-top: 10px;
+  font-size: 0.9rem;
+  color: var(--gray-700);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.report-card-attachments {
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.report-attach-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-md);
+  padding: 5px 10px;
+  font-size: 0.8rem;
+  background: var(--purple-50);
+  color: var(--gray-700);
+  cursor: pointer;
+}
+
+.report-attach-chip:hover {
+  border-color: var(--purple-600);
+}
+
+.report-attach-size {
+  color: var(--gray-400);
+  font-size: 0.72rem;
+}
+
+.report-attachments {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.report-attach-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  font-size: 0.82rem;
+}
+
+.report-attach-name {
+  word-break: break-word;
+}
+
+.report-attach-empty {
+  font-size: 0.8rem;
+  color: var(--gray-400);
 }
 
 .mobile-menu-toggle {

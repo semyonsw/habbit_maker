@@ -32,6 +32,12 @@ PDF_FILE_ID_RE = re.compile(r"^[A-Za-z0-9_\-]{1,128}$")
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH = os.environ.get("HABIT_DB_PATH") or os.path.join(ROOT_DIR, "data.db")
 BOOKS_DIR = os.environ.get("HABIT_BOOKS_DIR") or os.path.join(ROOT_DIR, "books")
+# Generic attachment store (report attachments; any MIME type). Blobs are
+# stored raw with no extension; the client tracks the MIME type in state.
+FILES_DIR = os.environ.get("HABIT_FILES_DIR") or os.path.join(ROOT_DIR, "files")
+MAX_FILE_BYTES = int(
+    os.environ.get("HABIT_MAX_FILE_BYTES", str(80 * 1024 * 1024))
+)
 MIGRATIONS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "migrations.sql")
 
 DB_LOCK = threading.Lock()
@@ -46,6 +52,7 @@ def get_conn():
 
 def init_db():
     os.makedirs(BOOKS_DIR, exist_ok=True)
+    os.makedirs(FILES_DIR, exist_ok=True)
     with open(MIGRATIONS_PATH, "r", encoding="utf-8") as f:
         ddl = f.read()
     conn = get_conn()
@@ -53,13 +60,14 @@ def init_db():
         conn.executescript(ddl)
     finally:
         conn.close()
-    # Sweep stale .tmp files left over from a crashed PDF upload.
-    for entry in os.listdir(BOOKS_DIR):
-        if entry.endswith(".tmp"):
-            try:
-                os.remove(os.path.join(BOOKS_DIR, entry))
-            except OSError:
-                pass
+    # Sweep stale .tmp files left over from a crashed upload.
+    for sweep_dir in (BOOKS_DIR, FILES_DIR):
+        for entry in os.listdir(sweep_dir):
+            if entry.endswith(".tmp"):
+                try:
+                    os.remove(os.path.join(sweep_dir, entry))
+                except OSError:
+                    pass
 
 
 def get_meta(conn, key, default=None):
@@ -173,22 +181,58 @@ def _decompose_state_into_tables(conn, state):
     for idx, h in enumerate(habits):
         if not isinstance(h, dict) or not h.get("id"):
             continue
-        conn.execute(
-            "INSERT OR REPLACE INTO habits_daily("
-            "id, name, category_id, month_goal, schedule_mode, "
-            "active_weekdays, active_month_days, emoji, order_index) "
-            "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                str(h["id"]), str(h.get("name", "")),
-                str(h.get("categoryId", "")) or None,
-                int(h.get("monthGoal", 20) or 20),
-                str(h.get("scheduleMode", "fixed")),
-                json.dumps(h.get("activeWeekdays") or [0, 1, 2, 3, 4, 5, 6]),
-                json.dumps(h.get("activeMonthDays") or []),
-                str(h.get("emoji", "")),
-                int(h.get("order", idx) if isinstance(h.get("order"), int) else idx),
-            ),
+        order_index = int(
+            h.get("order", idx) if isinstance(h.get("order"), int) else idx
         )
+        # Best-effort mirror. The JSON blob in prefs.__state__ is the source of
+        # truth; this normalized copy is only for ad-hoc SQL inspection. An
+        # existing (pre-custom_sequence) data.db lacks the new columns and its
+        # old CHECK rejects 'custom_sequence', so we try the full row first and
+        # fall back to the legacy column set, skipping the row if even that
+        # fails -- one bad row must never abort the whole state save.
+        try:
+            conn.execute(
+                "INSERT OR REPLACE INTO habits_daily("
+                "id, name, category_id, month_goal, schedule_mode, "
+                "active_weekdays, active_month_days, "
+                "sequence_length, sequence_active, sequence_anchor, "
+                "emoji, order_index) "
+                "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    str(h["id"]), str(h.get("name", "")),
+                    str(h.get("categoryId", "")) or None,
+                    int(h.get("monthGoal", 20) or 20),
+                    str(h.get("scheduleMode", "fixed")),
+                    json.dumps(h.get("activeWeekdays") or [0, 1, 2, 3, 4, 5, 6]),
+                    json.dumps(h.get("activeMonthDays") or []),
+                    int(h.get("sequenceLength", 1) or 1),
+                    json.dumps(h.get("sequenceActive") or []),
+                    str(h.get("sequenceAnchor", "")),
+                    str(h.get("emoji", "")),
+                    order_index,
+                ),
+            )
+        except sqlite3.Error:
+            try:
+                conn.execute(
+                    "INSERT OR REPLACE INTO habits_daily("
+                    "id, name, category_id, month_goal, schedule_mode, "
+                    "active_weekdays, active_month_days, emoji, order_index) "
+                    "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        str(h["id"]), str(h.get("name", "")),
+                        str(h.get("categoryId", "")) or None,
+                        int(h.get("monthGoal", 20) or 20),
+                        str(h.get("scheduleMode", "fixed")),
+                        json.dumps(
+                            h.get("activeWeekdays") or [0, 1, 2, 3, 4, 5, 6]),
+                        json.dumps(h.get("activeMonthDays") or []),
+                        str(h.get("emoji", "")),
+                        order_index,
+                    ),
+                )
+            except sqlite3.Error:
+                pass
 
     months = state.get("months") or {}
     if isinstance(months, dict):
@@ -316,6 +360,28 @@ def _decompose_state_into_tables(conn, state):
                     ),
                 )
 
+    reports = state.get("reports") or []
+    if isinstance(reports, list):
+        for r in reports:
+            if not isinstance(r, dict) or not r.get("id"):
+                continue
+            # Best-effort mirror (an old data.db has no reports table yet).
+            try:
+                conn.execute(
+                    "INSERT OR REPLACE INTO reports("
+                    "id, title, note, habit_id, attachments, "
+                    "created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        str(r["id"]), str(r.get("title", "")),
+                        str(r.get("note", "")),
+                        str(r.get("habitId", "")) or None,
+                        json.dumps(r.get("attachments") or []),
+                        str(r.get("createdAt", "")), str(r.get("updatedAt", "")),
+                    ),
+                )
+            except sqlite3.Error:
+                pass
+
 
 def _insert_log(conn, entry):
     conn.execute(
@@ -442,6 +508,10 @@ class Handler(BaseHTTPRequestHandler):
         if m:
             return self._api_get_pdf(m.group(1))
 
+        m = re.match(r"^/api/file/([^/]+)$", path)
+        if m:
+            return self._api_get_file(m.group(1))
+
         if path.startswith("/api/"):
             return self._send_json(HTTPStatus.NOT_FOUND, {"error": "not_found"})
 
@@ -466,6 +536,9 @@ class Handler(BaseHTTPRequestHandler):
         m = re.match(r"^/api/pdf/([^/]+)$", path)
         if m:
             return self._api_post_pdf(m.group(1))
+        m = re.match(r"^/api/file/([^/]+)$", path)
+        if m:
+            return self._api_post_file(m.group(1))
         return self._send_json(HTTPStatus.NOT_FOUND, {"error": "not_found"})
 
     def do_DELETE(self):
@@ -473,6 +546,9 @@ class Handler(BaseHTTPRequestHandler):
         m = re.match(r"^/api/pdf/([^/]+)$", path)
         if m:
             return self._api_delete_pdf(m.group(1))
+        m = re.match(r"^/api/file/([^/]+)$", path)
+        if m:
+            return self._api_delete_file(m.group(1))
         if path == "/api/logs":
             return self._api_clear_logs()
         return self._send_json(HTTPStatus.NOT_FOUND, {"error": "not_found"})
@@ -731,6 +807,78 @@ class Handler(BaseHTTPRequestHandler):
         if not PDF_FILE_ID_RE.match(file_id):
             return self._send_json(HTTPStatus.BAD_REQUEST, {"error": "invalid_file_id"})
         path = os.path.join(BOOKS_DIR, f"{file_id}.pdf")
+        try:
+            if os.path.isfile(path):
+                os.remove(path)
+        except OSError as e:
+            return self._send_json(HTTPStatus.INTERNAL_SERVER_ERROR,
+                                   {"error": "delete_failed", "detail": str(e)})
+        self._send_json(HTTPStatus.OK, {"ok": True})
+
+    def _api_get_file(self, file_id):
+        if not PDF_FILE_ID_RE.match(file_id):
+            return self._send_json(HTTPStatus.BAD_REQUEST, {"error": "invalid_file_id"})
+        path = os.path.join(FILES_DIR, file_id)
+        if not os.path.isfile(path):
+            return self._send_json(HTTPStatus.NOT_FOUND, {"error": "not_found"})
+        size = os.path.getsize(path)
+        # MIME is tracked client-side (in report attachment metadata); the raw
+        # bytes are returned generically and re-wrapped in a typed Blob there.
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "application/octet-stream")
+        self.send_header("Content-Length", str(size))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        with open(path, "rb") as f:
+            while True:
+                chunk = f.read(CHUNK)
+                if not chunk:
+                    break
+                self.wfile.write(chunk)
+
+    def _api_post_file(self, file_id):
+        if not PDF_FILE_ID_RE.match(file_id):
+            return self._send_json(HTTPStatus.BAD_REQUEST, {"error": "invalid_file_id"})
+        try:
+            length = int(self.headers.get("Content-Length", "0") or 0)
+        except ValueError:
+            length = 0
+        if length <= 0 or length > MAX_FILE_BYTES:
+            return self._send_json(HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
+                                   {"error": "payload_too_large_or_empty"})
+        os.makedirs(FILES_DIR, exist_ok=True)
+        final = os.path.join(FILES_DIR, file_id)
+        tmp = final + ".tmp"
+        remaining = length
+        try:
+            with open(tmp, "wb") as f:
+                while remaining > 0:
+                    chunk = self.rfile.read(min(CHUNK, remaining))
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                    remaining -= len(chunk)
+            if remaining != 0:
+                try:
+                    os.remove(tmp)
+                except OSError:
+                    pass
+                return self._send_json(HTTPStatus.BAD_REQUEST,
+                                       {"error": "incomplete_upload"})
+            os.replace(tmp, final)
+        except OSError as e:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+            return self._send_json(HTTPStatus.INTERNAL_SERVER_ERROR,
+                                   {"error": "write_failed", "detail": str(e)})
+        self._send_json(HTTPStatus.OK, {"ok": True, "sizeBytes": length})
+
+    def _api_delete_file(self, file_id):
+        if not PDF_FILE_ID_RE.match(file_id):
+            return self._send_json(HTTPStatus.BAD_REQUEST, {"error": "invalid_file_id"})
+        path = os.path.join(FILES_DIR, file_id)
         try:
             if os.path.isfile(path):
                 os.remove(path)

@@ -5,6 +5,7 @@ import {
   state,
   globals,
   noteModalState,
+  reportModalState,
   bookModalState,
   bookmarkModalState,
   historyEventModalState,
@@ -17,8 +18,12 @@ import {
   formatDateKey,
   formatIsoForDisplay,
   formatRealBookPage,
+  formatByteSize,
   normalizeWeekdayArray,
   normalizeMonthDayArray,
+  normalizeSequenceLength,
+  normalizeSequencePositions,
+  parseDateKey,
 } from "./utils.js?v=2";
 import {
   saveState,
@@ -41,6 +46,7 @@ import {
   clearBookCoverPreview,
 } from "./books.js";
 import { idbDeletePdfBlob } from "./idb.js";
+import { uploadFile, deleteFile } from "./db.js";
 import { callRenderer, registerRenderer } from "./render-registry.js";
 
 export function openModal(id) {
@@ -110,10 +116,18 @@ export function openHabitModal(habitId) {
     goal.value = 20;
     type.value = "fixed";
     emoji.value = "📌";
+    const today = new Date();
     renderHabitScheduleSelectors({
       scheduleMode: "fixed",
       activeWeekdays: [...ALL_WEEKDAYS],
       activeMonthDays: [1],
+      sequenceLength: 2,
+      sequenceActive: [0],
+      sequenceAnchor: formatDateKey(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate(),
+      ),
     });
   }
 
@@ -141,6 +155,16 @@ export function saveHabitModal() {
   const activeMonthDays = normalizeMonthDayArray(
     getCheckedValuesFromContainer("habitActiveMonthDays"),
   );
+  const sequenceLength = normalizeSequenceLength(
+    document.getElementById("habitSequenceLength").value,
+  );
+  const sequenceActive = normalizeSequencePositions(
+    getCheckedValuesFromContainer("habitSequenceActive"),
+    sequenceLength,
+  );
+  const sequenceAnchorRaw = document.getElementById(
+    "habitSequenceAnchor",
+  ).value;
   if (scheduleMode === "specific_weekdays" && !activeWeekdays.length) {
     alert("Select at least one active weekday.");
     return;
@@ -148,6 +172,22 @@ export function saveHabitModal() {
   if (scheduleMode === "specific_month_days" && !activeMonthDays.length) {
     alert("Select at least one active month day.");
     return;
+  }
+  if (scheduleMode === "custom_sequence" && !sequenceActive.length) {
+    alert("Select at least one active day within the cycle.");
+    return;
+  }
+  let sequenceAnchor = sequenceAnchorRaw;
+  if (scheduleMode === "custom_sequence") {
+    const parsedAnchor = parseDateKey(sequenceAnchorRaw);
+    if (!parsedAnchor) {
+      const today = new Date();
+      sequenceAnchor = formatDateKey(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate(),
+      );
+    }
   }
 
   const monthGoal = Math.max(
@@ -163,6 +203,9 @@ export function saveHabitModal() {
       scheduleMode,
       activeWeekdays,
       activeMonthDays,
+      sequenceLength,
+      sequenceActive,
+      sequenceAnchor,
     },
     state.currentYear,
     state.currentMonth,
@@ -183,7 +226,9 @@ export function saveHabitModal() {
       habit.type = scheduleMode;
       habit.scheduleMode = scheduleMode;
       habit.activeWeekdays =
-        scheduleMode === "fixed" ? [...ALL_WEEKDAYS] : activeWeekdays;
+        scheduleMode === "specific_weekdays"
+          ? activeWeekdays
+          : [...ALL_WEEKDAYS];
       habit.activeMonthDays =
         scheduleMode === "specific_month_days" ? activeMonthDays : [];
       habit.excludedWeekdays =
@@ -192,6 +237,11 @@ export function saveHabitModal() {
               (weekday) => !habit.activeWeekdays.includes(weekday),
             )
           : [];
+      habit.sequenceLength = sequenceLength;
+      habit.sequenceActive =
+        scheduleMode === "custom_sequence" ? sequenceActive : [];
+      habit.sequenceAnchor =
+        scheduleMode === "custom_sequence" ? sequenceAnchor : "";
       habit.emoji = emoji;
       habit.monthGoal = monthGoal;
     }
@@ -204,13 +254,16 @@ export function saveHabitModal() {
       type: scheduleMode,
       scheduleMode,
       activeWeekdays:
-        scheduleMode === "fixed" ? [...ALL_WEEKDAYS] : activeWeekdays,
+        scheduleMode === "specific_weekdays" ? activeWeekdays : [...ALL_WEEKDAYS],
       activeMonthDays:
         scheduleMode === "specific_month_days" ? activeMonthDays : [],
       excludedWeekdays:
         scheduleMode === "specific_weekdays"
           ? ALL_WEEKDAYS.filter((weekday) => !activeWeekdays.includes(weekday))
           : [],
+      sequenceLength,
+      sequenceActive: scheduleMode === "custom_sequence" ? sequenceActive : [],
+      sequenceAnchor: scheduleMode === "custom_sequence" ? sequenceAnchor : "",
       emoji,
       order: state.habits.daily.length,
     });
@@ -313,6 +366,212 @@ export function saveNoteModal() {
   closeModal("noteModal");
   Object.assign(noteModalState, { habitId: null, day: null });
   callRenderer("renderDailyHabitsGrid");
+}
+
+function buildReportAttachmentRow(name, size, onRemove) {
+  const row = document.createElement("div");
+  row.className = "report-attach-row";
+  const label = document.createElement("span");
+  label.className = "report-attach-name";
+  label.textContent = `📎 ${name} · ${formatByteSize(size)}`;
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "manage-btn delete";
+  btn.textContent = "Remove";
+  btn.addEventListener("click", onRemove);
+  row.appendChild(label);
+  row.appendChild(btn);
+  return row;
+}
+
+export function renderReportAttachmentsList() {
+  const container = document.getElementById("reportAttachmentsList");
+  if (!container) return;
+  container.innerHTML = "";
+
+  reportModalState.attachments.forEach((att) => {
+    container.appendChild(
+      buildReportAttachmentRow(att.fileName, att.fileSize, () => {
+        reportModalState.removedFileIds.push(att.fileId);
+        reportModalState.attachments = reportModalState.attachments.filter(
+          (a) => a.fileId !== att.fileId,
+        );
+        renderReportAttachmentsList();
+      }),
+    );
+  });
+
+  reportModalState.pendingFiles.forEach((file, idx) => {
+    container.appendChild(
+      buildReportAttachmentRow(`${file.name} (new)`, file.size, () => {
+        reportModalState.pendingFiles.splice(idx, 1);
+        renderReportAttachmentsList();
+      }),
+    );
+  });
+
+  if (
+    !reportModalState.attachments.length &&
+    !reportModalState.pendingFiles.length
+  ) {
+    const empty = document.createElement("p");
+    empty.className = "report-attach-empty";
+    empty.textContent = "No attachments yet.";
+    container.appendChild(empty);
+  }
+}
+
+export function handleReportFileInputChange() {
+  const fileInput = document.getElementById("reportAttachInput");
+  if (!fileInput || !fileInput.files) return;
+  Array.from(fileInput.files).forEach((file) => {
+    reportModalState.pendingFiles.push(file);
+  });
+  fileInput.value = "";
+  renderReportAttachmentsList();
+}
+
+export function openReportModal(reportId) {
+  reportModalState.reportId = reportId || null;
+  reportModalState.pendingFiles = [];
+  reportModalState.removedFileIds = [];
+
+  const titleEl = document.getElementById("reportModalTitle");
+  const titleInput = document.getElementById("reportTitle");
+  const noteInput = document.getElementById("reportNote");
+  const habitSelect = document.getElementById("reportHabit");
+  const fileInput = document.getElementById("reportAttachInput");
+  if (fileInput) fileInput.value = "";
+
+  habitSelect.innerHTML =
+    "<option value=''>None</option>" +
+    state.habits.daily
+      .map(
+        (h) =>
+          `<option value='${h.id}'>${sanitize(getHabitEmoji(h))} ${sanitize(h.name)}</option>`,
+      )
+      .join("");
+
+  if (reportModalState.reportId) {
+    const report = (state.reports || []).find(
+      (r) => r.id === reportModalState.reportId,
+    );
+    if (!report) return;
+    titleEl.textContent = "Edit Report";
+    titleInput.value = report.title || "";
+    noteInput.value = report.note || "";
+    habitSelect.value = report.habitId || "";
+    reportModalState.attachments = (report.attachments || []).map((a) => ({
+      ...a,
+    }));
+  } else {
+    titleEl.textContent = "New Report";
+    titleInput.value = "";
+    noteInput.value = "";
+    habitSelect.value = "";
+    reportModalState.attachments = [];
+  }
+
+  renderReportAttachmentsList();
+  openModal("reportModal");
+}
+
+export async function saveReportModal() {
+  const title = document.getElementById("reportTitle").value.trim();
+  const note = document.getElementById("reportNote").value.trim();
+  const habitId = document.getElementById("reportHabit").value || "";
+
+  if (
+    !title &&
+    !note &&
+    !reportModalState.attachments.length &&
+    !reportModalState.pendingFiles.length
+  ) {
+    alert("Add a title, a note, or an attachment before saving.");
+    return;
+  }
+
+  const saveBtn = document.getElementById("reportModalSave");
+  if (saveBtn) saveBtn.disabled = true;
+  try {
+    // Upload newly-added files to the blob store.
+    const uploaded = [];
+    for (const file of reportModalState.pendingFiles) {
+      const fileId = uid("file");
+      await uploadFile(fileId, file);
+      uploaded.push({
+        fileId,
+        fileName: file.name,
+        fileSize: file.size,
+        mimeType: file.type || "",
+      });
+    }
+
+    // Remove attachments the user detached (existing report only).
+    for (const fileId of reportModalState.removedFileIds) {
+      try {
+        await deleteFile(fileId);
+      } catch (_) {}
+    }
+
+    const attachments = [...reportModalState.attachments, ...uploaded];
+    const now = nowIso();
+
+    if (reportModalState.reportId) {
+      const report = (state.reports || []).find(
+        (r) => r.id === reportModalState.reportId,
+      );
+      if (report) {
+        report.title = title;
+        report.note = note;
+        report.habitId = habitId;
+        report.attachments = attachments;
+        report.updatedAt = now;
+      }
+    } else {
+      if (!Array.isArray(state.reports)) state.reports = [];
+      state.reports.push({
+        id: uid("report"),
+        title,
+        note,
+        habitId,
+        attachments,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    saveState();
+    closeModal("reportModal");
+    reportModalState.reportId = null;
+    reportModalState.attachments = [];
+    reportModalState.pendingFiles = [];
+    reportModalState.removedFileIds = [];
+    callRenderer("renderReportView");
+  } catch (_) {
+    alert("Saving the report failed. Please try again.");
+  } finally {
+    if (saveBtn) saveBtn.disabled = false;
+  }
+}
+
+export function deleteReport(reportId) {
+  const report = (state.reports || []).find((r) => r.id === reportId);
+  if (!report) return;
+  openConfirm(
+    "Delete Report",
+    `Delete "${report.title || "this report"}"?`,
+    async () => {
+      state.reports = (state.reports || []).filter((r) => r.id !== reportId);
+      saveState();
+      for (const att of report.attachments || []) {
+        try {
+          await deleteFile(att.fileId);
+        } catch (_) {}
+      }
+      callRenderer("renderReportView");
+    },
+  );
 }
 
 export function openBookModal(bookId) {

@@ -10,6 +10,9 @@ import {
   openCategoryModal,
   saveCategoryModal,
   saveNoteModal,
+  openReportModal,
+  saveReportModal,
+  handleReportFileInputChange,
   openBookModal,
   saveBookModal,
   openBookmarkModal,
@@ -33,7 +36,11 @@ import {
   unlockStoredApiKeyInteractive,
   wipeStoredApiKey,
 } from "./encryption.js";
-import { updateHabitScheduleTypeUI } from "./habits.js";
+import {
+  updateHabitScheduleTypeUI,
+  renderSequenceCheckboxes,
+  getCheckedValuesFromContainer,
+} from "./habits.js";
 import { setAnalyticsDisplayMode } from "./preferences.js";
 import {
   getDefaultMonthData,
@@ -103,6 +110,13 @@ export function bindEvents() {
     .addEventListener("change", (event) => {
       updateHabitScheduleTypeUI(event.target.value);
     });
+  document
+    .getElementById("habitSequenceLength")
+    .addEventListener("input", (event) => {
+      // Preserve any positions still valid for the new cycle length.
+      const current = getCheckedValuesFromContainer("habitSequenceActive");
+      renderSequenceCheckboxes(event.target.value, current);
+    });
 
   document
     .getElementById("categoryModalClose")
@@ -123,6 +137,22 @@ export function bindEvents() {
   document
     .getElementById("noteModalSave")
     .addEventListener("click", saveNoteModal);
+
+  document
+    .getElementById("btnAddReport")
+    .addEventListener("click", () => openReportModal());
+  document
+    .getElementById("reportModalClose")
+    .addEventListener("click", () => closeModal("reportModal"));
+  document
+    .getElementById("reportModalCancel")
+    .addEventListener("click", () => closeModal("reportModal"));
+  document
+    .getElementById("reportModalSave")
+    .addEventListener("click", saveReportModal);
+  document
+    .getElementById("reportAttachInput")
+    .addEventListener("change", handleReportFileInputChange);
 
   document
     .getElementById("bookModalClose")

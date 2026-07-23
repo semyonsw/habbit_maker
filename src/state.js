@@ -22,6 +22,12 @@ export const globals = {
 };
 
 export const noteModalState = { habitId: null, day: null };
+export const reportModalState = {
+  reportId: null,
+  attachments: [],
+  pendingFiles: [],
+  removedFileIds: [],
+};
 export const bookModalState = { editingBookId: null };
 export const bookmarkModalState = {
   editingBookId: null,

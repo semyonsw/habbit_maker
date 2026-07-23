@@ -15,6 +15,10 @@ import {
   isPlainObject,
   normalizeWeekdayArray,
   normalizeMonthDayArray,
+  normalizeSequenceLength,
+  normalizeSequencePositions,
+  parseDateKey,
+  formatDateKey,
 } from "./utils.js?v=2";
 import { appendLogEntry } from "./logging.js";
 import {
@@ -246,10 +250,46 @@ export function getDefaultState() {
         consolidateMode: true,
       },
     },
+    reports: [],
     meta: {
       schemaVersion: SCHEMA_VERSION,
     },
   };
+}
+
+// Coerce one stored report entry into the canonical shape. Blobs live in the
+// file store; only lightweight attachment metadata is kept in state.
+export function normalizeReport(input) {
+  const report = isPlainObject(input) ? input : {};
+  const attachments = Array.isArray(report.attachments)
+    ? report.attachments
+        .filter(isPlainObject)
+        .map((att) => ({
+          fileId: String(att.fileId || ""),
+          fileName: String(att.fileName || "file"),
+          fileSize: Math.max(0, parseInt(att.fileSize, 10) || 0),
+          mimeType: String(att.mimeType || ""),
+        }))
+        .filter((att) => att.fileId)
+    : [];
+  const createdAt = report.createdAt ? String(report.createdAt) : nowIso();
+  return {
+    id: String(report.id || uid("report")),
+    title: String(report.title || ""),
+    note: String(report.note || ""),
+    habitId: String(report.habitId || ""),
+    createdAt,
+    updatedAt: report.updatedAt ? String(report.updatedAt) : createdAt,
+    attachments,
+  };
+}
+
+export function ensureReportsShape(input) {
+  if (!Array.isArray(input.reports)) {
+    input.reports = [];
+    return;
+  }
+  input.reports = input.reports.map((report) => normalizeReport(report));
 }
 
 export function migrateState() {
@@ -310,32 +350,58 @@ export function migrateState() {
       mode = habit.activeWeekdays.length === 7 ? "fixed" : "specific_weekdays";
     }
 
-    if (mode !== "specific_weekdays" && mode !== "specific_month_days") {
-      mode = "fixed";
-    }
-
-    habit.activeWeekdays = normalizeWeekdayArray(
-      Array.isArray(habit.activeWeekdays)
-        ? habit.activeWeekdays
-        : mode === "specific_weekdays"
-          ? ALL_WEEKDAYS.filter(
-              (weekday) => !habit.excludedWeekdays.includes(weekday),
-            )
-          : ALL_WEEKDAYS,
-    );
-    if (!habit.activeWeekdays.length) {
+    if (mode === "custom_sequence") {
+      // Preserve the repeating-cycle schedule. This branch MUST run before the
+      // coercion below, which would otherwise reset the mode back to "fixed".
+      habit.sequenceLength = normalizeSequenceLength(habit.sequenceLength);
+      const seqActive = normalizeSequencePositions(
+        habit.sequenceActive,
+        habit.sequenceLength,
+      );
+      habit.sequenceActive = seqActive.length ? seqActive : [0];
+      const anchor = parseDateKey(habit.sequenceAnchor);
+      const today = new Date();
+      habit.sequenceAnchor = anchor
+        ? formatDateKey(anchor.year, anchor.month, anchor.day)
+        : formatDateKey(
+            today.getFullYear(),
+            today.getMonth(),
+            today.getDate(),
+          );
       habit.activeWeekdays = [...ALL_WEEKDAYS];
-    }
+      habit.activeMonthDays = [];
+    } else {
+      if (mode !== "specific_weekdays" && mode !== "specific_month_days") {
+        mode = "fixed";
+      }
 
-    habit.activeMonthDays = normalizeMonthDayArray(
-      Array.isArray(habit.activeMonthDays) ? habit.activeMonthDays : [],
-    );
-    if (mode === "specific_month_days" && !habit.activeMonthDays.length) {
-      habit.activeMonthDays = [1];
-    }
+      habit.activeWeekdays = normalizeWeekdayArray(
+        Array.isArray(habit.activeWeekdays)
+          ? habit.activeWeekdays
+          : mode === "specific_weekdays"
+            ? ALL_WEEKDAYS.filter(
+                (weekday) => !habit.excludedWeekdays.includes(weekday),
+              )
+            : ALL_WEEKDAYS,
+      );
+      if (!habit.activeWeekdays.length) {
+        habit.activeWeekdays = [...ALL_WEEKDAYS];
+      }
 
-    if (mode === "fixed") {
-      habit.activeWeekdays = [...ALL_WEEKDAYS];
+      habit.activeMonthDays = normalizeMonthDayArray(
+        Array.isArray(habit.activeMonthDays) ? habit.activeMonthDays : [],
+      );
+      if (mode === "specific_month_days" && !habit.activeMonthDays.length) {
+        habit.activeMonthDays = [1];
+      }
+
+      if (mode === "fixed") {
+        habit.activeWeekdays = [...ALL_WEEKDAYS];
+      }
+
+      delete habit.sequenceLength;
+      delete habit.sequenceActive;
+      delete habit.sequenceAnchor;
     }
 
     habit.scheduleMode = mode;
@@ -350,6 +416,7 @@ export function migrateState() {
   });
 
   ensureBooksShape(state);
+  ensureReportsShape(state);
 
   if (!isPlainObject(state.meta)) {
     state.meta = {};

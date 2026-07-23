@@ -253,6 +253,11 @@ export async function switchView(viewId) {
     return;
   }
 
+  if (viewId === "report") {
+    callRenderer("renderReportView");
+    return;
+  }
+
   if (viewId === "dashboard") {
     showGlobalLoader("Loading Dashboard...");
     await waitForNextPaint();
@@ -1413,9 +1418,16 @@ function renderDailyHabitsList() {
   list.innerHTML = habits
     .map((h, idx) => {
       const cat = getCategoryById(h.categoryId);
-      const mode = getHabitScheduleMode(h)
+      const scheduleMode = getHabitScheduleMode(h);
+      let mode = scheduleMode
         .replace("specific_weekdays", "specific weekdays")
         .replace("specific_month_days", "specific month days");
+      if (scheduleMode === "custom_sequence") {
+        const activeCount = Array.isArray(h.sequenceActive)
+          ? h.sequenceActive.length
+          : 0;
+        mode = `custom: ${activeCount}/${h.sequenceLength || "?"}-day cycle`;
+      }
       return `<div class='manage-item'><div class='manage-item-info'><span class='manage-item-emoji'>${sanitize(getHabitEmoji(h))}</span><div><div class='manage-item-name'>${sanitize(h.name)}</div><div class='manage-item-meta'>${cat ? sanitize(cat.name) : "No category"} · ${sanitize(mode)}</div></div></div><div class='manage-item-actions'><button class='manage-btn' onclick="HabitApp.moveHabit('${h.id}', 'up')" ${idx === 0 ? "disabled" : ""} title='Move up'>↑</button><button class='manage-btn' onclick="HabitApp.moveHabit('${h.id}', 'down')" ${idx === habits.length - 1 ? "disabled" : ""} title='Move down'>↓</button><button class='manage-btn' onclick="HabitApp.editHabit('${h.id}')">Edit</button><button class='manage-btn delete' onclick="HabitApp.deleteHabit('${h.id}')">Delete</button></div></div>`;
     })
     .join("");

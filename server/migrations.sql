@@ -31,11 +31,15 @@ CREATE TABLE IF NOT EXISTS habits_daily (
   category_id TEXT REFERENCES categories(id) ON DELETE SET NULL,
   month_goal INTEGER NOT NULL DEFAULT 20 CHECK (month_goal >= 1),
   schedule_mode TEXT NOT NULL DEFAULT 'fixed'
-    CHECK (schedule_mode IN ('fixed','specific_weekdays','specific_month_days')),
+    CHECK (schedule_mode IN
+      ('fixed','specific_weekdays','specific_month_days','custom_sequence')),
   active_weekdays TEXT NOT NULL DEFAULT '[0,1,2,3,4,5,6]'
     CHECK (json_valid(active_weekdays)),
   active_month_days TEXT NOT NULL DEFAULT '[]'
     CHECK (json_valid(active_month_days)),
+  sequence_length INTEGER NOT NULL DEFAULT 1 CHECK (sequence_length >= 1),
+  sequence_active TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(sequence_active)),
+  sequence_anchor TEXT NOT NULL DEFAULT '',
   emoji TEXT NOT NULL DEFAULT '',
   order_index INTEGER NOT NULL DEFAULT 0
 );
@@ -118,6 +122,17 @@ CREATE TABLE IF NOT EXISTS summaries (
   updated_at TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_summaries_bookmark ON summaries(bookmark_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS reports (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL DEFAULT '',
+  note TEXT NOT NULL DEFAULT '',
+  habit_id TEXT,
+  attachments TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(attachments)),
+  created_at TEXT NOT NULL DEFAULT '',
+  updated_at TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_reports_created ON reports(created_at DESC);
 
 CREATE TABLE IF NOT EXISTS app_logs (
   id TEXT PRIMARY KEY,

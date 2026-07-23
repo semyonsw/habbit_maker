@@ -416,3 +416,20 @@ export async function deletePdf(fileId) {
   await txDone(tx);
   return true;
 }
+
+// ---------------------------------------------------------------------------
+// Generic attachment blobs (any MIME type). The blob store is content-type
+// agnostic, so report attachments reuse it -- keyed by their own unique fileId.
+// ---------------------------------------------------------------------------
+
+export async function uploadFile(fileId, blob) {
+  return uploadPdf(fileId, blob);
+}
+
+export async function getFileBlob(fileId) {
+  return getPdfBlob(fileId);
+}
+
+export async function deleteFile(fileId) {
+  return deletePdf(fileId);
+}

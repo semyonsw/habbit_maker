@@ -5,8 +5,12 @@ import { state } from "./state.js";
 import {
   sanitize,
   daysInMonth,
+  daysBetweenDates,
+  parseDateKey,
   normalizeWeekdayArray,
   normalizeMonthDayArray,
+  normalizeSequenceLength,
+  normalizeSequencePositions,
 } from "./utils.js?v=2";
 import { saveState, ensureMonthData } from "./persistence.js";
 import { callRenderer } from "./render-registry.js";
@@ -15,7 +19,11 @@ export function getHabitScheduleMode(habit) {
   const mode = String(
     (habit && (habit.scheduleMode || habit.type)) || "fixed",
   );
-  if (mode === "specific_weekdays" || mode === "specific_month_days") {
+  if (
+    mode === "specific_weekdays" ||
+    mode === "specific_month_days" ||
+    mode === "custom_sequence"
+  ) {
     return mode;
   }
   return "fixed";
@@ -41,6 +49,27 @@ export function isHabitTrackedOnDate(habit, year, month, day) {
       Array.isArray(habit.activeMonthDays) ? habit.activeMonthDays : [],
     );
     return activeMonthDays.includes(day);
+  }
+
+  if (mode === "custom_sequence") {
+    const length = normalizeSequenceLength(habit.sequenceLength);
+    const active = normalizeSequencePositions(habit.sequenceActive, length);
+    if (!active.length) return false;
+    const anchor = parseDateKey(habit.sequenceAnchor);
+    // Without a valid start date the cycle has no phase; treat as always-on so
+    // the habit stays visible (normalization guarantees a valid anchor).
+    if (!anchor) return true;
+    const diff = daysBetweenDates(
+      anchor.year,
+      anchor.month,
+      anchor.day,
+      year,
+      month,
+      day,
+    );
+    if (diff < 0) return false;
+    const pos = ((diff % length) + length) % length;
+    return active.includes(pos);
   }
 
   return true;
@@ -192,7 +221,30 @@ export function renderHabitScheduleSelectors(habit) {
     monthDays,
   );
 
+  const seqLength = normalizeSequenceLength(
+    habit && habit.sequenceLength != null ? habit.sequenceLength : 2,
+  );
+  const seqActive =
+    habit && Array.isArray(habit.sequenceActive) ? habit.sequenceActive : [0];
+  const lengthInput = document.getElementById("habitSequenceLength");
+  if (lengthInput) lengthInput.value = String(seqLength);
+  const anchorInput = document.getElementById("habitSequenceAnchor");
+  if (anchorInput) anchorInput.value = (habit && habit.sequenceAnchor) || "";
+  renderSequenceCheckboxes(seqLength, seqActive);
+
   updateHabitScheduleTypeUI(mode);
+}
+
+export function renderSequenceCheckboxes(length, selectedPositions) {
+  const safeLength = normalizeSequenceLength(length);
+  const positions = Array.from({ length: safeLength }, (_, idx) => idx);
+  const selected = normalizeSequencePositions(selectedPositions, safeLength);
+  buildScheduleCheckboxes(
+    "habitSequenceActive",
+    positions,
+    (value) => `Day ${value + 1}`,
+    selected,
+  );
 }
 
 export function updateHabitScheduleTypeUI(scheduleMode) {
@@ -201,9 +253,12 @@ export function updateHabitScheduleTypeUI(scheduleMode) {
       ? "specific_month_days"
       : scheduleMode === "specific_weekdays"
         ? "specific_weekdays"
-        : "fixed";
+        : scheduleMode === "custom_sequence"
+          ? "custom_sequence"
+          : "fixed";
   const weekdaysGroup = document.getElementById("habitWeekdaysGroup");
   const monthDaysGroup = document.getElementById("habitMonthDaysGroup");
+  const sequenceGroup = document.getElementById("habitSequenceGroup");
   if (weekdaysGroup) {
     weekdaysGroup.style.display =
       mode === "specific_weekdays" ? "block" : "none";
@@ -211,5 +266,8 @@ export function updateHabitScheduleTypeUI(scheduleMode) {
   if (monthDaysGroup) {
     monthDaysGroup.style.display =
       mode === "specific_month_days" ? "block" : "none";
+  }
+  if (sequenceGroup) {
+    sequenceGroup.style.display = mode === "custom_sequence" ? "block" : "none";
   }
 }
