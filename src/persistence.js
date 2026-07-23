@@ -259,7 +259,7 @@ export function getDefaultState() {
 
 // Coerce one stored report entry into the canonical shape. Blobs live in the
 // file store; only lightweight attachment metadata is kept in state.
-export function normalizeReport(input) {
+function normalizeReport(input) {
   const report = isPlainObject(input) ? input : {};
   const attachments = Array.isArray(report.attachments)
     ? report.attachments

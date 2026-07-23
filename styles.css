@@ -4051,6 +4051,102 @@ body.is-global-loading {
   font-size: 0.95rem;
 }
 
+/* ---- Feedback: screenshot attachments ---- */
+.feedback-image-input {
+  width: 100%;
+  font-size: 0.82rem;
+  color: var(--gray-300, #cbd5e1);
+}
+
+.feedback-image-list {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.feedback-image-list[hidden] {
+  display: none;
+}
+
+.feedback-image-thumb {
+  position: relative;
+  width: 84px;
+  height: 84px;
+  border-radius: var(--radius-sm, 8px);
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.feedback-image-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.feedback-image-remove {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.62);
+  color: #fff;
+  font-size: 15px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.feedback-image-remove:hover {
+  background: #dc2626;
+}
+
+.feedback-image-cap {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 2px 4px;
+  font-size: 0.66rem;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+  text-align: center;
+}
+
+.feedback-image-note.is-warn {
+  color: #fbbf24;
+}
+
+.feedback-image-note[hidden] {
+  display: none;
+}
+
+.feedback-preview-image-note {
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(96, 165, 250, 0.35);
+  background: rgba(96, 165, 250, 0.08);
+  color: #93c5fd;
+}
+
+.feedback-preview-image-note.is-warn {
+  border-color: rgba(245, 158, 11, 0.4);
+  background: rgba(245, 158, 11, 0.08);
+  color: #fbbf24;
+}
+
+.feedback-preview-image-note[hidden] {
+  display: none;
+}
+
 /* =========================================================================
    VERSION SWITCH — a single uiMode preference (Settings → Version) is resolved
    to data-ui-mode="mobile" | "desktop" on <html> by src/ui-prefs.js.

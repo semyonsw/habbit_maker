@@ -493,9 +493,9 @@ export async function saveReportModal() {
 
   const saveBtn = document.getElementById("reportModalSave");
   if (saveBtn) saveBtn.disabled = true;
+  const uploaded = [];
   try {
     // Upload newly-added files to the blob store.
-    const uploaded = [];
     for (const file of reportModalState.pendingFiles) {
       const fileId = uid("file");
       await uploadFile(fileId, file);
@@ -549,6 +549,12 @@ export async function saveReportModal() {
     reportModalState.removedFileIds = [];
     callRenderer("renderReportView");
   } catch (_) {
+    // Roll back any blobs uploaded before the failure so they don't orphan.
+    for (const att of uploaded) {
+      try {
+        await deleteFile(att.fileId);
+      } catch (_e) {}
+    }
     alert("Saving the report failed. Please try again.");
   } finally {
     if (saveBtn) saveBtn.disabled = false;

@@ -309,6 +309,7 @@ export function importData(file) {
       const restoreStats = await restoreEmbeddedPdfPayload(embeddedPdfPayload);
       await callRenderer("refreshBookBlobStatus");
       await callRenderer("renderBooksView");
+      callRenderer("renderReportView");
 
       if (restoreStats.restoredCount > 0) {
         const tone = restoreStats.failedCount > 0 ? "warn" : "success";

@@ -66,6 +66,7 @@ import {
   retryAiPolish,
   sendRawWithoutAi,
   errorBackToForm,
+  handleFeedbackImageInputChange,
 } from "./feedback.js";
 import {
   bindUiAppearanceControls,
@@ -391,6 +392,10 @@ export function bindEvents() {
   const emailjsSaveBtn = document.getElementById("emailjsSave");
   if (emailjsSaveBtn) {
     emailjsSaveBtn.addEventListener("click", saveEmailJsConfigFromInputs);
+  }
+  const feedbackImageInput = document.getElementById("feedbackImageInput");
+  if (feedbackImageInput) {
+    feedbackImageInput.addEventListener("change", handleFeedbackImageInputChange);
   }
   const previewSendBtn = document.getElementById("feedbackPreviewSend");
   if (previewSendBtn) {

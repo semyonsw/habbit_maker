@@ -134,7 +134,7 @@ export function parseDateKey(value) {
 }
 
 // Cap on how long a custom-sequence cycle can be (keeps the checkbox grid sane).
-export const MAX_SEQUENCE_LENGTH = 60;
+const MAX_SEQUENCE_LENGTH = 60;
 
 export function normalizeSequenceLength(value) {
   const parsed = parseInt(value, 10);

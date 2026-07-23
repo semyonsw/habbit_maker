@@ -1449,6 +1449,26 @@
                 <label for="emailjsTemplateId">EmailJS template ID</label>
                 <input id="emailjsTemplateId" type="text" autocomplete="off" />
               </div>
+              <div class="form-group">
+                <label for="emailjsAttachTemplateId"
+                  >EmailJS attachments template ID (optional)</label
+                >
+                <input
+                  id="emailjsAttachTemplateId"
+                  type="text"
+                  autocomplete="off"
+                />
+                <p class="settings-help-text settings-footnote">
+                  Only needed to email screenshots. Create a second template
+                  with one <strong>Variable Attachment</strong> — parameter
+                  name <code>content</code>, filename
+                  <code>&#123;&#123;filename&#125;&#125;</code> — and paste its
+                  ID here. Requires a paid EmailJS plan (attachments are capped
+                  at 500&nbsp;KB; the app auto-compresses to fit). Leave empty to
+                  attach screenshots the free way via
+                  <strong>Open GitHub Issue</strong> instead.
+                </p>
+              </div>
               <div class="feedback-emailjs-actions">
                 <button class="btn-secondary" id="emailjsSave" type="button">
                   Save EmailJS settings
@@ -1484,6 +1504,35 @@
                 rows="6"
                 placeholder="What happened? What did you expect? Steps to reproduce?"
               ></textarea>
+            </div>
+            <div class="form-group">
+              <label for="feedbackImageInput">Screenshots (optional)</label>
+              <div class="feedback-image-picker">
+                <input
+                  id="feedbackImageInput"
+                  class="feedback-image-input"
+                  type="file"
+                  accept="image/*"
+                  multiple
+                />
+              </div>
+              <div
+                id="feedbackImageList"
+                class="feedback-image-list"
+                hidden
+              ></div>
+              <p
+                class="settings-help-text settings-footnote feedback-image-note"
+                id="feedbackImageNote"
+                hidden
+              ></p>
+              <p class="settings-help-text settings-footnote">
+                Attach bug screenshots (PNG, JPG, WEBP…). They stay on your
+                device until you send. <strong>Open GitHub Issue</strong> copies
+                and downloads them so you can drop them into the issue; the
+                email path attaches them only with a paid EmailJS attachments
+                template.
+              </p>
             </div>
             <label
               class="settings-toggle-row"
@@ -1521,6 +1570,16 @@
               <strong>semyonsw@gmail.com</strong> manually, or use
               <strong>Open GitHub Issue</strong> instead.
             </p>
+            <p
+              class="settings-help-text settings-mailto-hint"
+              id="feedbackGithubImageHint"
+              hidden
+            ></p>
+            <p
+              class="settings-help-text settings-mailto-hint"
+              id="feedbackMailtoImageHint"
+              hidden
+            ></p>
           </section>
           <section
             class="settings-section feedback-preview-view"
@@ -1543,6 +1602,11 @@
               <label for="feedbackPreviewBody">Body</label>
               <textarea id="feedbackPreviewBody" rows="10"></textarea>
             </div>
+            <p
+              class="settings-help-text feedback-preview-image-note"
+              id="feedbackPreviewImageNote"
+              hidden
+            ></p>
             <p
               class="settings-warning"
               id="feedbackPreviewSendError"
