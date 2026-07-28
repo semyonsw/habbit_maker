@@ -48,12 +48,113 @@ import {
 import { idbDeletePdfBlob } from "./idb.js";
 import { uploadFile, deleteFile } from "./db.js";
 import { callRenderer, registerRenderer } from "./render-registry.js";
+import { isMobileLayout } from "./ui-prefs.js";
+import {
+  lockBodyScroll,
+  unlockBodyScroll,
+  trapWithin,
+  releaseTrap,
+} from "./sheet.js";
+
+// Ids of every currently-open dialog, innermost last.
+const modalStack = [];
+// Element that had focus when each dialog opened, so it can be restored.
+const modalOpeners = new Map();
+
+/* --------------------------------------------------- back closes the sheet */
+
+// An open dialog gets its own history entry, so the Android back button (and
+// the browser back button) closes it instead of leaving the view. Guarded by a
+// flag so the popstate-driven close does not itself try to pop again.
+let closingFromPopstate = false;
+
+function pushModalHistory(id) {
+  try {
+    window.history.pushState({ modal: id }, "");
+  } catch (_) {
+    /* history is unavailable in some embedded contexts; dialogs still work */
+  }
+}
+
+function popModalHistory(id) {
+  if (closingFromPopstate) return;
+  if (window.history.state && window.history.state.modal === id) {
+    window.history.back();
+  }
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("popstate", () => {
+    const topId = getTopOpenModalId();
+    if (!topId) return;
+    closingFromPopstate = true;
+    try {
+      closeModal(topId);
+    } finally {
+      closingFromPopstate = false;
+    }
+  });
+}
+
+export function getTopOpenModalId() {
+  // Trust the DOM over the stack: some code paths still toggle .open directly.
+  const open = Array.from(document.querySelectorAll(".modal-overlay.open"));
+  if (!open.length) return null;
+  for (let i = modalStack.length - 1; i >= 0; i -= 1) {
+    if (open.some((el) => el.id === modalStack[i])) return modalStack[i];
+  }
+  return open[open.length - 1].id;
+}
+
+export function closeTopModal() {
+  const id = getTopOpenModalId();
+  if (id) closeModal(id);
+}
+
+// Give the dialog an accessible name without touching index.html: most .modal
+// headers have an <h3> but no id to point aria-labelledby at.
+function ensureDialogSemantics(overlay, id) {
+  const dialog = overlay.querySelector(".modal");
+  if (!dialog) return;
+  dialog.setAttribute("role", "dialog");
+  dialog.setAttribute("aria-modal", "true");
+  if (!dialog.hasAttribute("aria-labelledby")) {
+    const heading = dialog.querySelector(".modal-header h3, .modal-header h2");
+    if (heading) {
+      if (!heading.id) heading.id = `${id}-title`;
+      dialog.setAttribute("aria-labelledby", heading.id);
+    }
+  }
+}
 
 export function openModal(id) {
   const el = document.getElementById(id);
   if (!el) return;
+  if (el.classList.contains("open")) return;
+
+  modalOpeners.set(
+    id,
+    document.activeElement instanceof HTMLElement ? document.activeElement : null,
+  );
+  modalStack.push(id);
+
+  ensureDialogSemantics(el, id);
   el.classList.add("open");
+  lockBodyScroll();
+  trapWithin(el);
+  pushModalHistory(id);
+
   requestAnimationFrame(() => {
+    // Don't auto-focus a field on a phone: it summons the keyboard the instant
+    // the sheet appears and hides most of what just opened.
+    if (isMobileLayout()) {
+      const dialog = el.querySelector(".modal");
+      if (dialog) {
+        dialog.setAttribute("tabindex", "-1");
+        dialog.focus({ preventScroll: true });
+      }
+      return;
+    }
     const firstInput = el.querySelector(
       ".modal-body input:not([type='hidden']):not([disabled]), .modal-body textarea:not([disabled]), .modal-body select:not([disabled])",
     );
@@ -71,7 +172,28 @@ export function openModal(id) {
 export function closeModal(id) {
   const el = document.getElementById(id);
   if (!el) return;
+  const wasOpen = el.classList.contains("open");
   el.classList.remove("open");
+  el.querySelector(".modal")?.removeAttribute("aria-modal");
+
+  const at = modalStack.lastIndexOf(id);
+  if (at !== -1) modalStack.splice(at, 1);
+
+  if (!wasOpen) return;
+  unlockBodyScroll();
+  releaseTrap();
+  popModalHistory(id);
+
+  // Hand focus to the next dialog down, or back to whatever opened this one.
+  const nextId = getTopOpenModalId();
+  if (nextId) {
+    const next = document.getElementById(nextId);
+    if (next) trapWithin(next);
+  } else {
+    const opener = modalOpeners.get(id);
+    if (opener && document.contains(opener)) opener.focus({ preventScroll: true });
+  }
+  modalOpeners.delete(id);
 }
 
 export function openConfirm(title, message, callback) {
@@ -365,7 +487,10 @@ export function saveNoteModal() {
   saveState();
   closeModal("noteModal");
   Object.assign(noteModalState, { habitId: null, day: null });
+  // Both surfaces show a "has note" marker, and only one of them is rendered at
+  // a time depending on the layout.
   callRenderer("renderDailyHabitsGrid");
+  callRenderer("renderDayFocus");
 }
 
 function buildReportAttachmentRow(name, size, onRemove) {

@@ -3,6 +3,7 @@
 import { state } from "./state.js";
 import { chartInstances } from "./state.js";
 import { MONTH_NAMES } from "./constants.js";
+import { isMobileLayout } from "./ui-prefs.js";
 import {
   daysInMonth,
   monthKey,
@@ -248,6 +249,26 @@ export function destroyChart(chartKey) {
   delete chartInstances[chartKey];
 }
 
+// On a phone the two axis titles alone eat ~48px of a ~240px tall chart, and a
+// full tick set turns into unreadable overlapping labels. Applied centrally so
+// the individual chart configs stay declarative.
+function compactChartConfig(config) {
+  if (!isMobileLayout()) return config;
+  const scales = config.options && config.options.scales;
+  if (!scales) return config;
+  Object.values(scales).forEach((axis) => {
+    if (!axis || typeof axis !== "object") return;
+    if (axis.title) axis.title.display = false;
+    axis.ticks = { ...(axis.ticks || {}), autoSkip: true, maxTicksLimit: 6 };
+  });
+  if (config.data && Array.isArray(config.data.datasets)) {
+    config.data.datasets.forEach((ds) => {
+      if (ds.pointRadius !== undefined) ds.pointRadius = 2;
+    });
+  }
+  return config;
+}
+
 export function renderChart(chartKey, canvasId, config) {
   if (typeof Chart === "undefined") return;
   const canvas = document.getElementById(canvasId);
@@ -256,7 +277,10 @@ export function renderChart(chartKey, canvasId, config) {
     return;
   }
   destroyChart(chartKey);
-  chartInstances[chartKey] = new Chart(canvas.getContext("2d"), config);
+  chartInstances[chartKey] = new Chart(
+    canvas.getContext("2d"),
+    compactChartConfig(config),
+  );
 }
 
 export function renderWeeklyTrendChart(canvasId, chartKey, weeklyData) {
@@ -427,6 +451,13 @@ export function renderMonthlyTrendChart(canvasId, chartKey, timeline) {
 }
 
 export function renderMonthlyStreakChart(canvasId, chartKey, rows) {
+  // Horizontal bars: the frame has to grow with the row count, otherwise a
+  // dozen habits are squeezed into a fixed-height box.
+  const frame = document.getElementById("analyticsMonthlyStreakFrame");
+  if (frame) {
+    frame.style.height = `${Math.max(220, rows.length * 26 + 40)}px`;
+  }
+
   const values = rows.map((row) => getMetricValue(row.done, row.possible));
   const maxScale =
     getAnalyticsDisplayMode() === "percent" ? 100 : Math.max(1, ...values);
@@ -512,7 +543,11 @@ export function renderWeeklyHeatmap(containerId, weeklyData) {
       const value = getMetricValue(entry.done, entry.possible);
       const scaleMax = getAnalyticsDisplayMode() === "percent" ? 100 : maxValue;
       const ratio = scaleMax > 0 ? value / scaleMax : 0;
-      html += `<div class='heatmap-cell' style='background:${getHeatColor(ratio)}' title='${rangeTitle} · Done ${entry.done} / ${entry.possible}'>${getMetricLabel(value)}</div>`;
+      // The value is wrapped so the mobile layout can hide the text and let
+      // colour alone carry the reading -- at ~30px wide a "83%" label just
+      // clips. title/aria-label keep the numbers available either way.
+      const cellTitle = `${rangeTitle} · Done ${entry.done} / ${entry.possible}`;
+      html += `<div class='heatmap-cell' style='background:${getHeatColor(ratio)}' title='${cellTitle}' aria-label='${cellTitle}'><span class='heatmap-cell-value'>${getMetricLabel(value)}</span></div>`;
     });
   });
 

@@ -1,7 +1,7 @@
 "use strict";
 
 import { ALL_WEEKDAYS, WEEKDAY_LABELS } from "./constants.js";
-import { state } from "./state.js";
+import { state, globals } from "./state.js";
 import {
   sanitize,
   daysInMonth,
@@ -129,6 +129,10 @@ export function navigateMonth(delta) {
     state.currentYear -= 1;
   }
   ensureMonthData();
+  // Drop the day-focus selection so it re-resolves for the new month (today if
+  // we landed on the current month, else day 1). Carrying the day number across
+  // would silently clamp Jan 31 -> Feb 28.
+  globals.dayFocusDay = null;
   saveState();
   callRenderer("renderAll");
 }

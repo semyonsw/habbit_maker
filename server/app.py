@@ -420,6 +420,9 @@ def trim_logs(conn):
 STATIC_EXTS = {
     ".html", ".js", ".mjs", ".css", ".json", ".png", ".jpg", ".jpeg",
     ".svg", ".ico", ".webp", ".gif", ".woff", ".woff2", ".ttf",
+    # So the install manifest can be inspected against the local server too.
+    # The service worker is still deliberately not registered on localhost.
+    ".webmanifest",
 }
 
 

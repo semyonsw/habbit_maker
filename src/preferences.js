@@ -50,9 +50,15 @@ export function updateReaderThemeControls() {
   if (!toggle || !mode) return;
 
   toggle.setAttribute("aria-pressed", String(readerState.darkEnabled));
-  toggle.textContent = readerState.darkEnabled
+  // Short label: this button sits in a single-row control strip that becomes a
+  // horizontally scrolling bar on a phone. The full wording lives in title/
+  // aria-label so nothing is lost. (Set via textContent, so no child elements.)
+  toggle.textContent = readerState.darkEnabled ? "Dark: ON" : "Dark: OFF";
+  const full = readerState.darkEnabled
     ? "Read in dark theme: ON"
     : "Read in dark theme: OFF";
+  toggle.title = full;
+  toggle.setAttribute("aria-label", full);
 
   mode.value = readerState.darkMode;
   mode.disabled = !readerState.darkEnabled;

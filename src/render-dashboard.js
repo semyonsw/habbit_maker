@@ -23,6 +23,7 @@ import {
   getHabitScheduleMode,
 } from "./habits.js";
 import { registerRenderer, callRenderer } from "./render-registry.js";
+import { isMobileLayout } from "./ui-prefs.js";
 import {
   showGlobalLoader,
   hideGlobalLoader,
@@ -36,7 +37,14 @@ function syncStreakBadgeText(badge) {
   const safeCurrent = Number.isFinite(current) ? Math.max(0, current) : 0;
   const safeBest = Number.isFinite(best) ? Math.max(0, best) : 0;
   const text = `Current ${safeCurrent}d | Best ${safeBest}d`;
-  badge.textContent = text;
+  // The mobile day-focus row has no space for the long form; it opts into a
+  // compact label but keeps the full text as the accessible name.
+  badge.textContent =
+    badge.dataset.streakFormat === "short"
+      ? safeCurrent > 0
+        ? `🔥 ${safeCurrent}d`
+        : ""
+      : text;
   badge.title = text;
   badge.setAttribute("aria-label", text);
 }
@@ -236,6 +244,15 @@ export async function switchView(viewId) {
     .querySelectorAll(`.nav-tab[data-view="${viewId}"], .bottom-nav-btn[data-view="${viewId}"]`)
     .forEach((tab) => tab.classList.add("active"));
 
+  // Manage and Logs are not in the five-slot bottom nav; they are reached from
+  // the drawer or the More sheet. Without this the tab bar would show nothing
+  // selected while sitting on one of those views.
+  if (!document.querySelector(".bottom-nav-btn.active")) {
+    document
+      .querySelector('.bottom-nav-btn[data-sheet="more"]')
+      ?.classList.add("active");
+  }
+
   document.querySelector(".sidebar").classList.remove("open");
 
   if (viewId === "books") {
@@ -373,7 +390,9 @@ export function renderDonut(canvasId, pct) {
 }
 
 
-function buildDailyCompletionMountainSeries() {
+// One pass over the month producing per-day done/possible/rate. Feeds the
+// mountain chart, and also the day-focus date strip and month heatmap.
+export function buildDailyCompletionMountainSeries() {
   const monthData = getCurrentMonthData();
   const habits = getSortedDailyHabits();
   const totalDays = daysInMonth(state.currentYear, state.currentMonth);
@@ -888,12 +907,11 @@ function renderWeeklySummaryCards() {
   bindWeeklySummaryHoverInteractions(container);
 }
 
-function updateHabitStreak(habitId) {
-  const badge = document.querySelector(
-    `.streak-badge[data-streak-habit="${habitId}"]`,
-  );
-  if (!badge) return;
-
+// Pure: walks the whole history and returns the streak numbers. Split out of
+// updateHabitStreak() because that one used to bail early when no badge was in
+// the DOM -- and badges only exist inside the month grid, which the mobile
+// layout does not render. The day-focus card needs these numbers too.
+export function computeHabitStreak(habitId) {
   const months = Object.keys(state.months).sort();
   let current = 0;
   let best = 0;
@@ -985,9 +1003,22 @@ function updateHabitStreak(habitId) {
     }
   }
 
-  badge.dataset.streakCurrent = String(current);
-  badge.dataset.streakBest = String(best);
-  syncStreakBadgeText(badge);
+  return { current, best };
+}
+
+// querySelectorAll, not querySelector: the same habit can have a streak badge
+// in the month grid AND a streak chip in the mobile day-focus card.
+function updateHabitStreak(habitId) {
+  const nodes = document.querySelectorAll(
+    `[data-streak-habit="${CSS.escape(String(habitId))}"]`,
+  );
+  if (!nodes.length) return;
+  const { current, best } = computeHabitStreak(habitId);
+  nodes.forEach((node) => {
+    node.dataset.streakCurrent = String(current);
+    node.dataset.streakBest = String(best);
+    syncStreakBadgeText(node);
+  });
 }
 
 function evaluateDayCompletion(habits, monthData, y, m, day) {
@@ -1112,6 +1143,21 @@ export function renderDailyHabitsGrid() {
   const grid = document.getElementById("dailyHabitsGrid");
   if (!grid) return;
 
+  // In the mobile layout the day-focus card replaces this grid entirely, so
+  // skip the build rather than hiding it with CSS. A 31-column table is ~31
+  // cells per habit, each with two addEventListener calls -- roughly 740
+  // listeners for a dozen habits, rebuilt on every month nav, habit edit and
+  // note save, for something nobody can see. It is also what makes the document
+  // ~1500px wide and causes the sideways rubber-banding on iOS.
+  if (isMobileLayout()) {
+    grid.innerHTML = "";
+    grid.dataset.rendered = "0";
+    // Streaks are still shown (in the day-focus rows), so they must still be
+    // computed even though no grid badge exists.
+    getSortedDailyHabits().forEach((h) => updateHabitStreak(h.id));
+    return;
+  }
+
   ensureDashboardHabitActionsMenu();
 
   const monthData = getCurrentMonthData();
@@ -1212,6 +1258,7 @@ export function renderDailyHabitsGrid() {
 
   html += "</tbody>";
   grid.innerHTML = html;
+  grid.dataset.rendered = "1";
   syncAllStreakBadges(grid);
 
   if (!isCurrentMonthView) {
@@ -1273,7 +1320,7 @@ export function renderDailyHabitsGrid() {
 
 // Module-scope check used by the incremental update path (the per-render
 // closure version lives inside renderDailyHabitsGrid for the initial build).
-function computeDayFullyCompleted(day) {
+export function computeDayFullyCompleted(day) {
   const monthData = getCurrentMonthData();
   const habits = getSortedDailyHabits();
   let required = 0;
@@ -1295,11 +1342,34 @@ function computeDayFullyCompleted(day) {
   return required > 0 && checked === required;
 }
 
-// Single write path for toggling a habit's completion on a given day. Both the
-// month grid checkbox and the Today quick-check list call this, so there is no
-// double-counting and both views stay in sync. Patches the grid in place
-// (rather than re-rendering it) so already-checked boxes don't replay their pop
-// animation on every toggle.
+// Every toggle used to synchronously rebuild the donut, the weekly cards and
+// two Chart.js instances. Ticking off a ten-habit day meant ten full chart
+// destroy/recreate cycles -- painful on a phone. Collapse them into one frame.
+let dashboardAggregatesFrame = 0;
+function scheduleDashboardAggregates() {
+  if (dashboardAggregatesFrame) return;
+  dashboardAggregatesFrame = requestAnimationFrame(() => {
+    dashboardAggregatesFrame = 0;
+    renderSummary();
+    renderWeeklySummaryCards();
+    renderDailyCompletionMountainChart();
+    // Mirrors renderAll(): only rebuild analytics when it is on screen.
+    if (
+      document.getElementById("view-analytics")?.classList.contains("active")
+    ) {
+      callRenderer("renderAnalyticsView");
+    }
+  });
+}
+
+// Single write path for toggling a habit's completion on a given day. The month
+// grid checkbox and the mobile day-focus card both call this, so there is no
+// double-counting and both stay in sync.
+//
+// INVARIANT: this function may only PATCH the DOM. It must never call a render*
+// function that re-binds handlers which call back into it -- that is both an
+// infinite-loop risk and, for the day-focus card, would reset the date strip's
+// scroll position on every single tap.
 export function setHabitDayCompletion(habitId, day, checked) {
   const monthData = getCurrentMonthData();
   if (!monthData.dailyCompletions[habitId]) {
@@ -1307,14 +1377,13 @@ export function setHabitDayCompletion(habitId, day, checked) {
   }
   monthData.dailyCompletions[habitId][day] = !!checked;
   saveState();
-  renderSummary();
-  renderWeeklySummaryCards();
-  renderDailyCompletionMountainChart();
-  callRenderer("renderAnalyticsView");
+  scheduleDashboardAggregates();
   updateHabitStreak(habitId);
 
   const grid = document.getElementById("dailyHabitsGrid");
-  if (grid) {
+  // dataset.rendered is "0" in the mobile layout, where the grid is deliberately
+  // not built at all (see renderDailyHabitsGrid).
+  if (grid && grid.dataset.rendered === "1") {
     const cb = grid.querySelector(
       `.habit-check[data-habit='${habitId}'][data-day='${day}']`,
     );
@@ -1327,66 +1396,13 @@ export function setHabitDayCompletion(habitId, day, checked) {
       .forEach((cell) => cell.classList.toggle("day-complete", complete));
   }
 
-  renderTodayQuickCheck();
+  callRenderer("patchDayFocusCompletion", habitId, day, !!checked);
+  callRenderer("patchDayIndicators", day);
 }
 
-// "Today" quick-check list: large tap-to-complete rows for today's active
-// habits, so the daily check-in doesn't require the wide month grid. Always
-// rendered; CSS shows it only in the mobile layout (html[data-ui-mode=mobile]).
-export function renderTodayQuickCheck() {
-  const container = document.getElementById("todayQuickCheck");
-  if (!container) return;
-
-  const today = new Date();
-  const isCurrentMonthView =
-    today.getFullYear() === state.currentYear &&
-    today.getMonth() === state.currentMonth;
-  const todayDay = today.getDate();
-  const head =
-    "<div class='today-quickcheck-head'><span class='today-quickcheck-title'>Today</span>";
-
-  if (!isCurrentMonthView) {
-    container.innerHTML = `${head}</div><p class='today-quickcheck-empty'>Switch to the current month to check off today.</p>`;
-    return;
-  }
-
-  const monthData = getCurrentMonthData();
-  const habits = getSortedDailyHabits().filter((h) =>
-    isHabitTrackedOnDate(h, state.currentYear, state.currentMonth, todayDay),
-  );
-
-  if (habits.length === 0) {
-    container.innerHTML = `${head}</div><p class='today-quickcheck-empty'>No habits scheduled for today.</p>`;
-    return;
-  }
-
-  const isDone = (h) =>
-    !!(
-      monthData.dailyCompletions[h.id] &&
-      monthData.dailyCompletions[h.id][todayDay]
-    );
-  const doneCount = habits.filter(isDone).length;
-
-  let html = `${head}<span class='today-quickcheck-count'>${doneCount}/${habits.length}</span></div><div class='today-quickcheck-list'>`;
-  habits.forEach((h) => {
-    const done = isDone(h);
-    html += `<button type='button' class='today-row ${done ? "is-done" : ""}' data-habit='${h.id}' data-day='${todayDay}' aria-pressed='${done}'><span class='today-row-check' aria-hidden='true'></span><span class='today-row-emoji'>${sanitize(getHabitEmoji(h))}</span><span class='today-row-name'>${sanitize(h.name)}</span></button>`;
-  });
-  html += "</div>";
-  container.innerHTML = html;
-
-  container.querySelectorAll(".today-row").forEach((row) => {
-    row.addEventListener("click", function () {
-      const habitId = this.dataset.habit;
-      const day = parseInt(this.dataset.day, 10);
-      const md = getCurrentMonthData();
-      const current = !!(
-        md.dailyCompletions[habitId] && md.dailyCompletions[habitId][day]
-      );
-      setHabitDayCompletion(habitId, day, !current);
-    });
-  });
-}
+// The "Today" quick-check list used to live here. It has been generalised into
+// the day-focus card (src/render-day-focus.js), where the day is view state
+// rather than hard-coded to today.
 
 function renderCategoriesList() {
   const list = document.getElementById("categoriesList");
@@ -1444,7 +1460,7 @@ export function renderAll() {
   renderSummary();
   renderWeeklySummaryCards();
   renderDailyHabitsGrid();
-  renderTodayQuickCheck();
+  callRenderer("renderDayFocus");
   renderDailyCompletionMountainChart();
   renderManageView();
 
@@ -1458,4 +1474,3 @@ registerRenderer("renderAll", renderAll);
 registerRenderer("renderManageView", renderManageView);
 registerRenderer("switchView", switchView);
 registerRenderer("renderDailyHabitsGrid", renderDailyHabitsGrid);
-registerRenderer("renderTodayQuickCheck", renderTodayQuickCheck);

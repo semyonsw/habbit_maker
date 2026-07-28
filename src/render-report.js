@@ -87,9 +87,14 @@ export async function openReportAttachment(reportId, fileId) {
   if (!att) return;
 
   let objectUrl = "";
+  // Claim the tab NOW, synchronously inside the click. Calling window.open()
+  // after `await getFileBlob(...)` is outside the user-gesture window, and iOS
+  // Safari blocks it silently -- the attachment simply never opened on a phone.
+  const tab = window.open("", "_blank");
   try {
     const blob = await getFileBlob(fileId);
     if (!blob) {
+      if (tab) tab.close();
       alert("This attachment could not be found in storage.");
       return;
     }
@@ -98,8 +103,14 @@ export async function openReportAttachment(reportId, fileId) {
       ? new Blob([blob], { type: att.mimeType })
       : blob;
     objectUrl = URL.createObjectURL(typed);
-    window.open(objectUrl, "_blank", "noopener");
+    if (tab) {
+      tab.location = objectUrl;
+    } else {
+      // Popup blocked entirely: fall back to a same-tab navigation.
+      window.location.assign(objectUrl);
+    }
   } catch (error) {
+    if (tab) tab.close();
     appendLogEntry({
       level: "error",
       component: "report",

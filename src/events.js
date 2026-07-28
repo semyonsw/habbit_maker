@@ -18,10 +18,13 @@ import {
   openBookmarkModal,
   saveBookmark,
   saveHistoryEventModal,
+  openModal,
   closeModal,
+  closeTopModal,
   openConfirm,
   saveMonthlyReview,
 } from "./modals.js";
+import { navigateTo } from "./router.js";
 import { setSidebarCollapsed, applySidebarCollapseState } from "./layout.js";
 import {
   handleBookFileInputChange,
@@ -74,11 +77,19 @@ import {
 } from "./ui-prefs.js";
 
 export function bindEvents() {
+  // Nav entries either route to a view (through the hash, so the back button
+  // works) or open a sheet. switchView stays a pure effect of the router.
   document.querySelectorAll(".nav-tab, .bottom-nav-btn").forEach((tab) => {
-    tab.addEventListener("click", () =>
-      callRenderer("switchView", tab.dataset.view),
-    );
+    tab.addEventListener("click", () => {
+      if (tab.dataset.sheet) {
+        openModal(`${tab.dataset.sheet}Sheet`);
+        return;
+      }
+      if (tab.dataset.view) navigateTo(tab.dataset.view);
+    });
   });
+
+  bindMoreSheet();
 
   document
     .getElementById("prevMonth")
@@ -437,21 +448,17 @@ export function bindEvents() {
     });
   });
 
+  // Backdrop click and Escape both mean "cancel". They used to strip the .open
+  // class directly, which skipped closeModal() and therefore the scroll lock,
+  // the focus trap and focus restoration.
   document.querySelectorAll(".modal-overlay").forEach((overlay) => {
     overlay.addEventListener("click", (e) => {
-      if (e.target === overlay) overlay.classList.remove("open");
+      if (e.target === overlay) closeModal(overlay.id);
     });
   });
 
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") {
-      const openModals = Array.from(
-        document.querySelectorAll(".modal-overlay.open"),
-      );
-      if (!openModals.length) return;
-      const topModal = openModals[openModals.length - 1];
-      topModal.classList.remove("open");
-    }
+    if (e.key === "Escape") closeTopModal();
   });
 
   document.getElementById("btnUploadBook").addEventListener("click", () => {
@@ -505,4 +512,62 @@ export function bindEvents() {
       error: event && event.reason ? event.reason : "Promise rejection",
     });
   });
+}
+
+// The mobile bottom nav only has room for five entries, so Manage, Logs,
+// Settings, Export and Import live behind "More". Every action here just
+// forwards to the control that already exists in the sidebar, so there is one
+// implementation per action rather than two.
+// Close the sheet, THEN run the action -- and wait for the history traversal
+// to land first. closeModal() pops the dialog's own history entry with
+// history.back(), which is asynchronous: doing `closeModal(); navigateTo(x)`
+// synchronously lets the back undo the hash that navigateTo just set, so the
+// sheet closed and nothing navigated.
+function closeMoreSheetThen(action) {
+  const needsPop =
+    window.history.state && window.history.state.modal === "moreSheet";
+  if (needsPop) {
+    window.addEventListener("popstate", () => action(), { once: true });
+    closeModal("moreSheet");
+    return;
+  }
+  closeModal("moreSheet");
+  action();
+}
+
+function bindMoreSheet() {
+  const sheet = document.getElementById("moreSheet");
+  if (!sheet) return;
+
+  const close = document.getElementById("moreSheetClose");
+  if (close) close.addEventListener("click", () => closeModal("moreSheet"));
+
+  sheet.querySelectorAll("[data-more-view]").forEach((btn) => {
+    btn.addEventListener("click", () =>
+      closeMoreSheetThen(() => navigateTo(btn.dataset.moreView)),
+    );
+  });
+
+  const settings = document.getElementById("moreSheetSettings");
+  if (settings) {
+    settings.addEventListener("click", () =>
+      closeMoreSheetThen(() =>
+        document.getElementById("btnOpenSettings")?.click(),
+      ),
+    );
+  }
+
+  const exportBtn = document.getElementById("moreSheetExport");
+  if (exportBtn) {
+    exportBtn.addEventListener("click", () =>
+      closeMoreSheetThen(() => document.getElementById("btnExport")?.click()),
+    );
+  }
+
+  const importBtn = document.getElementById("moreSheetImport");
+  if (importBtn) {
+    importBtn.addEventListener("click", () =>
+      closeMoreSheetThen(() => document.getElementById("btnImport")?.click()),
+    );
+  }
 }

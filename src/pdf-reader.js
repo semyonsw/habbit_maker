@@ -4,6 +4,7 @@ import { PDFJS_SCRIPT_URLS, PDFJS_WORKER_URL } from "./constants.js";
 import { readerState } from "./state.js";
 import { appendLogEntry } from "./logging.js";
 import { idbGetPdfBlob } from "./idb.js";
+import { clampNumber } from "./utils.js?v=2";
 import { getBookById, addBookmarkOnCurrentReaderPage } from "./books.js";
 import {
   loadReaderThemePreferences,
@@ -219,16 +220,32 @@ export async function renderReaderPage(pageNumber) {
   const baseViewport = page.getViewport({ scale: 1 });
   const canvasWrap = document.querySelector(".reader-canvas-wrap");
   const availableWidth = Math.max(
-    320,
+    240,
     (canvasWrap ? canvasWrap.clientWidth : window.innerWidth) - 24,
   );
+  // Fit to width, then apply the user's zoom. The old formula clamped with
+  // Math.max(1.4, ...), so a 612pt page never rendered narrower than ~857px and
+  // could not fit a phone at all.
   const fitScale = availableWidth / baseViewport.width;
-  const cssScale = Math.max(1.4, Math.min(fitScale, 2.6));
+  const cssScale = clampNumber(fitScale * (readerState.zoom || 1), 0.4, 4);
   const viewport = page.getViewport({ scale: cssScale });
 
-  const outputScale = Math.min(window.devicePixelRatio || 1, 3);
+  // Cap the backing store. At dpr 3 and zoom 3 the naive figure is ~56M pixels,
+  // past iOS Safari's per-canvas budget, where it silently yields a blank page.
+  const maxCanvasPx = window.matchMedia("(pointer: coarse)").matches
+    ? 4e6
+    : 16e6;
+  const area = Math.max(1, viewport.width * viewport.height);
+  const outputScale = Math.max(
+    1,
+    Math.min(window.devicePixelRatio || 1, 3, Math.sqrt(maxCanvasPx / area)),
+  );
+
   const canvas = document.getElementById("readerCanvas");
   const ctx = canvas.getContext("2d");
+  // Release the previous backing store before allocating the next one.
+  canvas.width = 0;
+  canvas.height = 0;
   canvas.width = Math.floor(viewport.width * outputScale);
   canvas.height = Math.floor(viewport.height * outputScale);
   canvas.style.width = `${Math.floor(viewport.width)}px`;
@@ -245,7 +262,15 @@ export async function renderReaderPage(pageNumber) {
     viewport,
     transform: [outputScale, 0, 0, outputScale, 0, 0],
   });
-  await readerState.renderTask.promise;
+  try {
+    await readerState.renderTask.promise;
+  } catch (error) {
+    // Turning pages quickly cancels the in-flight render. That rejection is
+    // expected; letting it escape reaches window.onunhandledrejection and pops
+    // the full-screen error banner during perfectly normal reading.
+    if (error && error.name === "RenderingCancelledException") return;
+    throw error;
+  }
   applyReaderThemeClasses();
 
   document.getElementById("readerPageIndicator").textContent =
@@ -253,6 +278,20 @@ export async function renderReaderPage(pageNumber) {
   document.getElementById("readerJumpPage").value = String(
     readerState.currentPage,
   );
+}
+
+// Every caller is a click handler, so a rejection here would be unhandled.
+function renderReaderPageSafe(pageNumber) {
+  renderReaderPage(pageNumber).catch((error) => {
+    appendLogEntry({
+      level: "error",
+      component: "reader",
+      operation: "renderReaderPage",
+      message: "Rendering a PDF page failed.",
+      error,
+      context: { pageNumber },
+    });
+  });
 }
 
 export function bindReaderEvents() {
@@ -266,30 +305,29 @@ export function bindReaderEvents() {
   const zoomIn = document.getElementById("readerZoomIn");
   const zoomOut = document.getElementById("readerZoomOut");
   const bookContainer = document.getElementById("readerBookContainer");
+  const tapPrev = document.getElementById("readerTapPrev");
+  const tapNext = document.getElementById("readerTapNext");
 
-  // Zoom state
-  let zoomLevel = 1;
-  function applyZoom() {
-    bookContainer.style.transform = `scale(${zoomLevel})`;
-    bookContainer.style.transformOrigin = "top center";
+  // Zoom re-renders the page at the new scale instead of CSS-scaling the
+  // scroll container. The old transform approach produced a blurry upscale and
+  // made panning impossible, because it scaled the scrollport itself.
+  function setZoom(next) {
+    readerState.zoom = clampNumber(next, 0.5, 3);
+    renderReaderPageSafe(readerState.currentPage);
+    db.patchPrefs({ readerZoomLevel: readerState.zoom }).catch(() => {});
   }
-  zoomIn.addEventListener("click", () => {
-    zoomLevel = Math.min(zoomLevel + 0.1, 2.5);
-    applyZoom();
-    db.patchPrefs({ readerZoomLevel: zoomLevel }).catch(() => {});
-  });
-  zoomOut.addEventListener("click", () => {
-    zoomLevel = Math.max(zoomLevel - 0.1, 0.5);
-    applyZoom();
-    db.patchPrefs({ readerZoomLevel: zoomLevel }).catch(() => {});
-  });
-  // Load zoom from storage
+  zoomIn.addEventListener("click", () => setZoom((readerState.zoom || 1) + 0.15));
+  zoomOut.addEventListener("click", () =>
+    setZoom((readerState.zoom || 1) - 0.15),
+  );
+
+  // Load zoom from storage (same pref key as before).
   db.getPrefs()
     .then((prefs) => {
       const savedZoom = parseFloat(prefs && prefs.readerZoomLevel);
       if (!isNaN(savedZoom)) {
-        zoomLevel = savedZoom;
-        applyZoom();
+        readerState.zoom = clampNumber(savedZoom, 0.5, 3);
+        renderReaderPageSafe(readerState.currentPage);
       }
     })
     .catch(() => {});
@@ -302,24 +340,30 @@ export function bindReaderEvents() {
     }
   }
 
-  prev.addEventListener("click", () => {
-    renderReaderPage(readerState.currentPage - 1);
+  function goToPage(pageNumber) {
+    renderReaderPageSafe(pageNumber);
     setTimeout(scrollBookToTop, 10);
-  });
-  next.addEventListener("click", () => {
-    renderReaderPage(readerState.currentPage + 1);
-    setTimeout(scrollBookToTop, 10);
-  });
-  go.addEventListener("click", () => {
-    renderReaderPage(parseInt(jump.value, 10) || 1);
-    setTimeout(scrollBookToTop, 10);
-  });
+  }
+
+  prev.addEventListener("click", () => goToPage(readerState.currentPage - 1));
+  next.addEventListener("click", () => goToPage(readerState.currentPage + 1));
+  go.addEventListener("click", () => goToPage(parseInt(jump.value, 10) || 1));
   jump.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      renderReaderPage(parseInt(jump.value, 10) || 1);
-      setTimeout(scrollBookToTop, 10);
-    }
+    if (e.key === "Enter") goToPage(parseInt(jump.value, 10) || 1);
   });
+
+  // Touch page-turn zones. Null-guarded: bindReaderEvents already does several
+  // unguarded lookups, and a missing id here would abort reader setup.
+  if (tapPrev) {
+    tapPrev.addEventListener("click", () =>
+      goToPage(readerState.currentPage - 1),
+    );
+  }
+  if (tapNext) {
+    tapNext.addEventListener("click", () =>
+      goToPage(readerState.currentPage + 1),
+    );
+  }
 
   darkToggle.addEventListener("click", () => {
     toggleReaderDarkTheme();
@@ -340,7 +384,7 @@ export function bindReaderEvents() {
         clearTimeout(readerState.resizeTimer);
       }
       readerState.resizeTimer = setTimeout(() => {
-        renderReaderPage(readerState.currentPage);
+        renderReaderPageSafe(readerState.currentPage);
       }, 120);
     });
     readerState.resizeHandlerBound = true;

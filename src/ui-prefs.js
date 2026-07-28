@@ -43,17 +43,36 @@ function resolveMode() {
   return viewportIsNarrow() ? "mobile" : "desktop";
 }
 
+// The single source of truth for "are we in the mobile layout?". Everything in
+// JS asks this instead of measuring innerWidth, so a forced Mobile/Desktop
+// preference is honoured everywhere rather than only in CSS.
+export function isMobileLayout() {
+  if (typeof document === "undefined") return false;
+  return document.documentElement.dataset.uiMode === "mobile";
+}
+
 export function applyUiMode() {
   if (typeof document === "undefined") return;
   const resolved = resolveMode();
   const prev = document.documentElement.dataset.uiMode;
   document.documentElement.dataset.uiMode = resolved;
-  // The "Today" quick-check list is JS-rendered and only shown in the mobile
-  // layout; refresh it whenever the resolved layout changes (auto crossing the
-  // breakpoint, or the user flipping the switch) so it is never stale.
-  if (prev !== resolved) {
-    callRenderer("renderTodayQuickCheck");
+
+  // A real flip (auto crossing the breakpoint, or the user using the switch)
+  // changes which surfaces exist: the month grid is not rendered at all in the
+  // mobile layout, and the day card is not rendered in the desktop one. So the
+  // whole dashboard has to be rebuilt, not just one list.
+  //
+  // `prev &&` matters: on the very first applyUiMode() (during initUiPrefs(),
+  // before bindEvents()) prev is undefined and would always look like a flip,
+  // firing a full wasted render -- donut, Chart.js, grid -- moments before
+  // app.js renders for real.
+  if (prev && prev !== resolved) {
+    callRenderer("renderAll");
   }
+
+  // The sidebar collapse rail only exists in the desktop layout, and its state
+  // is derived from the resolved mode (see layout.js isDesktopLayout).
+  callRenderer("applySidebarCollapseState");
 }
 
 // In "auto" mode, follow the breakpoint live (orientation change / resize).

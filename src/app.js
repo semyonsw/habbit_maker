@@ -56,8 +56,13 @@ import {
 } from "./loading-ui.js";
 import * as db from "./db.js";
 
+import { bindSheetGestures, initKeyboardInset } from "./sheet.js";
+import { closeModal } from "./modals.js";
+import { initRouter } from "./router.js";
+
 // Import render modules so they register themselves
 import "./render-dashboard.js";
+import "./render-day-focus.js";
 import "./render-analytics.js";
 import "./render-books.js";
 import "./render-logs.js";
@@ -369,6 +374,10 @@ async function init() {
     await loadAnalyticsPreferences();
     await initUiPrefs();
     bindEvents();
+    // Bottom-sheet mechanics: drag-to-dismiss and on-screen-keyboard tracking.
+    // Delegated/global, so they only need binding once.
+    bindSheetGestures((id) => closeModal(id));
+    initKeyboardInset();
     await initSidebarCollapse();
     applyBookSummarySettingsToInputs();
 
@@ -388,6 +397,11 @@ async function init() {
     callRenderer("renderBooksView");
     callRenderer("renderLogsView");
     setBookUploadStatus("No file uploaded yet.", "");
+
+    // After the reader early-return above (reader mode is a ?reader=1 query, so
+    // the hash is free) and after the first render, so switching to a
+    // deep-linked view has something to switch to.
+    initRouter();
 
     if (appRoot) appRoot.style.display = "";
     await waitForNextPaint();

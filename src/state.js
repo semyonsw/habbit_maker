@@ -19,6 +19,11 @@ export const globals = {
   lastAutoScrolledMonthKey: null,
   logAutoDownloadBlockedUntil: 0,
   legacyPlaintextApiKeyForMigration: "",
+  // Day selected in the mobile day-focus card, 1..31. null means "resolve to
+  // today if we are viewing the current month, else day 1" -- see
+  // render-day-focus.js getSelectedDay(). Deliberately not persisted: loadState()
+  // already forces the current month on every boot, so the default is correct.
+  dayFocusDay: null,
 };
 
 export const noteModalState = { habitId: null, day: null };
@@ -119,4 +124,7 @@ export const readerState = {
   darkMode: "full",
   sourceBookmarkId: null,
   sourcePage: null,
+  // Multiplier on top of fit-to-width. Drives a real re-render (crisp at any
+  // scale) rather than a CSS transform on the scroll container.
+  zoom: 1,
 };

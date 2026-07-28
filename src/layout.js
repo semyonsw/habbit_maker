@@ -3,10 +3,19 @@
 import { globals } from "./state.js";
 import { formatTopClockDateTime } from "./utils.js?v=2";
 import * as db from "./db.js";
+import { isMobileLayout } from "./ui-prefs.js";
+import { registerRenderer } from "./render-registry.js";
 
-export function isDesktopViewport() {
-  return window.innerWidth > 768;
+// Derived from the resolved uiMode, not from innerWidth. Measuring the viewport
+// here used to disagree with ui-prefs.js whenever the user forced a mode: with
+// Mobile forced on a desktop the sidebar could still collapse, and with Desktop
+// forced on a phone the collapse toggle was silently dead.
+export function isDesktopLayout() {
+  return !isMobileLayout();
 }
+
+// Kept as an alias: this was the historical name and is referenced elsewhere.
+export const isDesktopViewport = isDesktopLayout;
 
 export function applySidebarCollapseState() {
   const sidebar = document.querySelector(".sidebar");
@@ -55,3 +64,7 @@ export function initTopClock() {
   }
   globals.topClockTimer = setInterval(updateTopClock, 1000);
 }
+
+// Registered (rather than imported by ui-prefs.js) to avoid an import cycle:
+// layout.js already imports ui-prefs.js for isMobileLayout.
+registerRenderer("applySidebarCollapseState", applySidebarCollapseState);

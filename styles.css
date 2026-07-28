@@ -1,4 +1,16 @@
 :root {
+  /* Dark-only app. This makes native <select> popups, the type=date picker,
+     autofill backgrounds and scrollbars render dark instead of white-on-dark. */
+  color-scheme: dark;
+
+  /* Safe-area insets, named once so they are greppable. These only report real
+     values when index.html sets viewport-fit=cover AND (on iOS standalone)
+     apple-mobile-web-app-status-bar-style=black-translucent. */
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-l: env(safe-area-inset-left, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+
   --purple-900: #09090b;
   --purple-800: #18181b;
   --purple-700: #27272a;
@@ -110,7 +122,11 @@ body {
     ),
     linear-gradient(180deg, #09090b 0%, #000000 100%);
   color: var(--gray-800);
+  /* dvh tracks the *visible* viewport as mobile browser chrome shows/hides.
+     The vh line is the fallback for engines without dvh; invalid declarations
+     are simply dropped, so no @supports is needed. */
   min-height: 100vh;
+  min-height: 100dvh;
   overflow-x: hidden;
   position: relative;
   isolation: isolate;
@@ -180,6 +196,7 @@ textarea:focus-visible,
 #app {
   display: flex;
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 ::-webkit-scrollbar {
@@ -210,11 +227,16 @@ textarea:focus-visible,
   color: var(--white);
   display: flex;
   flex-direction: column;
-  padding: 24px 0;
+  padding: calc(24px + var(--safe-t)) 0 calc(24px + var(--safe-b));
   position: fixed;
   top: 0;
   left: 0;
   height: 100vh;
+  height: 100dvh;
+  /* Without this the footer (Export / Import / Settings) sits below the visible
+     area on a phone and cannot be reached. */
+  overflow-y: auto;
+  overscroll-behavior: contain;
   z-index: 100;
   border-right: 1px solid var(--glass-border);
   backdrop-filter: blur(calc(var(--glass-blur) + 2px));
@@ -536,6 +558,26 @@ body.is-global-loading {
   overflow: hidden;
 }
 
+/* Scroll lock behind an open dialog (src/sheet.js). Desktop only needs
+   overflow:hidden; scrollbar-gutter keeps the page from jumping sideways when
+   the scrollbar disappears. */
+html {
+  scrollbar-gutter: stable;
+}
+
+body.is-modal-open {
+  overflow: hidden;
+}
+
+/* iOS ignores overflow:hidden on <body> for rubber-band scrolling, so the
+   mobile lock pins the body instead and restores scrollY on close. */
+body.is-modal-open-fixed {
+  position: fixed;
+  left: 0;
+  right: 0;
+  width: 100%;
+}
+
 .global-loading-overlay {
   position: fixed;
   inset: 0;
@@ -672,6 +714,7 @@ body.is-global-loading {
 
 .summary-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 18px;
   margin-bottom: 26px;
   align-items: stretch;
@@ -771,7 +814,8 @@ body.is-global-loading {
 }
 
 .summary-main {
-  min-width: 300px;
+  /* min-width: 300px alone overflows a 320px viewport once padding is added. */
+  min-width: min(300px, 100%);
 }
 
 .summary-main-content {
@@ -844,7 +888,10 @@ body.is-global-loading {
 .weekly-summary-cards {
   display: flex;
   gap: 14px;
-  flex: 1;
+  /* flex-basis 320px + wrap: sits beside the summary card when there is room and
+     drops to its own full-width row when there isn't, with no breakpoint. */
+  flex: 1 1 320px;
+  min-width: 0;
   overflow: visible;
   padding-bottom: 4px;
 }
@@ -1043,9 +1090,12 @@ body.is-global-loading {
   box-shadow: 0 0 10px var(--bar-border-color);
 }
 
+/* auto-fit + minmax(min(100%, N)) reflows at every width with no breakpoint:
+   2-up on a desktop, 2-up on a tablet, 1-up on a phone, and it never overflows
+   because the min() clamps the track to the container on narrow screens. */
 .charts-row {
   display: grid;
-  grid-template-columns: 1.3fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
   gap: 16px;
   margin-bottom: 24px;
 }
@@ -1068,6 +1118,22 @@ body.is-global-loading {
   max-height: 260px;
 }
 
+/* Chart.js runs with maintainAspectRatio:false, so it sizes itself to the
+   PARENT's height. Without an explicitly sized frame the parent is
+   content-height and the chart has nothing to measure against. Same pattern as
+   .habit-mountains-frame. */
+.chart-frame {
+  position: relative;
+  height: clamp(200px, 24vw, 280px);
+}
+
+.chart-frame canvas {
+  width: 100% !important;
+  height: 100% !important;
+  max-height: none;
+  display: block;
+}
+
 .analytics-mode-row {
   margin-bottom: 16px;
 }
@@ -1087,6 +1153,7 @@ body.is-global-loading {
 .analytics-mode-controls {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
 }
 
@@ -1103,14 +1170,14 @@ body.is-global-loading {
   padding: 7px 10px;
 }
 
-.charts-row-analytics {
-  grid-template-columns: 1fr 1fr;
-}
+/* .charts-row-analytics is a marker class only. It used to force `1fr 1fr`;
+   the auto-fit track list on .charts-row now handles every width, so it must
+   not override it. */
 
 .weekly-heatmap {
   display: grid;
-  grid-template-columns: 58px repeat(7, minmax(0, 1fr));
-  gap: 6px;
+  grid-template-columns: minmax(30px, 58px) repeat(7, minmax(0, 1fr));
+  gap: clamp(3px, 0.8vw, 6px);
   align-items: center;
 }
 
@@ -1136,12 +1203,12 @@ body.is-global-loading {
 
 .heatmap-cell {
   border-radius: var(--radius-sm);
-  min-height: 34px;
+  min-height: clamp(28px, 8vw, 34px);
   border: 1px solid rgba(148, 163, 184, 0.24);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.73rem;
+  font-size: clamp(0.58rem, 2.2vw, 0.73rem);
   color: #f7fbff;
   font-weight: 600;
   transition: transform var(--transition);
@@ -1173,7 +1240,7 @@ body.is-global-loading {
 
 .monthly-review-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
   gap: 12px;
 }
 
@@ -1193,6 +1260,7 @@ body.is-global-loading {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 12px;
   position: relative;
   z-index: 1;
@@ -1886,7 +1954,10 @@ body.is-global-loading {
   }
 }
 
-@media (max-width: 860px) {
+/* A hover tooltip is meaningless without a hover-capable pointer. This was an
+   orphan @media (max-width: 860px) -- no other rule used that breakpoint, and
+   width was never the real condition. */
+@media (hover: none) {
   .linked-hover-tooltip {
     display: none;
   }
@@ -1921,13 +1992,14 @@ body.is-global-loading {
 
 .books-layout {
   display: grid;
-  grid-template-columns: 1.15fr 1fr 1.1fr;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
   gap: 16px;
 }
 
 .books-card {
   padding: 22px;
-  min-height: 250px;
+  /* No min-height: 250px of empty glass is dead weight on a narrow screen. */
+  min-height: 0;
 }
 
 .books-card-header {
@@ -2272,9 +2344,11 @@ body.is-global-loading {
   padding: 18px;
 }
 
+/* Was repeat(6, minmax(120px, 1fr)) -> a hard 720px minimum, propped up by a
+   6->3->2->1 media ladder. auto-fit does the whole ladder in one line. */
 .logs-toolbar {
   display: grid;
-  grid-template-columns: repeat(6, minmax(120px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
   gap: 10px;
   margin-bottom: 12px;
 }
@@ -2312,8 +2386,17 @@ body.is-global-loading {
   flex-direction: column;
   gap: 10px;
   max-height: 65vh;
+  max-height: 65dvh;
   overflow: auto;
+  overscroll-behavior: contain;
   padding-right: 4px;
+}
+
+/* A flex item defaults to min-width:auto, so the <pre class="logs-context">
+   inside each entry pushes the whole card to its max-content width even though
+   the <pre> itself scrolls. */
+.logs-table > * {
+  min-width: 0;
 }
 
 .logs-empty {
@@ -2398,7 +2481,9 @@ body.is-global-loading {
   border: 1px solid rgba(148, 163, 184, 0.3);
   font-size: 0.74rem;
   line-height: 1.35;
-  overflow: auto;
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
 }
 
 .books-warning {
@@ -2476,6 +2561,7 @@ body.is-global-loading {
 
 .reader-mode {
   min-height: 100vh;
+  min-height: 100dvh;
   padding: 16px;
   background:
     radial-gradient(
@@ -2486,22 +2572,24 @@ body.is-global-loading {
     var(--purple-25);
 }
 
+/* sticky, not fixed. `fixed` + width:100vw was wrong twice over: 100vw counts
+   the scrollbar (horizontal overflow), and a fixed bar reserves no space, so
+   the PDF canvas started underneath it. Sticky works because .reader-mode is
+   not itself a scroll container -- the page scrolls. */
 .reader-topbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 12px;
-  margin-bottom: 12px;
-  position: fixed;
+  margin: 0 -16px 12px;
+  position: sticky;
   top: 0;
-  left: 0;
-  width: 100vw;
   z-index: 1000;
   background: #0f1628;
   border-bottom: 1px solid var(--gray-800);
-  padding: 12px 24px;
+  padding: max(12px, var(--safe-t)) max(24px, var(--safe-r)) 12px
+    max(24px, var(--safe-l));
   box-sizing: border-box;
-  padding-top: 0;
 }
 
 .reader-topbar h2 {
@@ -2542,7 +2630,40 @@ body.is-global-loading {
   cursor: not-allowed;
 }
 
+/* Touch page-turn zones (index.html #readerTapPrev / #readerTapNext). Hidden
+   unless the pointer is coarse; transparent and non-preventDefault so pinch
+   zoom over them still works. Trade-off: text selection in the outer 26% of
+   the page is lost on touch, which is fine for a page-image reader. */
+.reader-tapzone {
+  display: none;
+}
+
+@media (pointer: coarse) {
+  .reader-tapzone {
+    display: block;
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 26%;
+    border: 0;
+    padding: 0;
+    background: transparent;
+    z-index: 2;
+    cursor: pointer;
+  }
+  .reader-tapzone--prev {
+    left: 0;
+  }
+  .reader-tapzone--next {
+    right: 0;
+  }
+  .reader-tapzone:active {
+    background: rgba(255, 255, 255, 0.04);
+  }
+}
+
 .reader-canvas-wrap {
+  position: relative;
   overflow: auto;
   border: 1px solid var(--gray-100);
   border-radius: var(--radius-md);
@@ -2586,6 +2707,8 @@ body.is-global-loading {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
   margin-bottom: 12px;
 }
 
@@ -2621,6 +2744,13 @@ body.is-global-loading {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
+}
+
+.manage-item-name,
+.books-item-main h4,
+.bookmark-main h4 {
+  overflow-wrap: anywhere;
 }
 
 .manage-item-emoji {
@@ -2855,6 +2985,7 @@ body.is-global-loading {
   width: 90%;
   max-width: 460px;
   max-height: calc(100vh - 40px);
+  max-height: calc(100dvh - 40px);
   box-shadow: var(--shadow-xl);
   overflow: hidden;
   animation: modalSlideIn 0.25s ease;
@@ -2920,6 +3051,9 @@ body.is-global-loading {
 .modal-body {
   padding: 24px;
   overflow-y: auto;
+  /* Reaching the end of the dialog body must not start scrolling the page
+     behind it. */
+  overscroll-behavior: contain;
   min-height: 0;
 }
 
@@ -2969,7 +3103,9 @@ body.is-global-loading {
   flex-direction: column;
   gap: 10px;
   max-height: 50vh;
+  max-height: 50dvh;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 2px;
   margin: 0 -2px;
 }
@@ -3497,6 +3633,7 @@ body.is-global-loading {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 12px;
 }
 
@@ -3511,6 +3648,14 @@ body.is-global-loading {
   display: flex;
   gap: 6px;
   flex-shrink: 0;
+}
+
+/* These carry the text "Edit"/"Delete", but .manage-btn is a hard 32x32 icon
+   box -- the labels overflow it at every viewport. */
+.report-card-actions .manage-btn {
+  width: auto;
+  min-width: 0;
+  padding: 0 12px;
 }
 
 .report-card-meta {
@@ -3548,6 +3693,10 @@ body.is-global-loading {
   background: var(--purple-50);
   color: var(--gray-700);
   cursor: pointer;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .report-attach-chip:hover {
@@ -3570,6 +3719,7 @@ body.is-global-loading {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 10px;
   border: 1px solid var(--gray-200);
   border-radius: var(--radius-sm);
@@ -3652,62 +3802,220 @@ body.is-global-loading {
   color: var(--white);
 }
 
-@media (max-width: 1200px) {
-  .charts-row {
-    grid-template-columns: 1fr;
+/* =========================================================================
+   RESPONSIVE GATES
+
+   Four gates, each with exactly one job. Pick by asking "what is this rule
+   actually reacting to?":
+
+   1. (no gate)               -- intrinsic sizing. auto-fit / clamp() /
+                                 min-width:0. Reflows at every width with no
+                                 breakpoint. Prefer this; it is correct in all
+                                 ui-mode combinations for free.
+   2. @media (pointer:coarse) -- TOUCH SIZING only (16px fields, 44px targets).
+                                 Fires on phones AND tablets AND touch laptops,
+                                 which is exactly who needs it.
+   3. @media (hover:none)     -- undo :hover transforms that stick after a tap.
+   4. html[data-ui-mode=...]  -- the mobile PRODUCT layout (sheets, bottom nav,
+                                 drawer, reordering, safe areas). Lives further
+                                 down, near line 4450.
+
+   Specificity note that makes this safe: html[data-ui-mode="mobile"] .foo is
+   (0,2,1); a bare .foo inside any @media is (0,1,0). The mobile block therefore
+   always wins over these gates regardless of source order -- no !important and
+   no ordering fragility. The corollary is a rule: NEVER write an
+   html[data-ui-mode="desktop"] selector, or the touch gates would lose to it.
+   ========================================================================= */
+
+@media (pointer: coarse) {
+  /* html{font-size:14px} makes 0.9rem = 12.6px, and iOS Safari zooms the whole
+     page whenever a focused field is under 16px. 16px here is a hard floor, not
+     a preference. Do NOT "fix" this with maximum-scale=1 instead -- that kills
+     pinch-zoom and fails WCAG 1.4.4. */
+  /* Specificity matters here: a media query contributes none, so a bare
+     `input` (0,0,1) would lose to `.form-group input[type="text"]` (0,2,1).
+     Every selector below must match or beat the rule it is overriding. */
+  input,
+  select,
+  textarea,
+  .form-group input[type="text"],
+  .form-group input[type="number"],
+  .form-group input[type="date"],
+  .form-group input[type="password"],
+  .form-group select,
+  .form-group textarea,
+  .logs-toolbar input,
+  .logs-toolbar select,
+  .reader-controls input,
+  .reader-dark-mode,
+  .model-picker-input,
+  .settings-section input,
+  .settings-section select,
+  .settings-section textarea {
+    font-size: 16px;
   }
 
-  .charts-row-analytics {
-    grid-template-columns: 1fr;
+  .form-group input[type="text"],
+  .form-group input[type="number"],
+  .form-group input[type="date"],
+  .form-group select,
+  .form-group textarea {
+    padding: 11px 12px;
   }
 
-  .logs-toolbar {
-    grid-template-columns: repeat(3, minmax(140px, 1fr));
+  /* Except the emoji fields, which are deliberately oversized already. */
+  .emoji-input {
+    font-size: 1.5rem;
+  }
+
+  /* 44px minimum touch target. */
+  .btn-primary,
+  .btn-secondary,
+  .btn-danger,
+  .btn-add,
+  .btn-export,
+  .btn-import,
+  .btn-settings,
+  .modal-close,
+  .manage-btn,
+  .bookmark-history-btn,
+  .summary-history-btn,
+  .month-nav,
+  .nav-tab,
+  .bottom-nav-btn,
+  .undo-toast-btn,
+  .undo-toast-close,
+  .habit-action-item,
+  .model-picker-toggle,
+  .model-picker-option,
+  .reader-history-picker-item,
+  .schedule-day-option {
+    min-height: 44px;
+  }
+
+  .modal-close,
+  .manage-btn {
+    min-width: 44px;
+  }
+
+  .month-nav {
+    width: 48px;
+    height: 48px;
+  }
+
+  .emoji-option {
+    width: 44px;
+    height: 44px;
+  }
+
+  .color-option {
+    width: 40px;
+    height: 40px;
+  }
+
+  .feedback-image-remove {
+    width: 32px;
+    height: 32px;
+  }
+
+  /* The checkbox is hidden and the whole <label> becomes the chip -- see
+     habits.js renderSequenceCheckboxes(), which emits
+     <label><input type=checkbox><span>. :has(input:checked) already skins it. */
+  .schedule-day-option {
+    padding: 4px;
+  }
+
+  .schedule-day-option input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  * {
+    -webkit-tap-highlight-color: transparent;
   }
 }
 
-@media (max-width: 900px) {
-  .summary-row {
-    flex-direction: column;
-  }
-  .weekly-summary-cards {
-    overflow: visible;
-  }
-  .habit-mountains-card {
-    margin-top: 16px;
-    padding: 20px;
-  }
-  .monthly-review-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .analytics-mode-controls {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .logs-toolbar {
-    grid-template-columns: repeat(2, minmax(140px, 1fr));
+@media (hover: none) {
+  /* On touch, :hover latches after a tap and leaves the element stuck in its
+     lifted state until you tap elsewhere. */
+  .books-item:hover,
+  .bookmark-item:hover,
+  .btn-primary:hover,
+  .btn-secondary:hover,
+  .btn-danger:hover,
+  .btn-add:hover,
+  .btn-export:hover,
+  .btn-import:hover,
+  .nav-tab:hover,
+  .week-card:hover,
+  .week-mini-bar:hover,
+  .month-nav:hover,
+  .habit-check:hover,
+  .note-btn:hover,
+  .combo-value:hover,
+  .heatmap-cell:hover,
+  .emoji-option:hover,
+  .color-option:hover,
+  .manage-btn:hover,
+  .report-attach-chip:hover {
+    transform: none;
   }
 }
 
+/* ---- Tablet middle ground: desktop layout, roomier spacing ----
+   Everything structural is already handled by the auto-fit grids above; this
+   is only breathing room. Touch sizing comes from (pointer: coarse). */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .main-content {
+    padding: 24px 20px;
+  }
+
+  .books-card,
+  .chart-card,
+  .monthly-review-card,
+  .logs-card,
+  .analytics-mode-card {
+    padding: 18px;
+  }
+
+  /* Stay a centred dialog, not a full-bleed sheet. */
+  .modal {
+    max-width: 560px;
+  }
+
+  .modal-lg {
+    max-width: 92vw;
+  }
+
+  /* Best of both on a tablet: the quick day check-in sits above the month grid,
+     which still fits here. The month heatmap is redundant next to the grid. */
+  .day-focus {
+    display: block;
+  }
+
+  .day-focus-heat {
+    display: none;
+  }
+}
+
+/* =========================================================================
+   FORCED-DESKTOP-ON-A-PHONE SURVIVAL KIT
+
+   These rules exist ONLY so that Settings -> Version -> Desktop on a narrow
+   screen stays usable. Layout for the mobile product lives in the
+   html[data-ui-mode="mobile"] block; touch sizing lives in the gates above.
+   Do not add per-view rules here -- make the base rule intrinsic instead.
+   ========================================================================= */
 @media (max-width: 768px) {
   .modal-overlay {
     padding: 10px;
   }
 
-  .habit-mountains-header {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .habit-mountains-card h3 {
-    font-size: 1.2rem;
-  }
-
   .modal {
     width: 100%;
     max-height: calc(100vh - 20px);
+    max-height: calc(100dvh - 20px);
   }
 
   .sidebar {
@@ -3720,9 +4028,16 @@ body.is-global-loading {
   .sidebar.open {
     transform: translateX(0);
   }
+  .sidebar.open::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.3);
+    z-index: -1;
+  }
   .main-content {
     margin-left: 0;
-    padding: 60px 16px 16px;
+    padding: calc(60px + var(--safe-t)) 16px calc(16px + var(--safe-b));
   }
   .mobile-menu-toggle {
     display: flex;
@@ -3730,37 +4045,9 @@ body.is-global-loading {
   .month-title h2 {
     font-size: 1.8rem;
   }
-  .books-layout {
-    grid-template-columns: 1fr;
-  }
 
-  .books-item {
-    grid-template-columns: 1fr;
-    grid-template-areas:
-      "cover"
-      "main";
-  }
-
-  .books-item-cover {
-    width: 100%;
-    min-height: 150px;
-    max-height: 190px;
-  }
-
-  .books-ai-actions {
-    flex-direction: column;
-  }
-
-  .logs-toolbar {
-    grid-template-columns: 1fr;
-  }
-
-  .summary-modal-footer {
-    justify-content: stretch;
-  }
-
-  .summary-modal-footer button {
-    width: 100%;
+  .habit-mountains-card h3 {
+    font-size: 1.2rem;
   }
 
   .bookmark-summarize-btn.is-loading::after {
@@ -3768,29 +4055,10 @@ body.is-global-loading {
     height: 13px;
   }
 
-  .reader-topbar {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-  .data-actions {
-    flex-direction: column;
-  }
-  .schedule-days-grid {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-  }
-
-  .month-days-grid {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-  }
   .undo-toast {
     left: 16px;
     right: 16px;
     justify-content: space-between;
-  }
-
-  .weekly-heatmap {
-    grid-template-columns: 50px repeat(7, minmax(0, 1fr));
-    gap: 4px;
   }
 
   .habits-grid th.day-col {
@@ -3805,21 +4073,6 @@ body.is-global-loading {
 
   .habits-grid th.day-col .day-col-day {
     font-size: 0.7rem;
-  }
-
-  .heatmap-cell {
-    min-height: 28px;
-    font-size: 0.66rem;
-  }
-}
-
-@media (max-width: 768px) {
-  .sidebar.open::before {
-    content: "";
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.3);
-    z-index: -1;
   }
 }
 
@@ -3868,7 +4121,10 @@ body.is-global-loading {
   box-shadow: 0 10px 18px rgba(2, 8, 20, 0.26);
 }
 
-@media (min-width: 901px) {
+/* 769px, not 901px: every other .sidebar.collapsed rule lives in the 769px
+   block, so between 769 and 900 the rail collapsed to 72px while the Settings
+   button kept its label and overflowed it. */
+@media (min-width: 769px) {
   .sidebar.collapsed .sidebar-footer .btn-settings span {
     display: none;
   }
@@ -4154,9 +4410,22 @@ body.is-global-loading {
    Everything under "MOBILE LAYOUT" is gated on html[data-ui-mode="mobile"] and
    is self-sufficient (no @media dependency), so the mobile layout works even
    when forced on a wide screen. The desktop layout is the app's default
-   styling and is left completely untouched. When "Desktop" is forced on a
-   phone, none of these rules apply and the app's pre-existing responsive
-   @media (max-width: 768px) rules provide the fallback.
+   styling and is left completely untouched.
+
+   What belongs here: the mobile PRODUCT layout -- bottom sheets, the tab bar,
+   the sidebar-as-drawer, single-column stacking, content reordering, safe-area
+   padding. Things that are true because this is the phone experience.
+
+   What does NOT belong here:
+     - touch sizing (16px fields, 44px targets) -> @media (pointer: coarse),
+       so tablets get it too. See the RESPONSIVE GATES block near line 3730.
+     - "it's narrow" reflow -> make the base rule intrinsic instead (auto-fit /
+       clamp / min-width:0), so it is correct at every width in every mode.
+
+   Note: on a real phone in Auto mode this block and the
+   @media (max-width: 768px) survival kit are BOTH live. This block wins on
+   specificity ((0,2,1) vs (0,1,0)), which is why the survival kit is kept
+   deliberately small -- it only has to carry forced-Desktop-on-a-phone.
    ========================================================================= */
 
 /* ---- Settings: segmented Auto / Mobile / Desktop control ---- */
@@ -4266,10 +4535,13 @@ body.is-global-loading {
   background: rgba(255, 255, 255, 0.08);
 }
 
-.today-quickcheck {
+/* ---- Day-focus card (src/render-day-focus.js) ----
+   Hidden by default; shown by the mobile block, and on tablets by the
+   769-1024px block. It replaces the month grid on phones entirely. */
+.day-focus {
   display: none;
   margin-bottom: 18px;
-  padding: 16px;
+  padding: 14px;
   border-radius: var(--radius-lg);
   background: var(--glass-surface-strong);
   border: 1px solid var(--glass-border);
@@ -4277,18 +4549,142 @@ body.is-global-loading {
   -webkit-backdrop-filter: blur(12px);
   box-shadow: var(--shadow-md);
 }
-.today-quickcheck-head {
+
+/* Date strip */
+.day-focus-strip {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
+  gap: 4px;
+  margin-bottom: 14px;
 }
-.today-quickcheck-title {
-  font-family: var(--font-display);
-  font-size: 1.25rem;
+.day-focus-step {
+  flex: 0 0 auto;
+  width: 34px;
+  min-height: 56px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--gray-500);
+  font-size: 1.3rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.day-focus-step:active {
+  background: rgba(255, 255, 255, 0.12);
+}
+.day-focus-track {
+  display: flex;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  /* Stops an over-scroll of the strip from triggering the browser's
+     back-swipe gesture. */
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+}
+.day-focus-track::-webkit-scrollbar {
+  display: none;
+}
+.day-chip {
+  flex: 0 0 auto;
+  scroll-snap-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 48px;
+  min-height: 56px;
+  padding: 6px 4px;
+  border: 1px solid transparent;
+  border-top: 2px solid var(--week-accent, transparent);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--gray-500);
+  cursor: pointer;
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast),
+    border-color var(--transition-fast);
+}
+.day-chip-dow {
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.day-chip-num {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--gray-700);
+}
+.day-chip-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--chip-heat, transparent);
+}
+.day-chip.is-future {
+  opacity: 0.55;
+}
+.day-chip.is-empty .day-chip-dot {
+  background: none;
+  border: 1px dashed var(--gray-400);
+}
+.day-chip.is-today .day-chip-num {
+  color: var(--purple-300);
+}
+.day-chip.is-complete {
+  background: rgba(16, 185, 129, 0.12);
+}
+.day-chip.is-selected {
+  background: var(--purple-600);
+  border-color: var(--purple-400);
+  opacity: 1;
+}
+.day-chip.is-selected .day-chip-num,
+.day-chip.is-selected .day-chip-dow {
   color: var(--white);
 }
-.today-quickcheck-count {
+
+/* Header + progress */
+.day-focus-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.day-focus-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.day-focus-date {
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  color: var(--white);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.day-focus-rel {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: rgba(129, 140, 248, 0.18);
+  color: var(--purple-300);
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.day-focus-count {
+  flex: 0 0 auto;
   padding: 4px 12px;
   border-radius: var(--radius-pill);
   background: rgba(255, 255, 255, 0.07);
@@ -4296,23 +4692,42 @@ body.is-global-loading {
   font-weight: 700;
   color: var(--gray-500);
 }
-.today-quickcheck-empty {
-  margin: 4px 0 0;
-  color: var(--gray-500);
-  font-size: 0.88rem;
+.day-focus-progress {
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+  margin-bottom: 14px;
 }
-.today-quickcheck-list {
+.day-focus-progress > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--success);
+  transition: width var(--transition);
+}
+
+/* Habit rows. The row is a container so the toggle and the note button are
+   siblings -- previously a 30px checkbox and a 28px note button shared one
+   44px grid cell, two sub-minimum targets side by side. */
+.day-focus-list {
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
-.today-row {
+.day-focus-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+.day-focus-toggle {
+  flex: 1 1 auto;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 14px;
-  width: 100%;
   min-height: 60px;
-  padding: 14px 16px;
+  padding: 12px 14px;
   border-radius: var(--radius-md);
   border: 1px solid var(--glass-border);
   background: rgba(255, 255, 255, 0.03);
@@ -4326,10 +4741,10 @@ body.is-global-loading {
     border-color var(--transition-fast),
     transform var(--transition-fast);
 }
-.today-row:active {
+.day-focus-toggle:active {
   transform: scale(0.985);
 }
-.today-row-check {
+.day-focus-check {
   flex: 0 0 auto;
   width: 30px;
   height: 30px;
@@ -4340,34 +4755,141 @@ body.is-global-loading {
   border-radius: 50%;
   transition: all var(--transition-fast);
 }
-.today-row-emoji {
-  font-size: 1.3rem;
+.day-focus-emoji {
   flex: 0 0 auto;
+  font-size: 1.3rem;
 }
-.today-row-name {
-  flex: 1;
+.day-focus-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.day-focus-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.today-row.is-done {
+.day-focus-streak {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--gray-500);
+}
+.day-focus-streak:empty {
+  display: none;
+}
+/* Full-height 44px hit area (it is a sibling of the toggle, not crammed into
+   the same cell as before) but visually secondary to the habit row itself. */
+.day-focus-note {
+  flex: 0 0 auto;
+  width: 44px;
+  min-height: 60px;
+  height: auto;
+  border-radius: var(--radius-md);
+  border-color: transparent;
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 1rem;
+  opacity: 0.6;
+}
+.day-focus-note.has-note {
+  opacity: 1;
+}
+.day-focus-row.is-done .day-focus-toggle {
   border-color: rgba(16, 185, 129, 0.5);
   background: rgba(16, 185, 129, 0.1);
 }
-.today-row.is-done .today-row-check {
+.day-focus-row.is-done .day-focus-check {
   background: var(--success);
   border-color: var(--success);
 }
-.today-row.is-done .today-row-check::after {
+.day-focus-row.is-done .day-focus-check::after {
   content: "✓";
   color: #04211a;
   font-size: 1rem;
   font-weight: 800;
 }
-.today-row.is-done .today-row-name {
+.day-focus-row.is-done .day-focus-name {
   color: var(--gray-600);
   text-decoration: line-through;
   text-decoration-color: rgba(16, 185, 129, 0.6);
+}
+.day-focus-empty {
+  margin: 4px 0 0;
+  color: var(--gray-500);
+  font-size: 0.88rem;
+}
+
+/* Not-scheduled habits, collapsed */
+.day-focus-off {
+  margin-top: 12px;
+  font-size: 0.8rem;
+  color: var(--gray-500);
+}
+.day-focus-off > summary {
+  cursor: pointer;
+  padding: 8px 2px;
+  list-style: none;
+}
+.day-focus-off > summary::-webkit-details-marker {
+  display: none;
+}
+.day-focus-off > summary::before {
+  content: "▸ ";
+}
+.day-focus-off[open] > summary::before {
+  content: "▾ ";
+}
+.day-focus-off-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 2px 2px;
+}
+.day-focus-off-item {
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--gray-500);
+}
+
+/* Compact month heatmap. Intentionally NOT .heatmap-cell -- that skin assumes
+   the analytics 58px label column and carries its own overrides. */
+.day-focus-heat {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--glass-border);
+}
+.day-heat-dow,
+.day-heat-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+.day-heat-dow {
+  margin-bottom: 4px;
+  font-size: 0.6rem;
+  color: var(--gray-400);
+  text-align: center;
+  text-transform: uppercase;
+}
+.day-heat-cell {
+  aspect-ratio: 1;
+  min-height: 30px;
+  padding: 0;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.day-heat-blank {
+  visibility: hidden;
+}
+.day-heat-cell.is-complete {
+  border-color: rgba(16, 185, 129, 0.55);
+}
+.day-heat-cell.is-selected {
+  outline: 2px solid var(--purple-400);
+  outline-offset: 1px;
 }
 
 @keyframes sheetSlideUp {
@@ -4428,12 +4950,10 @@ html[data-ui-mode="mobile"] .month-title h2 {
 }
 html[data-ui-mode="mobile"] .month-nav {
   flex: 0 0 auto;
-  width: 48px;
-  height: 48px;
 }
 
-/* ---- Today quick-check list (primary daily action on mobile) ---- */
-html[data-ui-mode="mobile"] .today-quickcheck {
+/* ---- Day-focus card: THE check-in surface on mobile ---- */
+html[data-ui-mode="mobile"] .day-focus {
   display: block;
 }
 
@@ -4463,51 +4983,243 @@ html[data-ui-mode="mobile"] .week-card {
   scroll-snap-align: start;
 }
 
-/* ---- Habits section ---- */
+/* ---- Habits section ----
+   The month grid is not rendered at all on mobile (renderDailyHabitsGrid
+   early-returns), so hide its chrome too. Adding/editing habits lives in the
+   Manage view, reachable from the drawer and the More sheet. */
 html[data-ui-mode="mobile"] .habits-section {
   margin-bottom: 18px;
 }
+html[data-ui-mode="mobile"] .habits-grid-wrapper,
 html[data-ui-mode="mobile"] .habits-header {
-  flex-wrap: wrap;
-  gap: 10px;
-}
-html[data-ui-mode="mobile"] .btn-add {
-  min-height: 44px;
-}
-
-/* The month grid is the SECONDARY surface on mobile (the Today list above is
-   primary). Keep it usable: a slimmer sticky name column leaves room for the
-   day cells, the cells/checkboxes are finger-sized, and the per-row streak
-   badge is hidden to cut clutter while scrolling. */
-html[data-ui-mode="mobile"] .habits-grid {
-  font-size: 0.9rem;
-}
-html[data-ui-mode="mobile"] .habits-grid th.habit-name-col,
-html[data-ui-mode="mobile"] .habits-grid td.habit-name-cell {
-  min-width: 144px;
-  max-width: 160px;
-  white-space: normal;
-}
-html[data-ui-mode="mobile"] .habits-grid .streak-badge {
   display: none;
 }
-html[data-ui-mode="mobile"] .habits-grid th.day-col,
-html[data-ui-mode="mobile"] .habits-grid td.day-cell {
-  width: 44px;
-  min-width: 44px;
+
+/* Belt and braces: nothing may make the document wider than the viewport. */
+html[data-ui-mode="mobile"],
+html[data-ui-mode="mobile"] .main-content {
+  overflow-x: hidden;
 }
-html[data-ui-mode="mobile"] .habit-check {
-  width: 30px;
-  height: 30px;
-}
-html[data-ui-mode="mobile"] .note-btn {
-  width: 28px;
-  height: 28px;
+
+/* ---- Boot-time error surface (inline handlers at the end of index.html) ----
+   The full banner is developer UI, shown only with ?debug=1. Everyone else
+   gets a compact toast that auto-hides and can be dismissed. */
+.boot-error-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 99999;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: calc(12px + var(--safe-t)) 12px 12px;
+  background: #b91c1c;
+  color: #fff;
+  font-family: monospace;
   font-size: 13px;
+  white-space: pre-wrap;
+  max-height: 50vh;
+  overflow: auto;
 }
-html[data-ui-mode="mobile"] .habit-actions-toggle {
-  width: 40px;
-  height: 40px;
+.boot-error-toast {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  /* Clear of both the tab bar and the home indicator. */
+  bottom: calc(84px + var(--safe-b));
+  z-index: 1300;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(244, 63, 94, 0.5);
+  background: rgba(69, 10, 10, 0.96);
+  color: #fecaca;
+  font-size: 0.85rem;
+  box-shadow: var(--shadow-lg);
+}
+.boot-error-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.boot-error-close {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.12);
+  color: inherit;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* ---- "More" overflow sheet ---- */
+.more-sheet-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.more-sheet-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 52px;
+  padding: 12px 14px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--gray-800);
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.more-sheet-item:active {
+  background: rgba(255, 255, 255, 0.08);
+}
+.more-sheet-item > span {
+  font-size: 1.15rem;
+}
+
+/* ---- Books ---- */
+/* Reading matters more than uploading on a phone, so re-order the three cards
+   rather than making the user scroll past a big upload form every time. */
+html[data-ui-mode="mobile"] .books-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+html[data-ui-mode="mobile"] .books-card--library {
+  order: 1;
+}
+html[data-ui-mode="mobile"] .books-card--bookmarks {
+  order: 2;
+}
+html[data-ui-mode="mobile"] .books-card--upload {
+  order: 3;
+}
+/* A 190px full-width cover banner pushes the title off screen; a side
+   thumbnail keeps the whole row readable at a glance. */
+html[data-ui-mode="mobile"] .books-item {
+  grid-template-columns: 72px minmax(0, 1fr);
+  grid-template-areas: "cover main";
+  gap: 12px;
+}
+html[data-ui-mode="mobile"] .books-item-cover {
+  width: 72px;
+  min-height: 102px;
+  max-height: 102px;
+}
+/* Five buttons in a row do not fit. Two columns, with the primary action
+   spanning the top. */
+html[data-ui-mode="mobile"] .bookmark-actions,
+html[data-ui-mode="mobile"] .books-item-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+/* Lead with the primary action across the full width; the rest pair up. For
+   books that is "Select" (first child), for bookmarks "Open at Bookmark". This
+   also stops the destructive button being the lone item on its own row. */
+html[data-ui-mode="mobile"] .bookmark-actions .btn-primary,
+html[data-ui-mode="mobile"] .books-item-actions > :first-child {
+  grid-column: 1 / -1;
+}
+html[data-ui-mode="mobile"] .bookmark-history {
+  max-height: 190px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+html[data-ui-mode="mobile"] .books-ai-actions > button {
+  width: 100%;
+}
+
+/* ---- Analytics ---- */
+html[data-ui-mode="mobile"] .chart-frame {
+  height: 240px;
+}
+/* At ~30px per cell a "83%" label just clips. Colour carries the reading; the
+   numbers stay in title/aria-label (see renderWeeklyHeatmap). */
+html[data-ui-mode="mobile"] .heatmap-cell-value {
+  display: none;
+}
+html[data-ui-mode="mobile"] .weekly-heatmap.large,
+html[data-ui-mode="mobile"] .weekly-heatmap-large {
+  min-height: 0;
+}
+html[data-ui-mode="mobile"] .analytics-mode-controls select {
+  flex: 1 1 auto;
+}
+
+/* ---- Manage ---- */
+html[data-ui-mode="mobile"] .manage-item {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  padding: 14px;
+}
+html[data-ui-mode="mobile"] .manage-item-actions {
+  justify-content: flex-end;
+  gap: 8px;
+}
+html[data-ui-mode="mobile"] .manage-section-header .btn-add {
+  width: 100%;
+  justify-content: center;
+}
+html[data-ui-mode="mobile"] .data-actions {
+  flex-direction: column;
+}
+html[data-ui-mode="mobile"] .data-actions > button {
+  width: 100%;
+}
+
+/* ---- Logs ---- */
+html[data-ui-mode="mobile"] .logs-toolbar {
+  grid-template-columns: 1fr 1fr;
+}
+html[data-ui-mode="mobile"] #logsComponentFilter,
+html[data-ui-mode="mobile"] #logsTextFilter {
+  grid-column: 1 / -1;
+}
+/* Wrapping beats a nested horizontal scroller inside an already-scrolling
+   card inside a scrolling page. */
+html[data-ui-mode="mobile"] .logs-context {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow-x: visible;
+  max-height: 160px;
+  overflow-y: auto;
+}
+html[data-ui-mode="mobile"] .logs-table {
+  max-height: none;
+  overflow: visible;
+}
+html[data-ui-mode="mobile"] .logs-show-more {
+  width: 100%;
+}
+
+/* ---- Reports ---- */
+html[data-ui-mode="mobile"] .report-card-header {
+  flex-direction: column;
+  align-items: stretch;
+}
+html[data-ui-mode="mobile"] .report-card-actions {
+  justify-content: flex-end;
+}
+html[data-ui-mode="mobile"] #btnAddReport {
+  width: 100%;
+  justify-content: center;
+}
+html[data-ui-mode="mobile"] .report-attach-row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
 }
 
 /* ---- Completion mountains card ---- */
@@ -4515,22 +5227,59 @@ html[data-ui-mode="mobile"] .habit-mountains-card {
   padding: 16px 14px 14px;
 }
 
-/* ---- Drawer nav tabs + modal pickers: finger-sized ---- */
+/* Drawer nav tabs: extra breathing room beyond the 44px the touch gate gives.
+   .emoji-option / .color-option sizing now lives in @media (pointer: coarse)
+   so tablets get it too. */
 html[data-ui-mode="mobile"] .nav-tab {
   padding: 14px;
 }
-html[data-ui-mode="mobile"] .emoji-option {
-  width: 44px;
-  height: 44px;
-}
-html[data-ui-mode="mobile"] .color-option {
-  width: 40px;
-  height: 40px;
-}
 
 /* ---- Reader top bar clears the notch ---- */
+/* ---- PDF reader ----
+   Title and status stack; the controls move to a fixed bottom bar within thumb
+   reach, scrolling horizontally rather than wrapping into four rows. */
+html[data-ui-mode="mobile"] .reader-mode {
+  padding: 0 12px calc(64px + var(--safe-b));
+}
 html[data-ui-mode="mobile"] .reader-topbar {
-  padding-top: calc(10px + env(safe-area-inset-top));
+  display: block;
+  margin: 0 -12px 10px;
+  padding: max(10px, var(--safe-t)) 14px 10px;
+}
+html[data-ui-mode="mobile"] .reader-topbar h2 {
+  font-size: 1rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+html[data-ui-mode="mobile"] .reader-topbar p {
+  font-size: 0.72rem;
+}
+html[data-ui-mode="mobile"] .reader-controls {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1000;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  gap: 6px;
+  padding: 8px max(10px, var(--safe-l)) calc(8px + var(--safe-b))
+    max(10px, var(--safe-r));
+  background: #0f1628;
+  border-top: 1px solid var(--gray-800);
+}
+html[data-ui-mode="mobile"] .reader-controls::-webkit-scrollbar {
+  display: none;
+}
+html[data-ui-mode="mobile"] .reader-controls > * {
+  flex: 0 0 auto;
+}
+html[data-ui-mode="mobile"] .reader-controls input {
+  width: 64px;
 }
 
 /* ---- Toast sits above the bottom nav ---- */
@@ -4545,18 +5294,118 @@ html[data-ui-mode="mobile"] .undo-toast {
 html[data-ui-mode="mobile"] .modal-overlay {
   align-items: flex-end;
   padding: 0;
+  overflow: hidden;
+  /* --kb-inset is published by src/sheet.js from visualViewport. On iOS the
+     layout viewport does not shrink for the keyboard, so without this the
+     sheet's footer buttons sit behind it. */
+  bottom: var(--kb-inset, 0px);
 }
 html[data-ui-mode="mobile"] .modal {
   width: 100%;
   max-width: 100%;
   margin: 0;
   max-height: 92vh;
+  max-height: calc(92dvh - var(--kb-inset, 0px));
   border-radius: var(--radius-xl) var(--radius-xl) 0 0;
-  padding-bottom: env(safe-area-inset-bottom);
+  padding-bottom: var(--safe-b);
   animation: sheetSlideUp var(--motion-base) var(--ease-emphasized);
 }
 @media (prefers-reduced-motion: reduce) {
   html[data-ui-mode="mobile"] .modal {
     animation: none;
+  }
+}
+
+/* Grab handle. Rendered as a pseudo-element so no markup changes are needed;
+   the header is also the drag surface (src/sheet.js bindSheetGestures). */
+html[data-ui-mode="mobile"] .modal-header {
+  position: relative;
+  padding: 26px 16px 14px;
+  touch-action: none;
+}
+html[data-ui-mode="mobile"] .modal-header::before {
+  content: "";
+  position: absolute;
+  top: 9px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 40px;
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--gray-300);
+}
+
+/* Keep the title visible while a long sheet body scrolls. */
+html[data-ui-mode="mobile"] .modal-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--purple-100);
+}
+
+html[data-ui-mode="mobile"] .modal-body {
+  padding: 16px;
+}
+
+/* Stacked, full-width, thumb-reachable actions. The primary button is last in
+   DOM order in every footer, so a plain column puts it nearest the thumb. */
+html[data-ui-mode="mobile"] .modal-footer {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 12px 16px calc(12px + var(--safe-b));
+}
+html[data-ui-mode="mobile"] .modal-footer > button {
+  width: 100%;
+  min-height: 48px;
+}
+
+/* Long textareas (#feedbackPreviewBody is rows=10) must not eat the sheet. */
+html[data-ui-mode="mobile"] .modal-body textarea {
+  max-height: 34vh;
+}
+
+/* #summaryModal has four footer actions -- 2x2 beats four stacked rows. */
+html[data-ui-mode="mobile"] .summary-modal-footer {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+html[data-ui-mode="mobile"] .summary-modal-footer > button {
+  width: 100%;
+}
+html[data-ui-mode="mobile"] .summary-content {
+  max-height: 46vh;
+}
+
+/* The feedback flow widens the settings dialog on desktop; pointless once the
+   sheet is already full-width. */
+html[data-ui-mode="mobile"] .modal-overlay.is-feedback-expanded .modal {
+  max-width: 100%;
+}
+
+/* Habit modal schedule pickers. @media (pointer: coarse) already hides the
+   real checkbox and gives each label a 44px height; here we just give them
+   room to breathe instead of 31 cells at ~32px across. */
+html[data-ui-mode="mobile"] .schedule-days-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  max-height: none;
+  overflow: visible;
+}
+html[data-ui-mode="mobile"] .month-days-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+html[data-ui-mode="mobile"] #habitSequenceActive.schedule-days-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+/* With the checkbox hidden on touch, the checked state needs to read as a
+   filled chip rather than a tinted border. */
+@media (pointer: coarse) {
+  .schedule-day-option:has(input:checked) {
+    background: var(--purple-600);
+    border-color: var(--purple-400);
+    color: var(--white);
   }
 }

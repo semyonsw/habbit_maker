@@ -45,15 +45,27 @@ export function getFilteredLogs() {
     .sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1));
 }
 
+// Rendering every filtered entry means building a few hundred cards of HTML in
+// one synchronous pass, which is a visible freeze on a phone. Show a page at a
+// time and let the user ask for more.
+const LOGS_PAGE_SIZE = 120;
+let logsRenderLimit = LOGS_PAGE_SIZE;
+
+// Called by the filter controls: a new filter should start from the top again.
+export function resetLogsRenderLimit() {
+  logsRenderLimit = LOGS_PAGE_SIZE;
+}
+
 export function renderLogsView() {
   const table = document.getElementById("logsTable");
   if (!table) return;
-  const logs = getFilteredLogs();
-  if (!logs.length) {
+  const allLogs = getFilteredLogs();
+  if (!allLogs.length) {
     table.innerHTML = '<p class="logs-empty">No matching logs yet.</p>';
     return;
   }
 
+  const logs = allLogs.slice(0, logsRenderLimit);
   table.innerHTML = logs
     .map((entry) => {
       const contextText = sanitize(
@@ -75,6 +87,18 @@ export function renderLogsView() {
       </article>`;
     })
     .join("");
+
+  if (allLogs.length > logs.length) {
+    const more = document.createElement("button");
+    more.type = "button";
+    more.className = "btn-secondary logs-show-more";
+    more.textContent = `Show more (${logs.length} of ${allLogs.length})`;
+    more.addEventListener("click", () => {
+      logsRenderLimit += LOGS_PAGE_SIZE;
+      renderLogsView();
+    });
+    table.appendChild(more);
+  }
 }
 
 export function bindLogsControls() {
@@ -107,11 +131,16 @@ export function bindLogsControls() {
     });
   }
 
+  // Changing a filter produces a different result set, so paging starts over.
+  const rerenderFromTop = () => {
+    resetLogsRenderLimit();
+    renderLogsView();
+  };
   [levelFilter, componentFilter, textFilter]
     .filter(Boolean)
     .forEach((control) => {
-      control.addEventListener("input", renderLogsView);
-      control.addEventListener("change", renderLogsView);
+      control.addEventListener("input", rerenderFromTop);
+      control.addEventListener("change", rerenderFromTop);
     });
 
   if (liveFileSelectBtn) {

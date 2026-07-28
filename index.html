@@ -16,6 +16,21 @@
     />
     <meta name="author" content="Semyon" />
     <meta name="theme-color" content="#050914" />
+    <!-- Installed-app behaviour. "black-translucent" is load-bearing: together with
+         viewport-fit=cover it is what makes env(safe-area-inset-top) report a real
+         value in iOS standalone. Without it every calc(... + env(safe-area-inset-*))
+         in styles.css silently collapses to its base value. -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    />
+    <meta name="apple-mobile-web-app-title" content="Habits" />
+    <!-- Dark-only app: tell the browser so native selects, date pickers and
+         scrollbars render dark instead of white-on-dark. -->
+    <meta name="color-scheme" content="dark" />
+    <meta name="format-detection" content="telephone=no" />
     <meta property="og:title" content="Habit Maker" />
     <meta
       property="og:description"
@@ -34,7 +49,7 @@
     />
     <!-- PWA: installable app shell. -->
     <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="apple-touch-icon" href="icons/icon-192.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="icons/icon-192.png" />
   </head>
   <body>
     <div
@@ -273,10 +288,12 @@
               </svg>
             </button>
           </div>
+          <!-- Rendered by src/render-day-focus.js. Replaces the month grid as
+               the primary check-in surface in the mobile layout. -->
           <section
-            class="today-quickcheck"
-            id="todayQuickCheck"
-            aria-label="Today's habits"
+            class="day-focus"
+            id="dayFocus"
+            aria-label="Daily check-in"
           ></section>
           <div class="summary-row">
             <div class="summary-card summary-main">
@@ -353,7 +370,9 @@
           </div>
 
           <div class="books-layout">
-            <section class="books-card">
+            <!-- books-card--* drive the mobile source order: the library and
+                 bookmarks matter more on a phone than the upload form. -->
+            <section class="books-card books-card--upload">
               <div class="books-card-header">
                 <h3>Add PDF Book</h3>
                 <button class="btn-primary" id="btnBookCreate" type="button">
@@ -394,8 +413,12 @@
                   No file uploaded yet.
                 </p>
                 <p class="books-help-text">Maximum PDF size: 70MB.</p>
-                <div class="books-ai-settings">
-                  <h4>Summary AI Settings</h4>
+                <!-- <details> rather than a plain heading: this block is ~200px
+                     of optional configuration that would otherwise push the
+                     upload button off a phone screen. Every control keeps its
+                     id and stays in the DOM, so bindEvents() is unaffected. -->
+                <details class="books-ai-settings books-ai-details">
+                  <summary><h4>Summary AI Settings</h4></summary>
                   <div class="form-group">
                     <label for="summaryApiKeyInput">Gemini API Key</label>
                     <input
@@ -489,18 +512,18 @@
                   >
                     Save Summary Settings
                   </button>
-                </div>
+                </details>
               </div>
             </section>
 
-            <section class="books-card">
+            <section class="books-card books-card--library">
               <div class="books-card-header">
                 <h3>My Books</h3>
               </div>
               <div class="books-list" id="booksList"></div>
             </section>
 
-            <section class="books-card books-bookmarks">
+            <section class="books-card books-bookmarks books-card--bookmarks">
               <div class="books-card-header">
                 <h3>Bookmarks</h3>
                 <button class="btn-primary" id="btnAddBookmark" type="button">
@@ -616,7 +639,11 @@
           <div class="charts-row charts-row-analytics">
             <div class="chart-card">
               <h3>Weekly Completion Trend</h3>
-              <canvas id="analyticsWeeklyTrendChart"></canvas>
+              <!-- .chart-frame gives Chart.js an explicitly sized parent, which
+                   it needs because the configs use maintainAspectRatio:false. -->
+              <div class="chart-frame">
+                <canvas id="analyticsWeeklyTrendChart"></canvas>
+              </div>
             </div>
             <div class="chart-card">
               <h3>Weekly Heatmap</h3>
@@ -630,11 +657,17 @@
           <div class="charts-row charts-row-analytics">
             <div class="chart-card">
               <h3>Monthly Trend (12 Months)</h3>
-              <canvas id="analyticsMonthlyTrendChart"></canvas>
+              <div class="chart-frame">
+                <canvas id="analyticsMonthlyTrendChart"></canvas>
+              </div>
             </div>
             <div class="chart-card">
               <h3>Monthly Streak Leaderboard</h3>
-              <canvas id="analyticsMonthlyStreakChart"></canvas>
+              <!-- Height is set from the row count by renderMonthlyStreakChart:
+                   this is a horizontal bar chart with up to 14 rows. -->
+              <div class="chart-frame" id="analyticsMonthlyStreakFrame">
+                <canvas id="analyticsMonthlyStreakChart"></canvas>
+              </div>
             </div>
           </div>
 
@@ -754,7 +787,7 @@
             <rect x="3" y="14" width="7" height="7" rx="1" />
             <rect x="14" y="14" width="7" height="7" rx="1" />
           </svg>
-          <span>Habits</span>
+          <span>Today</span>
         </button>
         <button type="button" class="bottom-nav-btn" data-view="books">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -774,13 +807,6 @@
           </svg>
           <span>Stats</span>
         </button>
-        <button type="button" class="bottom-nav-btn" data-view="manage">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="3" />
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-          </svg>
-          <span>Manage</span>
-        </button>
         <button type="button" class="bottom-nav-btn" data-view="report">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -791,16 +817,16 @@
           </svg>
           <span>Reports</span>
         </button>
-        <button type="button" class="bottom-nav-btn" data-view="logs">
+        <!-- data-sheet, NOT data-view: switchView() has no fallback for an
+             unknown view id -- it would strip .active from every section and
+             add it back to nothing, blanking the app. -->
+        <button type="button" class="bottom-nav-btn" data-sheet="more">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M3 5h18" />
-            <path d="M3 12h18" />
-            <path d="M3 19h18" />
-            <circle cx="7" cy="5" r="1" fill="currentColor" />
-            <circle cx="7" cy="12" r="1" fill="currentColor" />
-            <circle cx="7" cy="19" r="1" fill="currentColor" />
+            <circle cx="5" cy="12" r="1.6" fill="currentColor" />
+            <circle cx="12" cy="12" r="1.6" fill="currentColor" />
+            <circle cx="19" cy="12" r="1.6" fill="currentColor" />
           </svg>
-          <span>Logs</span>
+          <span>More</span>
         </button>
       </nav>
     </div>
@@ -1155,6 +1181,52 @@
         </div>
       </div>
     </div>
+    <!-- Overflow menu for the mobile bottom nav. Authored as a .modal-overlay
+         so it inherits the bottom-sheet styling and all the sheet mechanics
+         (scroll lock, focus trap, drag-to-dismiss) for free. Settings has no
+         other mobile entry point besides the drawer. -->
+    <div class="modal-overlay" id="moreSheet">
+      <div class="modal modal-sm">
+        <div class="modal-header">
+          <h3>More</h3>
+          <button class="modal-close" id="moreSheetClose" type="button">
+            &times;
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="more-sheet-list">
+            <button
+              type="button"
+              class="more-sheet-item"
+              data-more-view="manage"
+            >
+              <span aria-hidden="true">⚙️</span> Manage habits &amp; categories
+            </button>
+            <button
+              type="button"
+              class="more-sheet-item"
+              data-more-view="logs"
+            >
+              <span aria-hidden="true">📋</span> Debug logs
+            </button>
+            <button
+              type="button"
+              class="more-sheet-item"
+              id="moreSheetSettings"
+            >
+              <span aria-hidden="true">🛠️</span> Settings &amp; feedback
+            </button>
+            <button type="button" class="more-sheet-item" id="moreSheetExport">
+              <span aria-hidden="true">⬇️</span> Export data
+            </button>
+            <button type="button" class="more-sheet-item" id="moreSheetImport">
+              <span aria-hidden="true">⬆️</span> Import data
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="modal-overlay" id="confirmModal">
       <div class="modal modal-sm">
         <div class="modal-header">
@@ -1698,8 +1770,9 @@
             id="readerAddBookmarkOnPage"
             class="btn-primary"
             type="button"
+            title="Add bookmark on this page"
           >
-            Add bookmark on this page
+            ＋ Bookmark
           </button>
           <button
             id="readerDarkToggle"
@@ -1738,6 +1811,21 @@
       </header>
       <div class="reader-canvas-wrap" id="readerBookContainer">
         <canvas id="readerCanvas"></canvas>
+        <!-- Page turning on touch. Real buttons rather than a swipe handler:
+             .reader-canvas-wrap is overflow:auto, so once the page is zoomed in
+             a horizontal drag has to pan it. Shown only on coarse pointers. -->
+        <button
+          id="readerTapPrev"
+          class="reader-tapzone reader-tapzone--prev"
+          type="button"
+          aria-label="Previous page"
+        ></button>
+        <button
+          id="readerTapNext"
+          class="reader-tapzone reader-tapzone--next"
+          type="button"
+          aria-label="Next page"
+        ></button>
       </div>
     </section>
 
@@ -1773,37 +1861,103 @@
       </div>
     </div>
 
-    <script src="vendor/pdfjs/pdf.min.js"></script>
+    <!-- pdf.js is NOT loaded eagerly: ensurePdfJsLibLoaded() in
+         src/pdf-reader.js injects it on demand and all three consumers go
+         through that, so an eager tag was 320KB of parse before first paint for
+         a secondary surface. It stays in the service worker PRECACHE, so
+         opening the reader offline still works. -->
     <script src="vendor/marked/marked.min.js"></script>
     <script src="vendor/katex/katex.min.js"></script>
     <script src="vendor/katex/auto-render.min.js"></script>
     <script>
-      window.onerror = function (msg, src, line, col, err) {
-        var d = document.createElement("div");
-        d.style.cssText =
-          "position:fixed;top:0;left:0;right:0;background:red;color:white;padding:12px;z-index:99999;font-family:monospace;font-size:13px;white-space:pre-wrap;max-height:50vh;overflow:auto;";
-        d.textContent =
-          "JS ERROR: " +
-          msg +
-          "\nFile: " +
-          src +
-          ":" +
-          line +
-          ":" +
-          col +
-          "\n" +
-          (err && err.stack ? err.stack : "");
-        document.body.prepend(d);
-      };
-      window.addEventListener("unhandledrejection", function (e) {
-        var d = document.createElement("div");
-        d.style.cssText =
-          "position:fixed;top:0;left:0;right:0;background:red;color:white;padding:12px;z-index:99999;font-family:monospace;font-size:13px;white-space:pre-wrap;max-height:50vh;overflow:auto;";
-        d.textContent =
-          "UNHANDLED PROMISE: " +
-          (e.reason && e.reason.stack ? e.reason.stack : e.reason);
-        document.body.prepend(d);
-      });
+      // Boot-time error surface. These handlers must stay: the in-app logging
+      // handlers only start after bindEvents(), so anything that fails during
+      // boot would otherwise be invisible.
+      //
+      // The full red banner is developer UI though -- it covers up to half a
+      // phone screen, has no dismiss, and stacked a fresh copy per error. So:
+      // full banner only with ?debug=1 (or a sticky localStorage flag),
+      // otherwise a compact dismissible toast. Always console.error.
+      (function () {
+        var DEBUG =
+          location.search.indexOf("debug=1") !== -1 ||
+          (function () {
+            try {
+              return localStorage.getItem("hm.debugBanner") === "1";
+            } catch (_) {
+              return false;
+            }
+          })();
+
+        var node = null;
+        var lastText = "";
+        var lastAt = 0;
+        var hideTimer = 0;
+
+        function show(text) {
+          if (window.console && console.error) console.error(text);
+
+          // Dedupe: one failing render can fire many identical errors.
+          var now = Date.now();
+          if (text === lastText && now - lastAt < 5000) return;
+          lastText = text;
+          lastAt = now;
+
+          if (!node) {
+            node = document.createElement("div");
+            node.className = DEBUG ? "boot-error-banner" : "boot-error-toast";
+            var msg = document.createElement("span");
+            msg.className = "boot-error-text";
+            node.appendChild(msg);
+            var close = document.createElement("button");
+            close.type = "button";
+            close.className = "boot-error-close";
+            close.setAttribute("aria-label", "Dismiss");
+            close.textContent = "×";
+            close.onclick = function () {
+              node.remove();
+              node = null;
+            };
+            node.appendChild(close);
+          }
+          node.querySelector(".boot-error-text").textContent = DEBUG
+            ? text
+            : "Something went wrong. See Logs for details.";
+          // append, not prepend: prepending displaces #globalLoadingOverlay.
+          if (!node.isConnected) document.body.appendChild(node);
+
+          if (!DEBUG) {
+            clearTimeout(hideTimer);
+            hideTimer = setTimeout(function () {
+              if (node) {
+                node.remove();
+                node = null;
+              }
+            }, 8000);
+          }
+        }
+
+        window.onerror = function (msg, src, line, col, err) {
+          show(
+            "JS ERROR: " +
+              msg +
+              "\nFile: " +
+              src +
+              ":" +
+              line +
+              ":" +
+              col +
+              "\n" +
+              (err && err.stack ? err.stack : ""),
+          );
+        };
+        window.addEventListener("unhandledrejection", function (e) {
+          show(
+            "UNHANDLED PROMISE: " +
+              (e.reason && e.reason.stack ? e.reason.stack : e.reason),
+          );
+        });
+      })();
     </script>
     <script>
       // Register the service worker for offline use + installability, but ONLY
@@ -1815,6 +1969,37 @@
         var isLocal =
           h === "localhost" || h === "127.0.0.1" || h === "[::1]" || h === "::1";
         if ("serviceWorker" in navigator && !isLocal) {
+          // Captured BEFORE register(): on a first-ever install there is no
+          // controller, and controllerchange fires immediately. Without this
+          // guard every new visitor would reload themselves once.
+          var hadController = !!navigator.serviceWorker.controller;
+          var refreshing = false;
+
+          navigator.serviceWorker.addEventListener(
+            "controllerchange",
+            function () {
+              if (!hadController || refreshing) return;
+              refreshing = true;
+              // sw.js calls skipWaiting(), so a new worker takes over while the
+              // page is still running the previously cached JS. Reload to get a
+              // matched set -- but not while the user is mid-task.
+              var busy =
+                document.querySelector(".modal-overlay.open") ||
+                (document.getElementById("readerMode") || {}).style?.display ===
+                  "block";
+              if (busy) {
+                document.addEventListener("visibilitychange", function once() {
+                  if (document.visibilityState === "hidden") {
+                    document.removeEventListener("visibilitychange", once);
+                    location.reload();
+                  }
+                });
+                return;
+              }
+              location.reload();
+            },
+          );
+
           window.addEventListener("load", function () {
             navigator.serviceWorker.register("sw.js").catch(function () {});
           });
