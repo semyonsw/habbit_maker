@@ -319,13 +319,18 @@ export function renderDayFocus(options = {}) {
     seriesByDay[d.day] = d;
   });
 
+  // Habits first, day pickers after. On a phone the check-in list is what the
+  // user came for, so it gets the top of the card and the two month-navigation
+  // surfaces (the day strip and the heatmap) sit together below it. This is DOM
+  // order rather than CSS `order` on purpose: the card is phone/tablet-only, so
+  // reordering here keeps the screen-reader and tab order matching the visuals.
   container.innerHTML =
-    dateStripHtml(selectedDay, seriesByDay) +
     headerHtml(selectedDay, done, habits.length) +
     (habits.length
       ? rowsHtml(habits, monthData, selectedDay)
       : "<p class='day-focus-empty'>Nothing scheduled for this day.</p>") +
     offHtml(selectedDay) +
+    dateStripHtml(selectedDay, seriesByDay) +
     heatmapHtml(selectedDay, seriesByDay);
 
   bindDayFocus(container);

@@ -4618,11 +4618,18 @@ html[data-ui-mode="mobile"] .sidebar.open ~ .mobile-menu-toggle {
 }
 
 /* Date strip */
+/* The strip renders *below* the habit list (see renderDayFocus), so it carries
+   the divider that separates the check-in list from the month-navigation
+   cluster. The heatmap that follows it is part of that same cluster and so
+   deliberately has no divider of its own. */
 .day-focus-strip {
   display: flex;
   align-items: center;
   gap: 4px;
-  margin-bottom: 14px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--glass-border);
+  margin-bottom: 12px;
 }
 .day-focus-step {
   flex: 0 0 auto;
@@ -4953,9 +4960,7 @@ html[data-ui-mode="mobile"] .day-focus-note {
 /* Compact month heatmap. Intentionally NOT .heatmap-cell -- that skin assumes
    the analytics 58px label column and carries its own overrides. */
 .day-focus-heat {
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px solid var(--glass-border);
+  margin-top: 0;
 }
 .day-heat-dow,
 .day-heat-grid {
