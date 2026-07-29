@@ -369,6 +369,10 @@ export function bindEvents() {
     document.querySelector(".sidebar").classList.toggle("open");
   });
 
+  document.getElementById("mobileMenuClose").addEventListener("click", () => {
+    document.querySelector(".sidebar").classList.remove("open");
+  });
+
   document
     .getElementById("sidebarCollapseToggle")
     .addEventListener("click", () => {
