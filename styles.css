@@ -5055,8 +5055,14 @@ html[data-ui-mode="mobile"] .day-focus {
 }
 
 /* ---- Summary: stack the donut card above the weekly cards ---- */
+/* nowrap is load-bearing, not tidying: in a *wrapping* column flex container a
+   line takes its items' max-content cross size, so .weekly-summary-cards (a row
+   of 5 cards) blew the line out to ~956px on a 332px row. Every % inside it then
+   resolved against 956 -- that is what made one week card 688px wide and each
+   day capsule 126px. With nowrap the single line takes the row's real width. */
 html[data-ui-mode="mobile"] .summary-row {
   flex-direction: column;
+  flex-wrap: nowrap;
   gap: 14px;
   margin-bottom: 18px;
 }
@@ -5067,17 +5073,37 @@ html[data-ui-mode="mobile"] .summary-main-content {
   gap: 18px;
 }
 
-/* Weekly cards: swipeable carousel instead of cramped side-by-side */
+/* Weekly cards: swipeable carousel, exactly one week per screen.
+   flex:0 0 auto resets the base `flex:1 1 320px` -- once the row is a column
+   that 320px flex-basis is a *height*, which padded every card to 320px tall. */
 html[data-ui-mode="mobile"] .weekly-summary-cards {
+  flex: 0 0 auto;
+  width: 100%;
+  min-width: 0;
   overflow-x: auto;
   scroll-snap-type: x mandatory;
   -webkit-overflow-scrolling: touch;
   padding-bottom: 8px;
 }
 html[data-ui-mode="mobile"] .week-card {
-  flex: 0 0 72%;
-  min-width: 180px;
+  flex: 0 0 100%;
+  min-width: 0;
+  padding: 14px;
   scroll-snap-align: start;
+}
+
+/* Slim day capsules: 7 of them have to read as day bars inside one screen
+   width, so cap each one and centre it in its 1fr track instead of letting it
+   stretch into a fat lozenge. */
+html[data-ui-mode="mobile"] .week-mini-bars {
+  gap: 5px;
+  min-height: 40px;
+}
+html[data-ui-mode="mobile"] .week-mini-bar {
+  height: 38px;
+  width: 100%;
+  max-width: 28px;
+  justify-self: center;
 }
 
 /* ---- Habits section ----
