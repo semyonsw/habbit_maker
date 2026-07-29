@@ -3790,7 +3790,6 @@ body.is-modal-open-fixed {
 }
 
 .mobile-menu-close {
-  display: none;
   position: fixed;
   top: 12px;
   right: 12px;
@@ -3805,16 +3804,21 @@ body.is-modal-open-fixed {
   justify-content: center;
   cursor: pointer;
   box-shadow: var(--shadow-lg);
+  display: none;
 }
 
-html[data-ui-mode="mobile"] .sidebar.open ~ .mobile-menu-close {
-  display: flex;
+html[data-ui-mode="mobile"] .mobile-menu-close {
+  display: none;
   top: calc(12px + env(safe-area-inset-top));
   right: calc(12px + env(safe-area-inset-right));
 }
 
+html[data-ui-mode="mobile"] .sidebar.open ~ .mobile-menu-close {
+  display: flex !important;
+}
+
 html[data-ui-mode="mobile"] .sidebar.open ~ .mobile-menu-toggle {
-  display: none;
+  display: none !important;
 }
 
 .undo-toast {
