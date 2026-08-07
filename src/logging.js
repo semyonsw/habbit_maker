@@ -4,6 +4,7 @@ import { MAX_LOG_RECORDS } from "./constants.js";
 import { appLogs, setAppLogs, liveLogFileState, globals } from "./state.js";
 import { uid, nowIso, sanitizeErrorForLog, redactForLogs } from "./utils.js?v=2";
 import * as db from "./db.js";
+import { saveBlobNatively } from "./native.js";
 
 export async function loadLogs() {
   try {
@@ -293,6 +294,14 @@ export function formatLogsCsv(logs) {
 
 export function downloadTextFile(fileName, mimeType, text) {
   const blob = new Blob([text], { type: mimeType });
+  // In the Android app an anchor download is a silent no-op; hand the blob to
+  // the native share sheet instead. Async, but callers only ever fire-and-forget.
+  saveBlobNatively(blob, fileName).then((handled) => {
+    if (!handled) anchorDownload(blob, fileName);
+  });
+}
+
+function anchorDownload(blob, fileName) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;

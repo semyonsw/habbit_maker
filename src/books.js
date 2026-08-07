@@ -6,12 +6,19 @@ import {
   MAX_BOOKMARK_HISTORY,
   PDFJS_WORKER_URL,
 } from "./constants.js";
-import { state, setBooksBlobStatus, readerState } from "./state.js";
+import {
+  state,
+  setBooksBlobStatus,
+  booksBlobStatus,
+  readerState,
+} from "./state.js";
 import { uid, nowIso, isPlainObject } from "./utils.js?v=2";
 import { appendLogEntry } from "./logging.js";
 import { idbGetPdfBlob, idbSavePdfBlob } from "./idb.js";
 import { saveState } from "./persistence.js";
 import { callRenderer } from "./render-registry.js";
+import { getBookOpenMode } from "./preferences.js";
+import { openPdfExternally, isNative } from "./native.js";
 import {
   ensurePdfJsLibLoaded,
   renderPdfPagePreviewDataUrl,
@@ -332,6 +339,232 @@ export function handleBookFileInputChange() {
   setBookUploadStatus(`Selected: ${file.name}. Ready to upload.`, "pending");
 }
 
+/* ---------------------------------------------------------- the book's file */
+
+// Android's document picker hands back files whose `type` is "" or
+// "application/octet-stream" depending on which file manager answered the
+// intent, so the MIME type cannot be required -- only trusted when present.
+// Returns an error string, or "" when the file is usable.
+export function describeBookFileProblem(file) {
+  if (!file) return "Choose a PDF file first.";
+  const looksLikePdf =
+    /\.pdf$/i.test(file.name || "") ||
+    String(file.type || "") === "application/pdf";
+  if (!looksLikePdf) return "Only PDF files are supported.";
+  if (file.size > MAX_PDF_FILE_SIZE_BYTES) {
+    return `PDF file is too large. Maximum size is ${MAX_PDF_FILE_SIZE_MB}MB.`;
+  }
+  if (!file.size) return "That file is empty.";
+  return "";
+}
+
+// Which book the hidden "choose a file" input is currently picking for.
+let pendingFilePickBookId = null;
+
+// Points an existing book at a different PDF, keeping its fileId -- and
+// therefore every bookmark, history entry and summary attached to it.
+//
+// This is what makes an imported metadata-only backup usable: the books arrive
+// with a fileId that has no bytes behind it (the PDF paths in a backup are the
+// PC's, meaningless on a phone), and this attaches the phone's own copy.
+export async function replaceBookFile(bookId, file) {
+  const book = getBookById(bookId);
+  if (!book) return false;
+
+  const problem = describeBookFileProblem(file);
+  if (problem) {
+    alert(problem);
+    return false;
+  }
+
+  const isReplacement = !!booksBlobStatus[bookId];
+  setBookUploadStatus(`Linking ${file.name} to "${book.title}"...`, "pending");
+
+  if (!book.fileId) book.fileId = uid("file");
+  await idbSavePdfBlob(book.fileId, file);
+
+  book.fileName = file.name;
+  book.fileSize = file.size;
+  book.updatedAt = nowIso();
+  saveState();
+
+  // The cached cover belongs to the old bytes.
+  clearBookCoverPreview(bookId);
+
+  setBookUploadStatus(
+    `${isReplacement ? "Replaced" : "Linked"} the file for "${book.title}": ${file.name}.`,
+    "success",
+  );
+
+  await refreshBookBlobStatus();
+  await callRenderer("renderBooksView");
+  // The Edit Book dialog stays open behind the picker, so its file row has to
+  // catch up too.
+  callRenderer("refreshBookModalFileRow");
+  return true;
+}
+
+// Opens the system file picker for one specific book. On Android this is the
+// normal document picker, so it reaches internal storage, the SD card, Drive --
+// anywhere the phone can read from.
+export function chooseBookFile(bookId) {
+  const book = getBookById(bookId);
+  if (!book) return;
+  const input = document.getElementById("bookFilePickerInput");
+  if (!input) return;
+  pendingFilePickBookId = bookId;
+  input.value = "";
+  input.click();
+}
+
+export async function handleBookFilePicked() {
+  const input = document.getElementById("bookFilePickerInput");
+  const bookId = pendingFilePickBookId;
+  pendingFilePickBookId = null;
+  if (!input || !bookId) return;
+
+  const file = input.files && input.files[0] ? input.files[0] : null;
+  input.value = "";
+  if (!file) return;
+
+  try {
+    await replaceBookFile(bookId, file);
+  } catch (error) {
+    appendLogEntry({
+      level: "error",
+      component: "books",
+      operation: "handleBookFilePicked",
+      message: "Attaching a picked PDF to a book failed.",
+      error,
+      context: { bookId },
+    });
+    setBookUploadStatus("Could not save that file. Please try again.", "error");
+    alert("Could not save that file. Please try again.");
+  }
+}
+
+/* -------------------------------------------------- opening a bookmark page */
+
+// "Open at Bookmark" honours the Books view's open-mode setting: the in-app
+// reader (which lands on the exact page), the phone's own PDF app, or a prompt
+// per tap.
+export function openBookmarkTarget(bookId, page, bookmarkId) {
+  const book = getBookById(bookId);
+  if (!book) return;
+  const safePage = Math.max(1, parseInt(page, 10) || 1);
+
+  const mode = getBookOpenMode();
+  if (mode === "app") {
+    openBookInAppReader(bookId, safePage, bookmarkId);
+    return;
+  }
+  if (mode === "external") {
+    openBookInExternalViewer(bookId, safePage).catch((error) => {
+      logBookOpenFailure("openBookInExternalViewer", error, bookId);
+    });
+    return;
+  }
+  callRenderer("openBookOpenModal", bookId, safePage, bookmarkId);
+}
+
+export function openBookInAppReader(bookId, page, bookmarkId) {
+  const opening = callRenderer("openReaderInPage", bookId, page, bookmarkId);
+  if (opening && typeof opening.catch === "function") {
+    opening.catch((error) => {
+      logBookOpenFailure("openReaderInPage", error, bookId);
+      alert("Could not open the reader. See the Logs view for details.");
+    });
+  }
+}
+
+function logBookOpenFailure(operation, error, bookId) {
+  appendLogEntry({
+    level: "error",
+    component: "books",
+    operation,
+    message: "Opening a book failed.",
+    error,
+    context: { bookId },
+  });
+}
+
+function openBlankTab() {
+  try {
+    const tab = window.open("", "_blank");
+    if (tab) {
+      try {
+        tab.opener = null;
+      } catch (_) {}
+    }
+    return tab;
+  } catch (_) {
+    return null;
+  }
+}
+
+// Hands the PDF to another app. On Android that is a real ACTION_VIEW through
+// src/native.js; in a browser it is a new tab, where the built-in PDF viewers
+// do honour #page= and so still land on the right page.
+export async function openBookInExternalViewer(bookId, page) {
+  const book = getBookById(bookId);
+  if (!book) return;
+  const safePage = Math.max(1, parseInt(page, 10) || 1);
+
+  // In a browser the tab has to be claimed synchronously, while the click is
+  // still the current task: reading the blob is async, and a window.open() on
+  // the far side of an await is a pop-up, not a user action. Not on Android,
+  // where the file goes to another app entirely and a blank tab would just be
+  // litter.
+  // Deliberately no "noopener" feature: with it, window.open returns null by
+  // spec, and the handle is the whole point here. Severing .opener afterwards
+  // gets the same protection.
+  let pendingTab = isNative() ? null : openBlankTab();
+
+  let blob = null;
+  try {
+    blob = await idbGetPdfBlob(book.fileId);
+  } catch (_) {
+    blob = null;
+  }
+  if (!blob) {
+    if (pendingTab) pendingTab.close();
+    alert(
+      `"${book.title}" has no PDF file on this device yet.\n\nUse "Choose PDF file" on the book to pick it from your storage.`,
+    );
+    return;
+  }
+
+  const handledNatively = await openPdfExternally(blob, {
+    fileName: book.fileName || `${book.title}.pdf`,
+    cacheKey: book.fileId,
+    page: safePage,
+  });
+
+  if (handledNatively) {
+    setBookUploadStatus(
+      `Opened "${book.title}" in your PDF app. The bookmark is on page ${safePage}.`,
+      "success",
+    );
+    return;
+  }
+
+  // Browser fallback, and the path taken when the phone has no PDF app: the
+  // built-in viewers honour #page=, so this still lands on the bookmark.
+  const url = URL.createObjectURL(blob);
+  const target = pendingTab || openBlankTab();
+  if (!target) {
+    URL.revokeObjectURL(url);
+    alert(
+      "Your browser blocked the new tab. Allow pop-ups for this app, or switch the open mode to the in-app reader.",
+    );
+    return;
+  }
+  target.location.href = `${url}#page=${safePage}`;
+  // The blob URL has to outlive the new tab's load. It is only a handle into
+  // memory this page already holds, so a generous delay costs nothing.
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
 export async function saveBookFromUpload() {
   const titleInput = document.getElementById("bookTitleInput");
   const authorInput = document.getElementById("bookAuthorInput");
@@ -352,17 +585,10 @@ export async function saveBookFromUpload() {
     alert("Please choose a PDF file.");
     return;
   }
-  if (!/\.pdf$/i.test(file.name) || file.type !== "application/pdf") {
-    setBookUploadStatus("Only PDF files are supported.", "error");
-    alert("Only PDF files are supported.");
-    return;
-  }
-  if (file.size > MAX_PDF_FILE_SIZE_BYTES) {
-    setBookUploadStatus(
-      `File is too large. Maximum size is ${MAX_PDF_FILE_SIZE_MB}MB.`,
-      "error",
-    );
-    alert(`PDF file is too large. Maximum size is ${MAX_PDF_FILE_SIZE_MB}MB.`);
+  const fileProblem = describeBookFileProblem(file);
+  if (fileProblem) {
+    setBookUploadStatus(fileProblem, "error");
+    alert(fileProblem);
     return;
   }
 
@@ -444,10 +670,37 @@ export function addBookmarkOnCurrentReaderPage() {
   callRenderer("openReaderHistoryPicker", book.bookId, page);
 }
 
-export function openBookmarkInNewTab(bookId, page, bookmarkId) {
-  const bookmarkPart = bookmarkId
-    ? `&bookmark=${encodeURIComponent(bookmarkId)}`
-    : "";
-  const url = `${window.location.pathname}?reader=1&book=${encodeURIComponent(bookId)}&page=${encodeURIComponent(page)}${bookmarkPart}`;
-  window.open(url, "_blank", "noopener");
+// Repoints an existing bookmark at the page currently on screen in the reader.
+// This is the "I've read on since last time" action -- the whole point of a
+// bookmark -- and it keeps the bookmark's label, note, real-page offset and
+// summaries instead of making the user create a new one.
+export function moveBookmarkToReaderPage(bookmarkId) {
+  const book = readerState.book;
+  if (!book) return null;
+  const bookmark = getBookmarkById(book, bookmarkId);
+  if (!bookmark) return null;
+
+  const page = Math.max(1, parseInt(readerState.currentPage, 10) || 1);
+  const previousPage = Math.max(1, parseInt(bookmark.pdfPage, 10) || 1);
+  if (previousPage === page) return bookmark;
+
+  // Keep the real-page offset the bookmark already carries, so a bookmark set
+  // up as "PDF 30 = printed page 1" still reports the printed page correctly
+  // after being moved.
+  const realPage = parseInt(bookmark.realPage, 10);
+  if (Number.isFinite(realPage)) {
+    bookmark.realPage = Math.max(1, realPage + (page - previousPage));
+  }
+
+  bookmark.pdfPage = page;
+  bookmark.updatedAt = nowIso();
+  addBookmarkHistoryEvent(
+    bookmark,
+    "moved",
+    `Moved from PDF page ${previousPage} to ${page}`,
+  );
+  book.bookmarks.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+  book.updatedAt = nowIso();
+  saveState();
+  return bookmark;
 }

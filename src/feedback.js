@@ -21,6 +21,7 @@ import { callGeminiGenerateText } from "./ai-summary.js";
 import { getApiKeyForSummary } from "./encryption.js";
 import { appendLogEntry } from "./logging.js";
 import { formatByteSize, uid } from "./utils.js";
+import { saveBlobNatively } from "./native.js";
 
 const FEEDBACK_LOG_COMPONENT = "feedback";
 
@@ -108,6 +109,13 @@ function safeAttachmentName(name, forcedType) {
 }
 
 function triggerDownload(blob, filename) {
+  // See src/native.js: anchor downloads do nothing inside the Android WebView.
+  saveBlobNatively(blob, filename).then((handled) => {
+    if (!handled) anchorDownload(blob, filename);
+  });
+}
+
+function anchorDownload(blob, filename) {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;

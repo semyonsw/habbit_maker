@@ -44,6 +44,9 @@ Built for people who want their data to live on their own disk: no account, no c
 - Reader with page navigation, dark mode, and zoom.
 - Named bookmarks with notes and a real-page mapping (so "page 42 in the book" is preserved even when the PDF page count differs).
 - Bookmark history (every edit is logged).
+- Re-point a book at a different file at any time ("Choose PDF file" / "Replace file…"), keeping every bookmark, note and summary. This is how you finish an import: a metadata-only backup carries the *other* device's file paths, so each book needs its local copy picked once.
+- "Open at Bookmark" goes to the in-app reader or to the phone's / browser's own PDF viewer — your choice, per tap or remembered.
+- Inside a book, the **Bookmarks** button jumps to any bookmark, moves one to the page you have actually read to (the real-page offset follows), or adds a new one.
 
 **Optional AI summaries**
 - Bring your own Gemini API key. The key is encrypted at rest with AES-256-GCM derived from a passphrase you choose.
@@ -297,6 +300,20 @@ Books → Upload PDF → pick a file (≤ 70 MB) → set title/author → Open
 ```
 
 Inside the reader, press `B` (or the bookmark button) to add a bookmark at the current page. Bookmarks appear in the sidebar grouped by book.
+
+### Attaching a PDF to a book you imported
+
+A metadata-only backup restores your books and every bookmark, but not the files themselves — the paths in it belong to the machine that made the export. Each book then shows **No PDF file on this device yet**:
+
+```text
+Books → the book → Choose PDF file → pick it from your storage
+```
+
+The file is stored under the book's existing id, so bookmarks, history and summaries all survive. Use **Edit → Replace file…** later to swap in a different copy (a re-scan, a smaller edition) without losing any of it.
+
+### Where "Open at Bookmark" takes you
+
+`Books → My Books → Open bookmarks in` chooses between the app's own reader, the phone's / browser's PDF app, and asking each time. The in-app reader is the one that lands exactly on the bookmarked page; Android has no standard way to tell another app which page to open, so there you get the file and the page number. On the desktop the browser's PDF viewer does honour it.
 
 ### Backing up your data
 

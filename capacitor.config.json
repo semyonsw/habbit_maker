@@ -1,0 +1,25 @@
+{
+  "appId": "com.semyonsw.habitmaker",
+  "appName": "Habit Maker",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https",
+    "hostname": "habitmaker.app"
+  },
+  "android": {
+    "allowMixedContent": false,
+    "webContentsDebuggingEnabled": true
+  },
+  "plugins": {
+    "SystemBars": {
+      "insetsHandling": "css",
+      "style": "DARK"
+    },
+    "SplashScreen": {
+      "launchAutoHide": true,
+      "launchShowDuration": 500,
+      "backgroundColor": "#0e1626",
+      "showSpinner": false
+    }
+  }
+}

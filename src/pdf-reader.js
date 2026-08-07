@@ -6,6 +6,7 @@ import { appendLogEntry } from "./logging.js";
 import { idbGetPdfBlob } from "./idb.js";
 import { clampNumber } from "./utils.js?v=2";
 import { getBookById, addBookmarkOnCurrentReaderPage } from "./books.js";
+import { callRenderer, registerRenderer } from "./render-registry.js";
 import {
   loadReaderThemePreferences,
   applyReaderThemeClasses,
@@ -136,6 +137,75 @@ export async function renderPdfPagePreviewDataUrl(pdfDoc, options = {}) {
   }
 }
 
+// Loads a book into the reader section and renders `targetPage`.
+//
+// Shared by the standalone `?reader=1` URL and by the in-page reader, so both
+// behave identically -- including landing on the bookmarked page rather than
+// page 1.
+async function startReader(bookId, targetPage, sourceBookmarkId) {
+  const statusEl = document.getElementById("readerStatusText");
+  const setStatus = (text) => {
+    if (statusEl) statusEl.textContent = text;
+  };
+
+  await loadReaderThemePreferences();
+  applyReaderThemeClasses();
+
+  const closeBtn = document.getElementById("readerClose");
+  if (closeBtn) closeBtn.style.display = readerState.isInPage ? "" : "none";
+
+  const book = getBookById(bookId);
+  if (!book) {
+    setStatus("Book metadata not found.");
+    return false;
+  }
+
+  const safeTargetPage = Math.max(1, parseInt(targetPage, 10) || 1);
+  readerState.book = book;
+  readerState.sourceBookmarkId = sourceBookmarkId || null;
+  readerState.sourcePage = safeTargetPage;
+  document.getElementById("readerBookTitle").textContent = book.title;
+
+  let blob = null;
+  try {
+    blob = await idbGetPdfBlob(book.fileId);
+  } catch (_) {
+    blob = null;
+  }
+  if (!blob) {
+    setStatus("No PDF file on this device — use “Choose PDF file”.");
+    return false;
+  }
+
+  const pdfjsLib = await ensurePdfJsLibLoaded();
+  if (!pdfjsLib) {
+    setStatus("PDF.js failed to load. Check your internet and refresh.");
+    return false;
+  }
+
+  pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_URL;
+
+  const url = URL.createObjectURL(blob);
+  let loaded = false;
+  try {
+    const loadingTask = pdfjsLib.getDocument(url);
+    readerState.pdfDoc = await loadingTask.promise;
+    readerState.totalPages = readerState.pdfDoc.numPages;
+    setStatus("Loaded");
+    await renderReaderPage(Math.min(safeTargetPage, readerState.totalPages));
+    loaded = true;
+  } catch (_) {
+    setStatus("Failed to open PDF.");
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+
+  bindReaderEvents();
+  updateReaderThemeControls();
+  updateReaderBookmarkButton();
+  return loaded;
+}
+
 export async function initReaderMode() {
   const params = new URLSearchParams(window.location.search);
   if (params.get("reader") !== "1") {
@@ -147,68 +217,132 @@ export async function initReaderMode() {
 
   try {
     document.getElementById("app").style.display = "none";
-    const readerRoot = document.getElementById("readerMode");
-    readerRoot.style.display = "block";
-    await loadReaderThemePreferences();
-    applyReaderThemeClasses();
-
-    const bookId = params.get("book") || "";
-    const targetPage = Math.max(1, parseInt(params.get("page"), 10) || 1);
-    const sourceBookmarkId = params.get("bookmark") || "";
-    const book = getBookById(bookId);
-    if (!book) {
-      document.getElementById("readerStatusText").textContent =
-        "Book metadata not found.";
-      return true;
-    }
-
-    readerState.book = book;
-    readerState.sourceBookmarkId = sourceBookmarkId || null;
-    readerState.sourcePage = targetPage;
-    document.getElementById("readerBookTitle").textContent = book.title;
-
-    let blob = null;
-    try {
-      blob = await idbGetPdfBlob(book.fileId);
-    } catch (_) {
-      blob = null;
-    }
-    if (!blob) {
-      document.getElementById("readerStatusText").textContent =
-        "PDF file is missing in IndexedDB for this browser.";
-      return true;
-    }
-
-    const pdfjsLib = await ensurePdfJsLibLoaded();
-    if (!pdfjsLib) {
-      document.getElementById("readerStatusText").textContent =
-        "PDF.js failed to load. Check your internet and refresh.";
-      return true;
-    }
-
-    pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_URL;
-
-    const url = URL.createObjectURL(blob);
-    try {
-      const loadingTask = pdfjsLib.getDocument(url);
-      readerState.pdfDoc = await loadingTask.promise;
-      readerState.totalPages = readerState.pdfDoc.numPages;
-      document.getElementById("readerStatusText").textContent = "Loaded";
-      await renderReaderPage(Math.min(targetPage, readerState.totalPages));
-    } catch (_) {
-      document.getElementById("readerStatusText").textContent =
-        "Failed to open PDF.";
-    } finally {
-      URL.revokeObjectURL(url);
-    }
-
-    bindReaderEvents();
-    updateReaderThemeControls();
+    document.getElementById("readerMode").style.display = "block";
+    document.documentElement.classList.add("reader-open");
+    readerState.isInPage = false;
+    await startReader(
+      params.get("book") || "",
+      parseInt(params.get("page"), 10) || 1,
+      params.get("bookmark") || "",
+    );
     return true;
   } finally {
     hideGlobalLoader();
   }
 }
+
+// Opens the reader over the app without navigating.
+//
+// The old path opened `?reader=1` in a new tab, which does not work in the
+// Android build at all: Capacitor's WebView routes window.open() to an external
+// browser, and https://habitmaker.app only resolves inside the WebView, so
+// "Open at Bookmark" went nowhere. Swapping the two sections keeps everything
+// in one document, so it works identically on the phone and on the desktop and
+// costs no reload.
+export async function openReaderInPage(bookId, page, bookmarkId) {
+  const appRoot = document.getElementById("app");
+  const readerRoot = document.getElementById("readerMode");
+  if (!appRoot || !readerRoot) return;
+
+  showGlobalLoader("Opening bookmark...");
+  await waitForNextPaint();
+
+  try {
+    await closeReaderDocument();
+    appRoot.style.display = "none";
+    readerRoot.style.display = "block";
+    // Hides the floating hamburger, which is fixed to the same top-left corner
+    // as the reader's back button.
+    document.documentElement.classList.add("reader-open");
+    if (!readerState.isInPage) {
+      // Own a history entry so Android's back gesture leaves the reader instead
+      // of leaving the app, exactly as it does for the dialogs.
+      try {
+        window.history.pushState({ reader: true }, "");
+        readerState.ownsHistoryEntry = true;
+      } catch (_) {
+        /* embedded contexts without history; the Close button still works */
+        readerState.ownsHistoryEntry = false;
+      }
+    }
+    readerState.isInPage = true;
+    window.scrollTo({ top: 0 });
+    await startReader(bookId, page, bookmarkId || "");
+  } finally {
+    hideGlobalLoader();
+  }
+}
+
+async function closeReaderDocument() {
+  if (readerState.renderTask) {
+    try {
+      readerState.renderTask.cancel();
+    } catch (_) {}
+    readerState.renderTask = null;
+  }
+  if (readerState.pdfDoc && typeof readerState.pdfDoc.destroy === "function") {
+    try {
+      await readerState.pdfDoc.destroy();
+    } catch (_) {}
+  }
+  readerState.pdfDoc = null;
+  readerState.totalPages = 0;
+  readerState.currentPage = 1;
+}
+
+let closingReaderFromPopstate = false;
+
+if (typeof window !== "undefined") {
+  window.addEventListener("popstate", () => {
+    if (!readerState.isInPage || !readerState.ownsHistoryEntry) return;
+    // Closing a dialog also pops a history entry -- its own -- and by the time
+    // popstate fires modals.js has already stripped the .open class, so "is a
+    // dialog open?" cannot tell the two cases apart. The entry we landed on
+    // can: back out of a dialog and the reader's own entry is still current.
+    if (window.history.state && window.history.state.reader) return;
+    closingReaderFromPopstate = true;
+    closeReaderInPage().finally(() => {
+      closingReaderFromPopstate = false;
+    });
+  });
+}
+
+export async function closeReaderInPage() {
+  if (!readerState.isInPage) return;
+  readerState.isInPage = false;
+
+  // Pop on the flag, not on history.state: a dialog closed a moment earlier
+  // has its own back() still in flight, so the current entry may still read as
+  // that dialog's. Trusting it there leaves the reader's entry on the stack and
+  // the next back press does nothing visible.
+  const owesHistoryPop =
+    readerState.ownsHistoryEntry && !closingReaderFromPopstate;
+  readerState.ownsHistoryEntry = false;
+  if (owesHistoryPop) {
+    try {
+      window.history.back();
+    } catch (_) {}
+  }
+
+  await closeReaderDocument();
+
+  readerState.book = null;
+  readerState.sourceBookmarkId = null;
+  readerState.sourcePage = null;
+
+  const canvas = document.getElementById("readerCanvas");
+  if (canvas) {
+    canvas.width = 0;
+    canvas.height = 0;
+  }
+
+  document.getElementById("readerMode").style.display = "none";
+  document.getElementById("app").style.display = "";
+  document.documentElement.classList.remove("reader-open");
+  await callRenderer("renderBooksView");
+}
+
+registerRenderer("openReaderInPage", openReaderInPage);
 
 export async function renderReaderPage(pageNumber) {
   if (!readerState.pdfDoc) return;
@@ -280,6 +414,17 @@ export async function renderReaderPage(pageNumber) {
   );
 }
 
+// Jump the reader to a page from outside this module (the bookmark panel).
+export function goToReaderPage(pageNumber) {
+  if (!readerState.pdfDoc) return;
+  renderReaderPageSafe(pageNumber);
+  const container = document.getElementById("readerBookContainer");
+  setTimeout(() => {
+    if (container) container.scrollTop = 0;
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, 10);
+}
+
 // Every caller is a click handler, so a rejection here would be unhandled.
 function renderReaderPageSafe(pageNumber) {
   renderReaderPage(pageNumber).catch((error) => {
@@ -294,7 +439,27 @@ function renderReaderPageSafe(pageNumber) {
   });
 }
 
+// Keeps the reader's bookmark button honest about what it will do: on the page
+// a bookmark was opened at, tapping it logs a reading session against that
+// bookmark; anywhere else it offers to create or move one.
+export function updateReaderBookmarkButton() {
+  const button = document.getElementById("readerBookmarksBtn");
+  if (!button) return;
+  const book = readerState.book;
+  const count =
+    book && Array.isArray(book.bookmarks) ? book.bookmarks.length : 0;
+  button.textContent = count ? `Bookmarks (${count})` : "Bookmarks";
+}
+
 export function bindReaderEvents() {
+  // Re-entrant: the in-page reader calls this every time a book is opened, and
+  // a second set of listeners would turn one tap into two page turns.
+  if (readerState.eventsBound) {
+    updateReaderThemeControls();
+    return;
+  }
+  readerState.eventsBound = true;
+
   const prev = document.getElementById("readerPrevPage");
   const next = document.getElementById("readerNextPage");
   const go = document.getElementById("readerGoPage");
@@ -376,6 +541,22 @@ export function bindReaderEvents() {
   addBookmarkOnPage.addEventListener("click", () => {
     addBookmarkOnCurrentReaderPage();
   });
+
+  const bookmarksBtn = document.getElementById("readerBookmarksBtn");
+  if (bookmarksBtn) {
+    bookmarksBtn.addEventListener("click", () => {
+      callRenderer("openReaderBookmarksPanel");
+    });
+  }
+
+  // Only meaningful for the in-page reader; the standalone ?reader=1 tab has
+  // nothing to go back to, so the button stays hidden there (see index.html).
+  const closeBtn = document.getElementById("readerClose");
+  if (closeBtn) {
+    closeBtn.addEventListener("click", () => {
+      closeReaderInPage().catch(() => {});
+    });
+  }
 
   if (!readerState.resizeHandlerBound) {
     window.addEventListener("resize", () => {

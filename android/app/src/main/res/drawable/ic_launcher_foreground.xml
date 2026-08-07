@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Adaptive-icon foreground: the checkmark from icons/icon-maskable-512.png,
+     traced as a stroked path rather than resampled, so it stays sharp at every
+     density and needs no per-dpi rasters.
+
+     The viewport is the source PNG's own 512x512 grid and the coordinates are
+     measured from it (round caps, stroke 53), so this is the same mark, not a
+     lookalike. Drawn content spans x 117..394 / y 147..374, which sits inside
+     the 66.7% (85..427) safe zone an adaptive icon may crop to. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="512"
+    android:viewportHeight="512">
+    <path
+        android:pathData="M143.5,265.5 L222,347.5 L367.5,173.5"
+        android:strokeColor="#34D399"
+        android:strokeWidth="53"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+</vector>

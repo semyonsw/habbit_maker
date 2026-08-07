@@ -4,7 +4,9 @@
   "description": "Local-first habit tracker and PDF reader with optional AI summaries.",
   "scripts": {
     "lint": "eslint src/**/*.js",
-    "lint:fix": "eslint src/**/*.js --fix"
+    "lint:fix": "eslint src/**/*.js --fix",
+    "build:www": "node scripts/build-www.mjs",
+    "android:sync": "node scripts/build-www.mjs && cap sync android"
   },
   "repository": {
     "type": "git",
@@ -27,5 +29,14 @@
   "devDependencies": {
     "eslint": "^9.0.0",
     "globals": "^15.0.0"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.5.0",
+    "@capacitor/cli": "8.5.0",
+    "@capacitor/core": "8.5.0",
+    "@capacitor/filesystem": "8.1.2",
+    "@capacitor/share": "8.0.1",
+    "@capacitor/splash-screen": "8.0.2",
+    "@capacitor/status-bar": "8.0.3"
   }
 }

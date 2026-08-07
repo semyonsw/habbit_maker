@@ -19,6 +19,7 @@ import {
   getLatestBookmarkSummary,
 } from "./books.js";
 import { applyBookSummarySettingsToInputs } from "./encryption.js";
+import { syncBookOpenModeControls } from "./preferences.js";
 import { registerRenderer } from "./render-registry.js";
 
 let booksCoverObserver = null;
@@ -137,7 +138,19 @@ export async function renderBooksList() {
       const previewDataUrl = getBookCoverPreview(book.bookId);
       const coverState = previewDataUrl ? "ready" : "pending";
       const coverMarkup = renderBookCoverMarkup(book, previewDataUrl);
-      return `<article class='books-item ${active}'><div class='books-item-main'><h4>${sanitize(book.title)}</h4><p>${sanitize(book.author || "Unknown author")}</p><p class='books-file-meta'>${sanitize(book.fileName)} · ${Math.round((book.fileSize || 0) / 1024)}KB</p>${hasBlob ? "" : "<p class='books-warning'>PDF blob missing in this browser storage.</p>"}<div class='books-item-actions'><button class='btn-secondary' type='button' onclick="HabitApp.setActiveBook('${book.bookId}')">Select</button><button class='btn-secondary' type='button' onclick="HabitApp.editBook('${book.bookId}')">Edit</button><button class='btn-danger' type='button' onclick="HabitApp.deleteBook('${book.bookId}')">Delete</button></div></div><div class='books-item-cover ${coverState === "ready" ? "ready" : "pending"}' data-book-cover-id='${sanitize(book.bookId)}' data-book-cover-state='${coverState}'>${coverMarkup}</div></article>`;
+
+      // A book with no bytes on this device is the normal state right after
+      // importing a backup that carried metadata only: the file path in it was
+      // the PC's. Say that, and put the fix directly under it.
+      const missingFileMarkup = hasBlob
+        ? ""
+        : `<div class='books-missing-file'><p class='books-warning'>No PDF file on this device yet.</p><button class='btn-primary' type='button' onclick="HabitApp.chooseBookFile('${book.bookId}')">Choose PDF file</button></div>`;
+
+      const readButton = hasBlob
+        ? `<button class='btn-primary' type='button' onclick="HabitApp.readBook('${book.bookId}')">Read</button>`
+        : "";
+
+      return `<article class='books-item ${active}'><div class='books-item-main'><h4>${sanitize(book.title)}</h4><p>${sanitize(book.author || "Unknown author")}</p><p class='books-file-meta'>${sanitize(book.fileName)} · ${Math.round((book.fileSize || 0) / 1024)}KB</p>${missingFileMarkup}<div class='books-item-actions'><button class='btn-secondary' type='button' onclick="HabitApp.setActiveBook('${book.bookId}')">Select</button>${readButton}<button class='btn-secondary' type='button' onclick="HabitApp.editBook('${book.bookId}')">Edit</button><button class='btn-danger' type='button' onclick="HabitApp.deleteBook('${book.bookId}')">Delete</button></div></div><div class='books-item-cover ${coverState === "ready" ? "ready" : "pending"}' data-book-cover-id='${sanitize(book.bookId)}' data-book-cover-state='${coverState}'>${coverMarkup}</div></article>`;
     })
     .join("");
 
@@ -155,13 +168,18 @@ export function renderBookmarksPanel() {
     return;
   }
 
+  // The bookmarks themselves stay usable (editing, summaries) without the PDF;
+  // only opening them needs the file, so this is a banner rather than a block.
+  const missingFileBanner = booksBlobStatus[book.bookId]
+    ? ""
+    : `<div class='books-missing-file'><p class='books-warning'>"${sanitize(book.title)}" has no PDF file on this device, so these bookmarks cannot be opened yet.</p><button class='btn-primary' type='button' onclick="HabitApp.chooseBookFile('${book.bookId}')">Choose PDF file</button></div>`;
+
   if (!Array.isArray(book.bookmarks) || book.bookmarks.length === 0) {
-    panel.innerHTML =
-      "<div class='empty-state'><p>No bookmarks yet. Add your first bookmark.</p></div>";
+    panel.innerHTML = `${missingFileBanner}<div class='empty-state'><p>No bookmarks yet. Add your first bookmark.</p></div>`;
     return;
   }
 
-  panel.innerHTML = book.bookmarks
+  const bookmarksHtml = book.bookmarks
     .map((bm) => {
       const latestSummary = getLatestBookmarkSummary(bm);
       const lastSummarizedPage = getBookmarkLastSummarizedPage(bm);
@@ -179,6 +197,8 @@ export function renderBookmarksPanel() {
       return `<article class='bookmark-item'><div class='bookmark-main'><h4>${sanitize(bm.label)}</h4><p>PDF page ${bm.pdfPage} · Real page ${formatRealBookPage(bm.realPage)}</p><p>${sanitize(bm.note || "No note")}</p><p class='bookmark-updated'>Updated ${sanitize(formatIsoForDisplay(bm.updatedAt))}</p><p class='bookmark-summary-status'>${sanitize(summaryStatus)}${lastSummarizedPage ? ` · summarized through page ${lastSummarizedPage}` : ""}</p></div><div class='bookmark-actions'><button class='btn-primary' type='button' onclick="HabitApp.openBookmark('${book.bookId}', ${bm.pdfPage}, '${bm.bookmarkId}')">Open at Bookmark</button><button class='btn-secondary bookmark-summarize-btn' type='button' data-summary-book-id='${sanitize(book.bookId)}' data-summary-bookmark-id='${sanitize(bm.bookmarkId)}' onclick="HabitApp.summarizeBookmark('${book.bookId}', '${bm.bookmarkId}')">Summarize up to Bookmark</button><button class='btn-secondary' type='button' onclick="HabitApp.viewBookmarkSummary('${book.bookId}', '${bm.bookmarkId}')">View Summaries</button><button class='btn-secondary' type='button' onclick="HabitApp.editBookmark('${book.bookId}', '${bm.bookmarkId}')">Edit</button><button class='btn-danger' type='button' onclick="HabitApp.deleteBookmark('${book.bookId}', '${bm.bookmarkId}')">Delete</button></div><ul class='bookmark-history'>${historyHtml || "<li>No history yet.</li>"}</ul></article>`;
     })
     .join("");
+
+  panel.innerHTML = missingFileBanner + bookmarksHtml;
 }
 
 export async function renderBooksView() {
@@ -186,6 +206,7 @@ export async function renderBooksView() {
   await renderBooksList();
   renderBookmarksPanel();
   applyBookSummarySettingsToInputs();
+  syncBookOpenModeControls();
 }
 
 registerRenderer("renderBooksView", renderBooksView);

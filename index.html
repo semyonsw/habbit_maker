@@ -519,8 +519,28 @@
             <section class="books-card books-card--library">
               <div class="books-card-header">
                 <h3>My Books</h3>
+                <div class="books-open-mode">
+                  <label for="bookOpenModeSelect">Open bookmarks in</label>
+                  <select id="bookOpenModeSelect">
+                    <option value="ask">Ask each time</option>
+                    <option value="app">This app's reader</option>
+                    <option value="external">Phone's PDF app</option>
+                  </select>
+                </div>
               </div>
               <div class="books-list" id="booksList"></div>
+              <!-- One shared picker for every "choose this book's file" button;
+                   books.js remembers which book asked for it. Kept in the
+                   markup rather than created on demand so the click that opens
+                   it is unambiguously the user's gesture in every WebView. -->
+              <input
+                id="bookFilePickerInput"
+                class="visually-hidden-input"
+                type="file"
+                accept="application/pdf,.pdf"
+                tabindex="-1"
+                aria-hidden="true"
+              />
             </section>
 
             <section class="books-card books-bookmarks books-card--bookmarks">
@@ -1350,10 +1370,68 @@
             <label for="bookModalAuthorInput">Author (optional)</label>
             <input id="bookModalAuthorInput" type="text" maxlength="120" />
           </div>
+          <div class="form-group" id="bookModalFileGroup">
+            <label>PDF file</label>
+            <div class="book-file-row">
+              <span class="book-file-name" id="bookModalFileName"></span>
+              <button class="btn-secondary" id="bookModalFileBtn" type="button">
+                Choose PDF file…
+              </button>
+            </div>
+            <p class="books-help-text" id="bookModalFileHint"></p>
+          </div>
         </div>
         <div class="modal-footer">
           <button class="btn-secondary" id="bookModalCancel">Cancel</button>
           <button class="btn-primary" id="bookModalSave">Save</button>
+        </div>
+      </div>
+    </div>
+    <div class="modal-overlay" id="bookOpenModal">
+      <div class="modal modal-sm">
+        <div class="modal-header">
+          <h3>Open at bookmark</h3>
+          <button class="modal-close" id="bookOpenModalClose">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p class="modal-subtitle" id="bookOpenSubtitle"></p>
+          <button class="book-open-choice" id="bookOpenInApp" type="button">
+            <span class="book-open-choice__title">Read in this app</span>
+            <span class="book-open-choice__hint">
+              Opens straight on the bookmarked page, with dark mode and one-tap
+              bookmark updates.
+            </span>
+          </button>
+          <button class="book-open-choice" id="bookOpenExternal" type="button">
+            <span class="book-open-choice__title">Open in my PDF app</span>
+            <span class="book-open-choice__hint" id="bookOpenExternalHint">
+            </span>
+          </button>
+          <label class="book-open-remember">
+            <input id="bookOpenRemember" type="checkbox" />
+            <span>Remember my choice</span>
+          </label>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" id="bookOpenModalCancel">Cancel</button>
+        </div>
+      </div>
+    </div>
+    <div class="modal-overlay" id="readerBookmarksModal">
+      <div class="modal">
+        <div class="modal-header">
+          <h3>Bookmarks</h3>
+          <button class="modal-close" id="readerBookmarksClose">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p class="modal-subtitle" id="readerBookmarksSubtitle"></p>
+          <button class="btn-primary" id="readerBookmarksAdd" type="button">
+            ＋ New bookmark here
+          </button>
+          <div class="reader-bookmarks-list" id="readerBookmarksList"></div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" id="readerBookmarksDone">Done</button>
         </div>
       </div>
     </div>
@@ -1750,20 +1828,59 @@
 
     <section id="readerMode" class="reader-mode" style="display: none">
       <header class="reader-topbar" id="readerTopbar">
-        <div>
-          <h2 id="readerBookTitle">Reader</h2>
-          <p id="readerStatusText">Loading PDF...</p>
+        <div class="reader-identity">
+          <!-- Only shown by pdf-reader.js when the reader is layered over the
+               app; the standalone ?reader=1 tab has nothing to go back to. -->
+          <button
+            id="readerClose"
+            class="reader-close"
+            type="button"
+            title="Back to the app"
+            aria-label="Back to the app"
+          >
+            ←
+          </button>
+          <div>
+            <h2 id="readerBookTitle">Reader</h2>
+            <p id="readerStatusText">Loading PDF...</p>
+          </div>
         </div>
         <div class="reader-controls">
-          <button id="readerPrevPage" class="btn-secondary" type="button">
+          <!-- On a phone these collapse to icons (see .reader-controls in
+               styles.css), so the labels have to live in aria-label too. -->
+          <button
+            id="readerPrevPage"
+            class="btn-secondary reader-icon-btn"
+            type="button"
+            title="Previous page"
+            aria-label="Previous page"
+          >
             Prev
           </button>
           <span id="readerPageIndicator">0 / 0</span>
-          <button id="readerNextPage" class="btn-secondary" type="button">
+          <button
+            id="readerNextPage"
+            class="btn-secondary reader-icon-btn"
+            type="button"
+            title="Next page"
+            aria-label="Next page"
+          >
             Next
           </button>
-          <input id="readerJumpPage" type="number" min="1" value="1" />
-          <button id="readerGoPage" class="btn-primary" type="button">
+          <input
+            id="readerJumpPage"
+            type="number"
+            min="1"
+            value="1"
+            aria-label="Go to page"
+          />
+          <button
+            id="readerGoPage"
+            class="btn-primary reader-icon-btn"
+            type="button"
+            title="Go to that page"
+            aria-label="Go to that page"
+          >
             Go
           </button>
           <button
@@ -1771,12 +1888,21 @@
             class="btn-primary"
             type="button"
             title="Add bookmark on this page"
+            aria-label="Add bookmark on this page"
           >
             ＋ Bookmark
           </button>
           <button
+            id="readerBookmarksBtn"
+            class="btn-primary"
+            type="button"
+            title="Jump to, move or add bookmarks"
+          >
+            Bookmarks
+          </button>
+          <button
             id="readerDarkToggle"
-            class="btn-secondary"
+            class="btn-secondary reader-icon-btn"
             type="button"
             aria-pressed="false"
           >
@@ -1793,17 +1919,19 @@
           </select>
           <button
             id="readerZoomIn"
-            class="btn-secondary"
+            class="btn-secondary reader-icon-btn"
             type="button"
             title="Zoom in"
+            aria-label="Zoom in"
           >
             +
           </button>
           <button
             id="readerZoomOut"
-            class="btn-secondary"
+            class="btn-secondary reader-icon-btn"
             type="button"
             title="Zoom out"
+            aria-label="Zoom out"
           >
             -
           </button>
@@ -1981,7 +2109,11 @@
         var h = location.hostname;
         var isLocal =
           h === "localhost" || h === "127.0.0.1" || h === "[::1]" || h === "::1";
-        if ("serviceWorker" in navigator && !isLocal) {
+        // Inside the Android APK every asset is already on-device, so a service
+        // worker would only add a second, stale cache layer in front of them.
+        // sw.js is not even shipped into www/ -- see scripts/build-www.mjs.
+        var isNative = !!window.Capacitor;
+        if ("serviceWorker" in navigator && !isLocal && !isNative) {
           // Captured BEFORE register(): on a first-ever install there is no
           // controller, and controllerchange fires immediately. Without this
           // guard every new visitor would reload themselves once.

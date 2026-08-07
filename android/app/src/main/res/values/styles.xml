@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- The web UI is dark-only (index.html sets <meta name="color-scheme"
+         content="dark">), so these are deliberately NOT DayNight parents. With a
+         DayNight parent the window background follows the system setting, and on
+         a phone in light mode you get a white flash between the splash and the
+         WebView's first paint. -->
+    <style name="AppTheme" parent="Theme.AppCompat.NoActionBar">
+        <item name="colorPrimary">@color/colorPrimary</item>
+        <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
+        <item name="colorAccent">@color/colorAccent</item>
+        <item name="android:windowBackground">@color/brandSurface</item>
+    </style>
+
+    <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.NoActionBar">
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+        <!-- Stock Capacitor sets this to @null, which leaves the raw window
+             showing through as white until the WebView paints. -->
+        <item name="android:windowBackground">@color/brandSurface</item>
+    </style>
+
+    <!-- Android 12+ platform splash screen (minSdk 34, so this path always runs).
+         The stock template only set android:background=@drawable/splash, which is
+         the pre-12 mechanism and is ignored here. -->
+    <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/brandSurface</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+        <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
+    </style>
+</resources>

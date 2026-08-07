@@ -13,6 +13,7 @@ import { appendLogEntry } from "./logging.js";
 import { idbGetPdfBlob, idbSavePdfBlob } from "./idb.js";
 import { migrateState, ensureMonthData, saveState } from "./persistence.js";
 import { callRenderer } from "./render-registry.js";
+import { saveBlobNatively } from "./native.js";
 
 export function setBackupStatus(text, tone) {
   const statusEl = document.getElementById("backupStatus");
@@ -140,12 +141,18 @@ export async function exportData() {
     const blob = new Blob([JSON.stringify(exportedState, null, 2)], {
       type: "application/json",
     });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `habit-tracker-backup-${monthKey(state.currentYear, state.currentMonth)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    const backupName = `habit-tracker-backup-${monthKey(state.currentYear, state.currentMonth)}.json`;
+    // See src/native.js: inside the Android WebView an anchor download is a
+    // silent no-op, which would make Export look like it worked while producing
+    // no file. Awaited so the status messages below cannot claim success first.
+    if (!(await saveBlobNatively(blob, backupName))) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = backupName;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
 
     if (!includePdfs) {
       setBackupStatus(

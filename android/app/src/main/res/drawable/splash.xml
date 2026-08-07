@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Legacy (pre-Android-12) splash surface. minSdk is 34, so the platform
+     splash-screen API in styles.xml is what actually runs and this is only a
+     fallback. It exists so that nothing can ever fall back to the stock
+     Capacitor logo, which is what shipped in the generated drawable-*/splash.png. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/brandSurface" />
+    <item
+        android:drawable="@drawable/ic_launcher_foreground"
+        android:gravity="center"
+        android:width="220dp"
+        android:height="220dp" />
+</layer-list>

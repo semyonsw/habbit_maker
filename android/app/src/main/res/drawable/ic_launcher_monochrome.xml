@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Themed-icon silhouette. Same geometry as ic_launcher_foreground; the colour
+     here is irrelevant because the launcher re-tints it, but it must be opaque. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="512"
+    android:viewportHeight="512">
+    <path
+        android:pathData="M143.5,265.5 L222,347.5 L367.5,173.5"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="53"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+</vector>

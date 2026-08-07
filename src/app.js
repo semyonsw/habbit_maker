@@ -22,7 +22,7 @@ import {
   applyBookSummarySettingsToInputs,
 } from "./encryption.js";
 import { loadState } from "./persistence.js";
-import { loadAnalyticsPreferences } from "./preferences.js";
+import { loadAnalyticsPreferences, loadBookOpenMode } from "./preferences.js";
 import { initSidebarCollapse, initTopClock } from "./layout.js";
 import { initUiPrefs } from "./ui-prefs.js";
 import { bindEvents } from "./events.js";
@@ -30,7 +30,11 @@ import { initReaderMode } from "./pdf-reader.js";
 import { setBookUploadStatus } from "./books.js";
 import { callRenderer } from "./render-registry.js";
 import { deleteHabit, deleteCategory, moveDailyHabit } from "./habits.js";
-import { setActiveBook, openBookmarkInNewTab } from "./books.js";
+import {
+  setActiveBook,
+  openBookmarkTarget,
+  chooseBookFile,
+} from "./books.js";
 import {
   openHabitModal,
   openCategoryModal,
@@ -58,6 +62,7 @@ import * as db from "./db.js";
 
 import { bindSheetGestures, initKeyboardInset } from "./sheet.js";
 import { closeModal } from "./modals.js";
+import { hideNativeSplash } from "./native.js";
 import { initRouter } from "./router.js";
 
 // Import render modules so they register themselves
@@ -96,7 +101,13 @@ window.HabitApp = {
   },
   deleteHistoryEvent,
   openBookmark(bookId, page, bookmarkId) {
-    openBookmarkInNewTab(bookId, page, bookmarkId);
+    openBookmarkTarget(bookId, page, bookmarkId);
+  },
+  chooseBookFile,
+  // "Read" on a book card: no bookmark involved, so start at page 1 and go
+  // through the same in-app / phone-PDF-app choice as a bookmark.
+  readBook(bookId) {
+    openBookmarkTarget(bookId, 1, null);
   },
   summarizeBookmark,
   viewBookmarkSummary,
@@ -372,6 +383,7 @@ async function init() {
     await loadSecureSettings();
     await loadState();
     await loadAnalyticsPreferences();
+    await loadBookOpenMode();
     await initUiPrefs();
     bindEvents();
     // Bottom-sheet mechanics: drag-to-dismiss and on-screen-keyboard tracking.
@@ -410,26 +422,33 @@ async function init() {
   }
 }
 
+// .finally, not .then: on Android the native splash covers the WebView until
+// something hides it, so a failed init must still uncover the UI -- otherwise a
+// boot error is indistinguishable from a hung app. No-op on the web.
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", () => {
-    init().catch((err) => {
+    init()
+      .catch((err) => {
+        appendLogEntry({
+          level: "error",
+          component: "app",
+          operation: "DOMContentLoaded.init",
+          message: "App init failed.",
+          error: err,
+        });
+      })
+      .finally(hideNativeSplash);
+  });
+} else {
+  init()
+    .catch((err) => {
       appendLogEntry({
         level: "error",
         component: "app",
-        operation: "DOMContentLoaded.init",
+        operation: "init",
         message: "App init failed.",
         error: err,
       });
-    });
-  });
-} else {
-  init().catch((err) => {
-    appendLogEntry({
-      level: "error",
-      component: "app",
-      operation: "init",
-      message: "App init failed.",
-      error: err,
-    });
-  });
+    })
+    .finally(hideNativeSplash);
 }

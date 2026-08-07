@@ -1,6 +1,6 @@
 "use strict";
 
-import { readerState, analyticsState } from "./state.js";
+import { readerState, analyticsState, booksUiState } from "./state.js";
 import { callRenderer } from "./render-registry.js";
 import * as db from "./db.js";
 
@@ -139,5 +139,38 @@ export function setAnalyticsDisplayMode(mode) {
   persistAnalyticsPreferences();
   syncAnalyticsModeControls();
   callRenderer("renderAnalyticsView");
+}
+
+/* ------------------------------------------------- how bookmarks are opened */
+
+const BOOK_OPEN_MODES = ["ask", "app", "external"];
+
+function normalizeBookOpenMode(value) {
+  return BOOK_OPEN_MODES.includes(String(value)) ? String(value) : "ask";
+}
+
+export function getBookOpenMode() {
+  return normalizeBookOpenMode(booksUiState.openMode);
+}
+
+export async function loadBookOpenMode() {
+  try {
+    const prefs = await db.getPrefs();
+    booksUiState.openMode = normalizeBookOpenMode(prefs && prefs.bookOpenMode);
+  } catch (_) {
+    booksUiState.openMode = "ask";
+  }
+  syncBookOpenModeControls();
+}
+
+export function syncBookOpenModeControls() {
+  const select = document.getElementById("bookOpenModeSelect");
+  if (select) select.value = getBookOpenMode();
+}
+
+export function setBookOpenMode(mode) {
+  booksUiState.openMode = normalizeBookOpenMode(mode);
+  db.patchPrefs({ bookOpenMode: booksUiState.openMode }).catch(() => {});
+  syncBookOpenModeControls();
 }
 

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Sampled from icons/icon-maskable-512.png so the launcher icon, the splash
+     and the web UI are literally the same two colours. brandSurface is the
+     icon's field colour; brandAccent is the checkmark. -->
+<resources>
+    <color name="brandSurface">#0E1626</color>
+    <color name="brandAccent">#34D399</color>
+
+    <!-- Referenced by AppTheme. The stock Capacitor template names these but
+         ships no colors.xml, so the generated project does not compile as-is. -->
+    <color name="colorPrimary">#0E1626</color>
+    <color name="colorPrimaryDark">#050914</color>
+    <color name="colorAccent">#34D399</color>
+</resources>

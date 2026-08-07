@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Habit Maker</string>
+    <string name="title_activity_main">Habit Maker</string>
+    <string name="package_name">com.semyonsw.habitmaker</string>
+    <string name="custom_url_scheme">com.semyonsw.habitmaker</string>
+</resources>

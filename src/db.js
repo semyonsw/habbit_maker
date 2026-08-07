@@ -18,6 +18,14 @@ import * as idb from "./db-idb.js";
 
 function detectMode() {
   if (typeof location === "undefined" || !location.hostname) return "idb";
+  // The Android APK (Capacitor) serves the same files from a WebView. There is
+  // no Python server on the phone, so it must never resolve to "rest". This is
+  // checked FIRST because Capacitor's default hostname is literally "localhost"
+  // -- the one value that would otherwise select the dead REST backend. The
+  // capacitor.config.json in this repo also overrides that hostname, so either
+  // signal alone is enough; both are kept because a silent fallback to REST
+  // makes the packaged app look completely broken on launch.
+  if (typeof globalThis !== "undefined" && globalThis.Capacitor) return "idb";
   const h = location.hostname;
   // Local Python-server build -> SQLite via REST. Everything else -> IndexedDB.
   if (h === "localhost" || h === "127.0.0.1" || h === "[::1]" || h === "::1") {
