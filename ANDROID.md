@@ -9,22 +9,50 @@ this one source tree.
 
 ## Build
 
-Requires **JDK 21** (not 17 — Capacitor's Android library is compiled at Java 21):
-
 ```bash
-export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
-export ANDROID_HOME=/root/android-sdk
-export GRADLE_USER_HOME=/root/.gradle
-
-node scripts/build-www.mjs     # stage web assets into www/
-npx cap sync android           # copy www/ + register plugins
-cd android && ./gradlew assembleDebug
+npm run android:build
 ```
 
 APK: `android/app/build/outputs/apk/debug/app-debug.apk`
 
-`npx cap sync android` must be re-run after **any** web change — the APK holds a
-copy of the assets, not a reference to them.
+That is the whole thing. It finds a JDK 21 itself (`JAVA_HOME` wins if set) and
+prints the size and timestamp of what it produced.
+
+**Use it rather than the steps by hand.** The build is three stages and the APK
+holds a *copy* of the web assets, not a reference to them:
+
+| | |
+|---|---|
+| `node scripts/build-www.mjs` | stage web assets into `www/` |
+| `npx cap sync android` | copy `www/` into `android/app/src/main/assets/public` + register plugins |
+| `cd android && ./gradlew assembleDebug` | package that directory into the APK |
+
+Stop after stage 2 — which `npm run android:sync` does, and which reads like a
+complete step — and the assets on disk are current while the APK still holds
+whatever was there at the last gradle run. Nothing reports an error; you install
+it and the app is simply an old build. Running all three every time is the only
+reliable way to avoid that, which is what `android:build` does.
+
+**JDK 21, not 17** — Capacitor's Android library is compiled at Java 21, and a
+17 that happens to be first on `PATH` fails deep in the gradle output with a
+class-file-version error. `scripts/build-apk.mjs` checks the version up front
+and says so instead.
+
+`android/local.properties` (gitignored) points gradle at the SDK; Capacitor
+writes it on `cap add android`.
+
+### Is the APK I have current?
+
+```bash
+node scripts/build-apk.mjs --verify-only
+```
+
+Every build ends with this check, and it can be run on its own. It compares the
+CRC-32 of each entry in the APK's central directory against the staged file in
+`www/` — so it reads what is actually inside the APK rather than trusting the
+timestamp, which lies: when the merged inputs have not changed gradle leaves the
+existing file alone, so a perfectly current APK can carry an hours-old mtime.
+Exits non-zero and names the stale files if anything does not match.
 
 ## Pinned versions
 

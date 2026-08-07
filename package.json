@@ -6,7 +6,8 @@
     "lint": "eslint src/**/*.js",
     "lint:fix": "eslint src/**/*.js --fix",
     "build:www": "node scripts/build-www.mjs",
-    "android:sync": "node scripts/build-www.mjs && cap sync android"
+    "android:sync": "node scripts/build-www.mjs && cap sync android",
+    "android:build": "node scripts/build-apk.mjs"
   },
   "repository": {
     "type": "git",
