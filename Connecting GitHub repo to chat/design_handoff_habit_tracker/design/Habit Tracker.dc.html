@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><meta name="design_doc_mode" content="canvas"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"><style>body{margin:0;background:#f0eee9;font-family:'Public Sans',system-ui,sans-serif}a{color:#2a78d6}a:hover{color:#1b5aa8}.dv-turn{padding:40px 44px 32px;border-bottom:1px solid rgba(0,0,0,.08);scroll-margin-top:16px}.dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 20px}.dv-tid{font:600 10px ui-monospace,Menlo,monospace;padding:3px 7px;background:#1a1a1a;color:#fff;border-radius:4px;text-decoration:none}.dv-tname{font:600 13px/1.2 system-ui,sans-serif;color:#1a1a1a}.dv-opts{display:flex;flex-wrap:wrap;gap:36px;align-items:flex-start}.dv-opt{flex:none;display:flex;flex-direction:column;gap:9px;scroll-margin-top:16px}.dv-oid{font:600 10.5px ui-monospace,Menlo,monospace;padding:3px 7px;background:rgba(0,0,0,.08);color:#1a1a1a;border-radius:5px;text-decoration:none}.dv-olabel{display:flex;align-items:baseline;gap:8px;font:400 11px/1.3 system-ui,sans-serif;color:rgba(0,0,0,.55)}.dv-opt:target .dv-oid{background:#2a78d6;color:#fff}.dv-next{margin:22px 0 0;font:12px/1.5 system-ui,sans-serif;color:rgba(0,0,0,.5)}.dv-note{max-width:560px;font:13px/1.6 'Public Sans',system-ui,sans-serif;color:rgba(0,0,0,.62)}.dv-note b{color:#1a1a1a}@keyframes pop{0%{transform:scale(.72)}60%{transform:scale(1.14)}100%{transform:scale(1)}}@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}@keyframes sheetup{from{transform:translateY(100%)}to{transform:none}}</style></helmet>
+
+<section class="dv-turn" id="t1">
+<div class="dv-thd"><a class="dv-tid" href="#t1">1</a><span class="dv-tname">Habit tracker — stripped back, dark, Android</span></div>
+<div class="dv-opts">
+
+<div class="dv-opt" id="1a">
+<div class="dv-olabel"><a class="dv-oid" href="#1a">1a</a>Calm list — full prototype: check off, habit detail, add habit, analytics, settings</div>
+<x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" dark="{{ true }}" hint-size="428px,908px">
+<div style="height:100%;display:flex;flex-direction:column;background:#0d0f14;font-family:'Public Sans',system-ui,sans-serif;color:#eceef4;position:relative;overflow:hidden">
+<div style="flex:1;overflow:auto">
+
+<sc-if value="{{ isToday }}" hint-placeholder-val="{{ true }}">
+<div style="padding:22px 18px 110px">
+<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px">
+<div>
+<div style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#6e7488">{{ weekdayLabel }}</div>
+<div style="font-size:27px;font-weight:600;letter-spacing:-.03em;margin-top:4px">{{ dateLabel }}</div>
+</div>
+<div style="text-align:right">
+<div style="font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:500;color:#2ec4a6;letter-spacing:-.02em">{{ donePctLabel }}</div>
+<div style="font-size:11px;color:#6e7488;margin-top:2px">{{ doneLabel }}</div>
+</div>
+</div>
+<div style="height:4px;border-radius:99px;background:#1a1d27;margin-top:18px;overflow:hidden">
+<div style="height:100%;border-radius:99px;background:#2ec4a6;transition:width .45s cubic-bezier(.2,.9,.3,1);width: {{ donePctLabel }}"></div>
+</div>
+
+<div style="display:flex;align-items:center;justify-content:space-between;margin:26px 0 10px">
+<div style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#6e7488">Today</div>
+<div style="font-size:11px;color:#565c6e">{{ scheduledLabel }}</div>
+</div>
+
+<sc-for list="{{ habitRows }}" as="h" hint-placeholder-count="6">
+<div style="display:flex;align-items:center;gap:13px;padding:13px 14px;margin-bottom:8px;border-radius:15px;background:#14161f;border:1px solid rgba(255,255,255,.06)" style-hover="background:#181b25;border-color:rgba(255,255,255,.11)">
+<div onClick="{{ h.open }}" style="display:flex;align-items:center;gap:13px;flex:1;min-width:0;cursor:pointer">
+<div style="width:36px;height:36px;flex:none;border-radius:11px;background:#1c2030;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:500;color:#8d94ab">{{ h.mark }}</div>
+<div style="flex:1;min-width:0">
+<div style="font-size:15px;font-weight:500;letter-spacing:-.012em;line-height:1.25">{{ h.name }}</div>
+<div style="display:flex;align-items:center;gap:8px;margin-top:4px;font-size:11.5px;color:#6e7488;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+<sc-if value="{{ showCategoryLabels }}" hint-placeholder-val="{{ true }}"><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ h.cat }}</span><span style="color:#3a3f4e">·</span></sc-if>
+<sc-if value="{{ showStreaks }}" hint-placeholder-val="{{ true }}"><span style="font-family:'JetBrains Mono',monospace;white-space:nowrap">{{ h.streakShort }}</span></sc-if>
+<sc-if value="{{ h.hasReminder }}"><span style="color:#3a3f4e">·</span><span style="font-family:'JetBrains Mono',monospace;color:#565c6e;white-space:nowrap">{{ h.reminderLabel }}</span></sc-if>
+</div>
+</div>
+</div>
+<sc-if value="{{ h.isCount }}">
+<button onClick="{{ h.tap }}" title="Tap to add one, tap again past target to reset" style="width:60px;height:36px;flex:none;border-radius:12px;border:1px solid {{ h.countBorder }};background:{{ h.countBg }};color:{{ h.countColor }};font-family:'JetBrains Mono',monospace;font-size:12.5px;cursor:pointer" style-hover="border-color:#2ec4a6">{{ h.countLabel }}</button>
+</sc-if>
+<sc-if value="{{ h.isBinaryDone }}">
+<button onClick="{{ h.toggle }}" style="width:36px;height:36px;flex:none;border-radius:12px;border:none;background:#2ec4a6;display:flex;align-items:center;justify-content:center;cursor:pointer;animation:pop .4s cubic-bezier(.2,1.5,.4,1)">
+<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#08120f" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"></path></svg>
+</button>
+</sc-if>
+<sc-if value="{{ h.isBinaryOpen }}">
+<button onClick="{{ h.toggle }}" style="width:36px;height:36px;flex:none;border-radius:12px;border:1.5px solid #333a4a;background:transparent;cursor:pointer" style-hover="border-color:#2ec4a6"></button>
+</sc-if>
+</div>
+</sc-for>
+
+<button onClick="{{ openSheet }}" style="width:100%;margin-top:6px;padding:14px;border-radius:15px;border:1px dashed rgba(255,255,255,.13);background:transparent;color:#8d94ab;font-family:inherit;font-size:14px;font-weight:500;cursor:pointer" style-hover="border-color:#2ec4a6;color:#2ec4a6">Add habit</button>
+</div>
+</sc-if>
+
+<sc-if value="{{ isDetail }}">
+<div style="padding:22px 18px 110px;animation:rise .28s ease both">
+<button onClick="{{ closeDetail }}" style="display:flex;align-items:center;gap:8px;background:transparent;border:none;color:#8d94ab;font-family:inherit;font-size:13px;cursor:pointer;padding:0;margin-bottom:20px" style-hover="color:#eceef4">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"></path></svg>Today</button>
+<div style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#6e7488">{{ detailCat }}</div>
+<div style="font-size:25px;font-weight:600;letter-spacing:-.03em;margin-top:6px;line-height:1.15">{{ detailName }}</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:22px">
+<div style="padding:14px 12px;border-radius:14px;background:#14161f;border:1px solid rgba(255,255,255,.06)">
+<div style="font-family:'JetBrains Mono',monospace;font-size:21px;color:#2ec4a6;letter-spacing:-.02em">{{ detailStreak }}</div>
+<div style="font-size:10.5px;color:#6e7488;margin-top:4px">Current streak</div>
+</div>
+<div style="padding:14px 12px;border-radius:14px;background:#14161f;border:1px solid rgba(255,255,255,.06)">
+<div style="font-family:'JetBrains Mono',monospace;font-size:21px;letter-spacing:-.02em">{{ detailBest }}</div>
+<div style="font-size:10.5px;color:#6e7488;margin-top:4px">Best streak</div>
+</div>
+<div style="padding:14px 12px;border-radius:14px;background:#14161f;border:1px solid rgba(255,255,255,.06)">
+<div style="font-family:'JetBrains Mono',monospace;font-size:21px;letter-spacing:-.02em">{{ detailGoal }}</div>
+<div style="font-size:10.5px;color:#6e7488;margin-top:4px">Of month goal</div>
+</div>
+</div>
+
+<div style="margin-top:24px;padding:18px 16px;border-radius:16px;background:#14161f;border:1px solid rgba(255,255,255,.06)">
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+<div style="font-size:13px;font-weight:600">August 2026</div>
+<div style="font-size:11px;color:#6e7488">{{ detailMonthLabel }}</div>
+</div>
+<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:8px">
+<sc-for list="{{ weekdayHeads }}" as="w" hint-placeholder-count="7">
+<div style="text-align:center;font-size:9.5px;color:#565c6e;font-weight:600;letter-spacing:.06em">{{ w.label }}</div>
+</sc-for>
+</div>
+<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px">
+<sc-for list="{{ detailCells }}" as="c" hint-placeholder-count="35">
+<div style="aspect-ratio:1;border-radius:8px;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:10.5px;background:{{ c.bg }};color:{{ c.fg }};border:{{ c.border }}">{{ c.label }}</div>
+</sc-for>
+</div>
+</div>
+
+<div style="margin-top:14px;padding:16px;border-radius:16px;background:#14161f;border:1px solid rgba(255,255,255,.06)">
+<div style="font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#6e7488;margin-bottom:10px">Tracking</div>
+<div style="display:flex;gap:3px;padding:3px;border-radius:13px;background:#0f1119;border:1px solid rgba(255,255,255,.07)">
+<button onClick="{{ detailSetBinary }}" style="flex:1;padding:11px;border-radius:10px;border:none;cursor:pointer;font-family:inherit;font-size:13px;background:{{ detailBinaryBg }};color:{{ detailBinaryFg }}">Checkbox</button>
+<button onClick="{{ detailSetCount }}" style="flex:1;padding:11px;border-radius:10px;border:none;cursor:pointer;font-family:inherit;font-size:13px;background:{{ detailCountBg }};color:{{ detailCountFg }}">Count</button>
+</div>
+<sc-if value="{{ detailIsCount }}">
+<div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px">
+<div style="font-size:13px;color:#8d94ab">Target per day</div>
+<div style="display:flex;align-items:center;gap:10px">
+<button onClick="{{ detailTargetMinus }}" style="width:30px;height:30px;border-radius:9px;border:1px solid rgba(255,255,255,.1);background:transparent;color:#8d94ab;cursor:pointer;font-size:16px;font-family:inherit">−</button>
+<div style="min-width:26px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:15px">{{ detailTarget }}</div>
+<button onClick="{{ detailTargetPlus }}" style="width:30px;height:30px;border-radius:9px;border:1px solid rgba(255,255,255,.1);background:transparent;color:#8d94ab;cursor:pointer;font-size:16px;font-family:inherit">+</button>
+</div>
+</div>
+</sc-if>
+
+<div style="height:1px;background:rgba(255,255,255,.06);margin:16px -16px"></div>
+<div style="display:flex;align-items:center;justify-content:space-between">
+<div>
+<div style="font-size:13.5px">Reminder</div>
+<div style="font-size:11.5px;color:#6e7488;margin-top:3px">{{ detailReminderSummary }}</div>
+</div>
+<button onClick="{{ detailToggleReminder }}" style="width:46px;height:27px;border-radius:99px;border:none;padding:3px;cursor:pointer;display:flex;background:{{ detailReminderTrack }};justify-content:{{ detailReminderJustify }};transition:background .2s ease">
+<div style="width:21px;height:21px;border-radius:50%;background:{{ detailReminderKnob }}"></div>
+</button>
+</div>
+<sc-if value="{{ detailReminderOn }}">
+<div style="display:flex;gap:3px;padding:3px;border-radius:13px;background:#0f1119;border:1px solid rgba(255,255,255,.07);margin-top:12px">
+<sc-for list="{{ detailRepeatOpts }}" as="r" hint-placeholder-count="3">
+<button onClick="{{ r.pick }}" style="flex:1;padding:10px 4px;border-radius:10px;border:none;cursor:pointer;font-family:inherit;font-size:12.5px;background:{{ r.bg }};color:{{ r.fg }}">{{ r.label }}</button>
+</sc-for>
+</div>
+<sc-if value="{{ detailRepeatCustom }}">
+<div style="display:flex;gap:5px;margin-top:10px">
+<sc-for list="{{ detailDayToggles }}" as="d" hint-placeholder-count="7">
+<button onClick="{{ d.pick }}" style="flex:1;padding:10px 0;border-radius:10px;border:1px solid {{ d.border }};background:{{ d.bg }};color:{{ d.fg }};font-family:'JetBrains Mono',monospace;font-size:11px;cursor:pointer">{{ d.label }}</button>
+</sc-for>
+</div>
+</sc-if>
+<div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px">
+<div style="font-size:13px;color:#8d94ab">Time</div>
+<input type="time" value="{{ detailReminderTime }}" onChange="{{ detailSetTime }}" style="padding:9px 12px;border-radius:11px;background:#0f1119;border:1px solid rgba(255,255,255,.09);color:#eceef4;font-family:'JetBrains Mono',monospace;font-size:14px;outline:none;color-scheme:dark"></input>
+</div>
+</sc-if>
+</div>
+
+<div style="display:flex;gap:8px;margin-top:14px">
+<button onClick="{{ editDetail }}" style="flex:1;padding:14px;border-radius:14px;border:1px solid rgba(255,255,255,.1);background:transparent;color:#eceef4;font-family:inherit;font-size:14px;font-weight:500;cursor:pointer" style-hover="background:#181b25">Edit habit</button>
+<button onClick="{{ closeDetail }}" style="flex:1;padding:14px;border-radius:14px;border:none;background:#2ec4a6;color:#08120f;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer" style-hover="background:#3ad4b5">Done</button>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isStats }}">
+<div style="padding:22px 18px 110px;animation:rise .28s ease both">
+<div style="font-size:27px;font-weight:600;letter-spacing:-.03em">Analytics</div>
+<div style="font-size:12.5px;color:#6e7488;margin-top:5px">August 2026 · 12 days in</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:22px">
+<div style="padding:16px;border-radius:15px;background:#14161f;border:1px solid rgba(255,255,255,.06)">
+<div style="font-family:'JetBrains Mono',monospace;font-size:26px;color:#2ec4a6;letter-spacing:-.03em">{{ monthPctLabel }}</div>
+<div style="font-size:11px;color:#6e7488;margin-top:5px">Month completion</div>
+</div>
+<div style="padding:16px;border-radius:15px;background:#14161f;border:1px solid rgba(255,255,255,.06)">
+<div style="font-family:'JetBrains Mono',monospace;font-size:26px;letter-spacing:-.03em">{{ perfectDays }}</div>
+<div style="font-size:11px;color:#6e7488;margin-top:5px">Perfect days</div>
+</div>
+</div>
+
+<div style="margin-top:14px;padding:18px 16px;border-radius:16px;background:#14161f;border:1px solid rgba(255,255,255,.06)">
+<div style="font-size:12.5px;font-weight:600;margin-bottom:18px">Last 7 days</div>
+<div style="display:flex;align-items:flex-end;gap:8px;height:112px">
+<sc-for list="{{ trendBars }}" as="b" hint-placeholder-count="7">
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:8px;height:100%;justify-content:flex-end">
+<div style="width:100%;border-radius:6px;background:{{ b.color }};transition:height .4s cubic-bezier(.2,.9,.3,1);height: {{ b.h }}"></div>
+<div style="font-size:10px;color:#565c6e;font-family:'JetBrains Mono',monospace">{{ b.label }}</div>
+</div>
+</sc-for>
+</div>
+</div>
+
+<div style="margin-top:14px;padding:18px 16px;border-radius:16px;background:#14161f;border:1px solid rgba(255,255,255,.06)">
+<div style="font-size:12.5px;font-weight:600;margin-bottom:16px">Progress to goal</div>
+<sc-for list="{{ goalBars }}" as="g" hint-placeholder-count="6">
+<div style="margin-bottom:14px">
+<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:7px">
+<div style="font-size:13px;color:#c9cddb">{{ g.name }}</div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#6e7488">{{ g.label }}</div>
+</div>
+<div style="height:5px;border-radius:99px;background:#1a1d27;overflow:hidden">
+<div style="height:100%;border-radius:99px;background:{{ g.color }};transition:width .5s cubic-bezier(.2,.9,.3,1);width: {{ g.pct }}"></div>
+</div>
+</div>
+</sc-for>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isSettings }}">
+<div style="padding:22px 18px 110px;animation:rise .28s ease both">
+<div style="font-size:27px;font-weight:600;letter-spacing:-.03em">Settings</div>
+
+<div style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#6e7488;margin:26px 0 10px">Appearance</div>
+<div style="border-radius:16px;background:#14161f;border:1px solid rgba(255,255,255,.06);overflow:hidden">
+<div style="display:flex;align-items:center;justify-content:space-between;padding:15px 16px">
+<div style="font-size:14.5px">Theme</div>
+<div style="display:flex;gap:2px;padding:2px;border-radius:10px;background:#1c2030">
+<div style="padding:6px 12px;border-radius:8px;font-size:12px;color:#6e7488">Light</div>
+<div style="padding:6px 12px;border-radius:8px;font-size:12px;background:#2c3145;color:#eceef4">Dark</div>
+<div style="padding:6px 12px;border-radius:8px;font-size:12px;color:#6e7488">Auto</div>
+</div>
+</div>
+<div style="height:1px;background:rgba(255,255,255,.06)"></div>
+<div style="display:flex;align-items:center;justify-content:space-between;padding:15px 16px">
+<div style="font-size:14.5px">Week starts on</div>
+<div style="font-size:13.5px;color:#8d94ab">Monday</div>
+</div>
+</div>
+
+<div style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#6e7488;margin:24px 0 10px">Reminders</div>
+<div style="border-radius:16px;background:#14161f;border:1px solid rgba(255,255,255,.06);overflow:hidden">
+<div style="display:flex;align-items:center;justify-content:space-between;padding:15px 16px">
+<div>
+<div style="font-size:14.5px">Daily reminder</div>
+<div style="font-size:11.5px;color:#6e7488;margin-top:3px">One nudge, at a time you choose</div>
+</div>
+<button onClick="{{ toggleReminder }}" style="width:46px;height:27px;border-radius:99px;border:none;padding:3px;cursor:pointer;display:flex;background:{{ reminderTrackBg }};justify-content:{{ reminderJustify }};transition:background .2s ease">
+<div style="width:21px;height:21px;border-radius:50%;background:{{ reminderKnobBg }}"></div>
+</button>
+</div>
+<div style="height:1px;background:rgba(255,255,255,.06)"></div>
+<div style="display:flex;align-items:center;justify-content:space-between;padding:15px 16px">
+<div style="font-size:14.5px;color:{{ reminderTimeColor }}">Reminder time</div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:13.5px;color:{{ reminderTimeColor }}">21:00</div>
+</div>
+</div>
+
+<div style="font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#6e7488;margin:24px 0 10px">Data</div>
+<div style="border-radius:16px;background:#14161f;border:1px solid rgba(255,255,255,.06);overflow:hidden">
+<div style="display:flex;align-items:center;justify-content:space-between;padding:15px 16px;cursor:pointer" style-hover="background:#181b25">
+<div style="font-size:14.5px">Export data</div><div style="font-size:12px;color:#565c6e">JSON</div>
+</div>
+<div style="height:1px;background:rgba(255,255,255,.06)"></div>
+<div style="display:flex;align-items:center;justify-content:space-between;padding:15px 16px;cursor:pointer" style-hover="background:#181b25">
+<div style="font-size:14.5px">Import data</div><div style="font-size:12px;color:#565c6e">JSON</div>
+</div>
+<div style="height:1px;background:rgba(255,255,255,.06)"></div>
+<div style="display:flex;align-items:center;justify-content:space-between;padding:15px 16px;cursor:pointer" style-hover="background:#181b25">
+<div style="font-size:14.5px;color:#e06a5f">Reset all data</div>
+</div>
+</div>
+
+<div style="text-align:center;margin-top:28px;font-size:11.5px;color:#4d5364;font-family:'JetBrains Mono',monospace">Habit Tracker 1.0.0</div>
+</div>
+</sc-if>
+
+</div>
+
+<div style="flex:none;display:flex;border-top:1px solid rgba(255,255,255,.07);background:#101219;padding:8px 12px 12px">
+<button onClick="{{ goToday }}" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:8px 0;background:transparent;border:none;cursor:pointer;font-family:inherit;color:{{ todayTabColor }}">
+<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="16" rx="3.5"></rect><path d="M8 9.5l2.6 2.6L16 6.8"></path></svg>
+<span style="font-size:10.5px;font-weight:500">Today</span>
+</button>
+<button onClick="{{ goStats }}" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:8px 0;background:transparent;border:none;cursor:pointer;font-family:inherit;color:{{ statsTabColor }}">
+<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 20V12"></path><path d="M12 20V5"></path><path d="M19 20v-6"></path></svg>
+<span style="font-size:10.5px;font-weight:500">Analytics</span>
+</button>
+<button onClick="{{ goSettings }}" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:8px 0;background:transparent;border:none;cursor:pointer;font-family:inherit;color:{{ settingsTabColor }}">
+<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 8h10"></path><path d="M18 8h2"></path><path d="M4 16h4"></path><path d="M12 16h8"></path><circle cx="16" cy="8" r="2.2"></circle><circle cx="10" cy="16" r="2.2"></circle></svg>
+<span style="font-size:10.5px;font-weight:500">Settings</span>
+</button>
+</div>
+
+<sc-if value="{{ sheetOpen }}">
+<div onClick="{{ closeSheet }}" style="position:absolute;inset:0;background:rgba(6,8,12,.66);display:flex;align-items:flex-end"></div>
+<div style="position:absolute;left:0;right:0;bottom:0;background:#14161f;border-top:1px solid rgba(255,255,255,.09);border-radius:22px 22px 0 0;padding:10px 18px 22px;animation:sheetup .3s cubic-bezier(.2,.9,.3,1) both;max-height:82%;overflow:auto">
+<div style="width:38px;height:4px;border-radius:99px;background:#333a4a;margin:0 auto 18px"></div>
+<div style="font-size:19px;font-weight:600;letter-spacing:-.02em">{{ sheetTitle }}</div>
+
+<div style="font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#6e7488;margin:20px 0 8px">Name</div>
+<input value="{{ draftName }}" onChange="{{ setDraftName }}" placeholder="e.g. Evening walk" style="width:100%;box-sizing:border-box;padding:13px 14px;border-radius:13px;background:#0f1119;border:1px solid rgba(255,255,255,.09);color:#eceef4;font-family:inherit;font-size:15px;outline:none"></input>
+
+<div style="font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#6e7488;margin:20px 0 8px">Category</div>
+<div style="display:flex;flex-wrap:wrap;gap:7px">
+<sc-for list="{{ catChips }}" as="c" hint-placeholder-count="6">
+<button onClick="{{ c.pick }}" style="padding:9px 14px;border-radius:11px;font-family:inherit;font-size:13px;cursor:pointer;background:{{ c.bg }};color:{{ c.fg }};border:1px solid {{ c.border }}">{{ c.name }}</button>
+</sc-for>
+</div>
+
+<div style="font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#6e7488;margin:20px 0 8px">Tracking</div>
+<div style="display:flex;gap:3px;padding:3px;border-radius:13px;background:#0f1119;border:1px solid rgba(255,255,255,.07)">
+<button onClick="{{ setTypeBinary }}" style="flex:1;padding:11px;border-radius:10px;border:none;cursor:pointer;font-family:inherit;font-size:13px;background:{{ typeBinaryBg }};color:{{ typeBinaryFg }}">Done / not done</button>
+<button onClick="{{ setTypeCount }}" style="flex:1;padding:11px;border-radius:10px;border:none;cursor:pointer;font-family:inherit;font-size:13px;background:{{ typeCountBg }};color:{{ typeCountFg }}">Count</button>
+</div>
+<sc-if value="{{ draftIsCount }}">
+<div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;padding:13px 14px;border-radius:13px;background:#0f1119;border:1px solid rgba(255,255,255,.07)">
+<div style="font-size:13.5px;color:#c9cddb">Target per day</div>
+<div style="display:flex;align-items:center;gap:10px">
+<button onClick="{{ targetMinus }}" style="width:30px;height:30px;border-radius:9px;border:1px solid rgba(255,255,255,.1);background:transparent;color:#8d94ab;cursor:pointer;font-size:16px;font-family:inherit">−</button>
+<div style="min-width:26px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:15px">{{ draftTarget }}</div>
+<button onClick="{{ targetPlus }}" style="width:30px;height:30px;border-radius:9px;border:1px solid rgba(255,255,255,.1);background:transparent;color:#8d94ab;cursor:pointer;font-size:16px;font-family:inherit">+</button>
+</div>
+</div>
+</sc-if>
+
+<div style="font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#6e7488;margin:20px 0 8px">Schedule</div>
+<div style="display:flex;gap:3px;padding:3px;border-radius:13px;background:#0f1119;border:1px solid rgba(255,255,255,.07)">
+<sc-for list="{{ scheduleOpts }}" as="s" hint-placeholder-count="3">
+<button onClick="{{ s.pick }}" style="flex:1;padding:11px 4px;border-radius:10px;border:none;cursor:pointer;font-family:inherit;font-size:13px;background:{{ s.bg }};color:{{ s.fg }}">{{ s.label }}</button>
+</sc-for>
+</div>
+<sc-if value="{{ draftCustomDays }}">
+<div style="display:flex;gap:5px;margin-top:10px">
+<sc-for list="{{ dayToggles }}" as="d" hint-placeholder-count="7">
+<button onClick="{{ d.pick }}" style="flex:1;padding:10px 0;border-radius:10px;border:1px solid {{ d.border }};background:{{ d.bg }};color:{{ d.fg }};font-family:'JetBrains Mono',monospace;font-size:11px;cursor:pointer">{{ d.label }}</button>
+</sc-for>
+</div>
+</sc-if>
+
+<div style="display:flex;align-items:center;justify-content:space-between;margin:20px 0 0">
+<div style="font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#6e7488">Reminder</div>
+<button onClick="{{ draftToggleReminder }}" style="width:46px;height:27px;border-radius:99px;border:none;padding:3px;cursor:pointer;display:flex;background:{{ draftReminderTrack }};justify-content:{{ draftReminderJustify }};transition:background .2s ease">
+<div style="width:21px;height:21px;border-radius:50%;background:{{ draftReminderKnob }}"></div>
+</button>
+</div>
+<sc-if value="{{ draftReminderOn }}">
+<div style="display:flex;gap:3px;padding:3px;border-radius:13px;background:#0f1119;border:1px solid rgba(255,255,255,.07);margin-top:8px">
+<sc-for list="{{ draftRepeatOpts }}" as="r" hint-placeholder-count="3">
+<button onClick="{{ r.pick }}" style="flex:1;padding:11px 4px;border-radius:10px;border:none;cursor:pointer;font-family:inherit;font-size:13px;background:{{ r.bg }};color:{{ r.fg }}">{{ r.label }}</button>
+</sc-for>
+</div>
+<sc-if value="{{ draftRepeatCustom }}">
+<div style="display:flex;gap:5px;margin-top:10px">
+<sc-for list="{{ draftReminderDayToggles }}" as="d" hint-placeholder-count="7">
+<button onClick="{{ d.pick }}" style="flex:1;padding:10px 0;border-radius:10px;border:1px solid {{ d.border }};background:{{ d.bg }};color:{{ d.fg }};font-family:'JetBrains Mono',monospace;font-size:11px;cursor:pointer">{{ d.label }}</button>
+</sc-for>
+</div>
+</sc-if>
+<div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;padding:11px 14px;border-radius:13px;background:#0f1119;border:1px solid rgba(255,255,255,.07)">
+<div style="font-size:13.5px;color:#c9cddb">Time</div>
+<input type="time" value="{{ draftReminderTime }}" onChange="{{ setDraftTime }}" style="padding:8px 12px;border-radius:10px;background:#14161f;border:1px solid rgba(255,255,255,.09);color:#eceef4;font-family:'JetBrains Mono',monospace;font-size:14px;outline:none;color-scheme:dark"></input>
+</div>
+<div style="font-size:11.5px;color:#565c6e;margin-top:8px">{{ draftReminderPreview }}</div>
+</sc-if>
+
+<div style="display:flex;align-items:center;justify-content:space-between;margin-top:20px;padding:13px 14px;border-radius:13px;background:#0f1119;border:1px solid rgba(255,255,255,.07)">
+<div style="font-size:13.5px;color:#c9cddb">Monthly goal</div>
+<div style="display:flex;align-items:center;gap:10px">
+<button onClick="{{ goalMinus }}" style="width:30px;height:30px;border-radius:9px;border:1px solid rgba(255,255,255,.1);background:transparent;color:#8d94ab;cursor:pointer;font-size:16px;font-family:inherit">−</button>
+<div style="min-width:34px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:15px">{{ draftGoal }}</div>
+<button onClick="{{ goalPlus }}" style="width:30px;height:30px;border-radius:9px;border:1px solid rgba(255,255,255,.1);background:transparent;color:#8d94ab;cursor:pointer;font-size:16px;font-family:inherit">+</button>
+</div>
+</div>
+
+<div style="display:flex;gap:8px;margin-top:20px">
+<button onClick="{{ closeSheet }}" style="flex:1;padding:15px;border-radius:14px;border:1px solid rgba(255,255,255,.1);background:transparent;color:#c9cddb;font-family:inherit;font-size:14.5px;cursor:pointer" style-hover="background:#181b25">Cancel</button>
+<button onClick="{{ saveHabit }}" style="flex:1.4;padding:15px;border-radius:14px;border:none;background:{{ saveBg }};color:{{ saveFg }};font-family:inherit;font-size:14.5px;font-weight:600;cursor:pointer">{{ saveLabel }}</button>
+</div>
+</div>
+</sc-if>
+
+</div>
+</x-import>
+</div>
+
+<div class="dv-opt" id="1b">
+<div class="dv-olabel"><a class="dv-oid" href="#1b">1b</a>Ring-led — same data, day completion as the hero</div>
+<x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" dark="{{ true }}" hint-size="428px,908px">
+<div style="height:100%;display:flex;flex-direction:column;background:#0d0f14;font-family:'Public Sans',system-ui,sans-serif;color:#eceef4;overflow:hidden">
+<div style="flex:1;overflow:auto;padding:22px 18px 30px">
+<div style="display:flex;align-items:center;justify-content:space-between">
+<div style="font-size:13px;color:#8d94ab">{{ weekdayLabel }} · {{ dateLabel }}</div>
+<div style="font-size:11.5px;color:#565c6e;font-family:'JetBrains Mono',monospace">Aug 2026</div>
+</div>
+
+<div style="display:flex;flex-direction:column;align-items:center;margin:26px 0 8px">
+<div style="position:relative;width:196px;height:196px">
+<svg width="196" height="196" viewBox="0 0 196 196" style="transform:rotate(-90deg)">
+<circle cx="98" cy="98" r="86" fill="none" stroke="#191c26" strokeWidth="13"></circle>
+<circle cx="98" cy="98" r="86" fill="none" stroke="#2ec4a6" strokeWidth="13" strokeLinecap="round" strokeDasharray="540.35" strokeDashoffset="{{ ringOffset }}" style="transition:stroke-dashoffset .55s cubic-bezier(.2,.9,.3,1)"></circle>
+</svg>
+<div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px">
+<div style="font-family:'JetBrains Mono',monospace;font-size:42px;font-weight:500;letter-spacing:-.04em">{{ donePctLabel }}</div>
+<div style="font-size:12px;color:#6e7488">{{ doneLabel }}</div>
+</div>
+</div>
+<div style="margin-top:14px;font-size:12.5px;color:#6e7488">{{ ringSubline }}</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:1px;margin-top:22px;border-radius:16px;overflow:hidden;border:1px solid rgba(255,255,255,.06)">
+<sc-for list="{{ habitRows }}" as="h" hint-placeholder-count="6">
+<div style="display:flex;align-items:center;gap:13px;padding:15px 15px;background:#14161f">
+<div style="flex:1;min-width:0">
+<div style="font-size:14.5px;font-weight:500;letter-spacing:-.01em;color:{{ h.nameColor }}">{{ h.name }}</div>
+<div style="font-size:11px;color:#6e7488;margin-top:3px;font-family:'JetBrains Mono',monospace">{{ h.subLabel }}</div>
+</div>
+<sc-if value="{{ h.isCount }}">
+<button onClick="{{ h.tap }}" style="width:58px;height:32px;flex:none;border-radius:11px;border:1px solid {{ h.countBorder }};background:{{ h.countBg }};color:{{ h.countColor }};font-family:'JetBrains Mono',monospace;font-size:12px;cursor:pointer" style-hover="border-color:#2ec4a6">{{ h.countLabel }}</button>
+</sc-if>
+<sc-if value="{{ h.isBinaryDone }}">
+<button onClick="{{ h.toggle }}" style="width:32px;height:32px;flex:none;border-radius:50%;border:none;background:#2ec4a6;display:flex;align-items:center;justify-content:center;cursor:pointer;animation:pop .4s cubic-bezier(.2,1.5,.4,1)">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#08120f" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"></path></svg>
+</button>
+</sc-if>
+<sc-if value="{{ h.isBinaryOpen }}">
+<button onClick="{{ h.toggle }}" style="width:32px;height:32px;flex:none;border-radius:50%;border:1.5px solid #333a4a;background:transparent;cursor:pointer" style-hover="border-color:#2ec4a6"></button>
+</sc-if>
+</div>
+</sc-for>
+</div>
+</div>
+</div>
+</x-import>
+</div>
+
+</div>
+<p class="dv-note" style="margin-top:26px"><b>Cut from the design:</b> books, PDF reader, Gemini summaries, bookmarks and history events, reports, the logs viewer, in-app feedback-to-email, and the API-key vault. That removes six of the eleven top-level views and leaves habits, analytics, manage and data import/export. Emoji are gone — categories read as text, habits carry a monospace mark. Colour appears only where something is complete.</p>
+<p class="dv-next">Try next: "make <a class="dv-oid" href="#1b">1b</a> the default and give it the tab bar" · "show the empty state and onboarding" · "write the deletion spec for the repo"</p>
+</section>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;showStreaks&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Row content&quot;},&quot;showCategoryLabels&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Row content&quot;}}">
+const TODAY = 12, DIM = 31, MONTH_START_WD = 5; // Aug 2026: 1st is Saturday (Mon-first index 5)
+
+const SEED_HABITS = [
+  { id: "dh_1", name: "Morning Bible reading", cat: "Health", mark: "BR", target: 1, goal: 30, best: 21, rate: 0.9, rem: 1, remTime: "07:00", remRepeat: "daily", remDays: [0, 1, 2, 3, 4] },
+  { id: "dh_2", name: "Complete work tasks", cat: "Productivity", mark: "WT", target: 5, goal: 28, best: 16, rate: 0.8, rem: 1, remTime: "09:15", remRepeat: "weekdays", remDays: [0, 1, 2, 3, 4] },
+  { id: "dh_3", name: "Workout", cat: "Fitness", mark: "WO", target: 1, goal: 20, best: 11, rate: 0.62, rem: 1, remTime: "18:30", remRepeat: "custom", remDays: [0, 2, 4] },
+  { id: "dh_4", name: "Read 20 pages", cat: "Study", mark: "RD", target: 20, goal: 24, best: 13, rate: 0.72, rem: 1, remTime: "12:40", remRepeat: "daily", remDays: [0, 1, 2, 3, 4] },
+  { id: "dh_5", name: "Sleep before 23:30", cat: "Sleep", mark: "SL", target: 1, goal: 25, best: 8, rate: 0.55, rem: 1, remTime: "23:15", remRepeat: "daily", remDays: [0, 1, 2, 3, 4] },
+  { id: "dh_6", name: "No sugar", cat: "Diet", mark: "NS", target: 1, goal: 30, best: 15, rate: 0.85, rem: 0, remTime: "20:00", remRepeat: "daily", remDays: [0, 1, 2, 3, 4] },
+];
+
+const REPEATS = [["daily", "Every day"], ["weekdays", "Weekdays"], ["custom", "Custom"]];
+
+const CATS = ["Health", "Productivity", "Fitness", "Study", "Sleep", "Diet", "Career"];
+const WD = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+function seeded(n) { let s = n * 9301 + 49297; return () => { s = (s * 9301 + 49297) % 233280; return s / 233280; }; }
+
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    const habits = SEED_HABITS.map((h, i) => {
+      const rnd = seeded(i + 3);
+      const days = [];
+      for (let d = 1; d <= DIM; d++) {
+        if (d > TODAY) { days.push(0); continue; }
+        const hit = rnd() < h.rate;
+        days.push(hit ? h.target : (h.target > 1 ? Math.floor(rnd() * h.target) : 0));
+      }
+      days[TODAY - 1] = i < 3 ? h.target : 0;
+      return Object.assign({}, h, { days });
+    });
+    this.state = {
+      habits, tab: "today", detailId: null, sheetOpen: false, reminder: true,
+      editingId: null,
+      draft: { name: "", cat: "Health", type: "binary", target: 3, schedule: "daily", days: [0, 2, 4], goal: 26, rem: true, remTime: "08:00", remRepeat: "daily", remDays: [0, 1, 2, 3, 4] },
+    };
+  }
+
+  patchHabit(id, patch) {
+    this.setState((s) => ({ habits: s.habits.map((h) => (h.id === id ? Object.assign({}, h, patch) : h)) }));
+  }
+
+  repeatLabel(h) {
+    if (!h.rem) return "Off";
+    if (h.remRepeat === "daily") return "Every day · " + h.remTime;
+    if (h.remRepeat === "weekdays") return "Weekdays · " + h.remTime;
+    const days = (h.remDays || []).slice().sort((a, b) => a - b).map((i) => WD[i]).join(" ");
+    return (days || "No days") + " · " + h.remTime;
+  }
+
+  openEditor(id) {
+    const h = this.state.habits.find((x) => x.id === id);
+    if (!h) return;
+    this.setState({
+      sheetOpen: true, editingId: id,
+      draft: { name: h.name, cat: h.cat, type: h.target > 1 ? "count" : "binary", target: h.target > 1 ? h.target : 3, schedule: "daily", days: [0, 2, 4], goal: h.goal, rem: !!h.rem, remTime: h.remTime, remRepeat: h.remRepeat, remDays: (h.remDays || []).slice() },
+    });
+  }
+
+  setDay(id, value) {
+    this.setState((s) => ({
+      habits: s.habits.map((h) => {
+        if (h.id !== id) return h;
+        const days = h.days.slice();
+        days[TODAY - 1] = Math.max(0, Math.min(h.target, value));
+        return Object.assign({}, h, { days });
+      }),
+    }));
+  }
+
+  streakOf(h) {
+    let n = 0;
+    for (let d = TODAY; d >= 1; d--) {
+      const complete = h.days[d - 1] >= h.target;
+      if (d === TODAY && !complete) continue;
+      if (!complete) break;
+      n++;
+    }
+    return n;
+  }
+
+  patchDraft(patch) { this.setState((s) => ({ draft: Object.assign({}, s.draft, patch) })); }
+
+  renderVals() {
+    const s = this.state;
+    const accent = "#2ec4a6";
+    const habits = s.habits;
+    const doneCount = habits.filter((h) => h.days[TODAY - 1] >= h.target).length;
+    const pct = habits.length ? Math.round((doneCount / habits.length) * 100) : 0;
+
+    const habitRows = habits.map((h) => {
+      const v = h.days[TODAY - 1];
+      const done = v >= h.target;
+      const isCount = h.target > 1;
+      const streak = this.streakOf(h);
+      return {
+        id: h.id, name: h.name, cat: h.cat, mark: h.mark,
+        isCount, isBinaryDone: !isCount && done, isBinaryOpen: !isCount && !done,
+        countLabel: v + "/" + h.target,
+        countColor: done ? "#08120f" : "#8d94ab",
+        countBg: done ? accent : "transparent",
+        countBorder: done ? accent : "rgba(255,255,255,.09)",
+        tap: () => this.setDay(h.id, done ? 0 : v + 1),
+        nameColor: done ? "#8d94ab" : "#eceef4",
+        subLabel: isCount ? h.cat + " · " + v + "/" + h.target : h.cat + " · " + streak + "d streak",
+        streakLabel: streak > 0 ? streak + " day streak" : "no streak",
+        streakShort: streak > 0 ? streak + "d streak" : "no streak",
+        hasReminder: !!h.rem, reminderLabel: h.remTime,
+        toggle: () => this.setDay(h.id, done ? 0 : h.target),
+        plus: () => this.setDay(h.id, v + 1),
+        minus: () => this.setDay(h.id, v - 1),
+        open: () => this.setState({ tab: "detail", detailId: h.id }),
+      };
+    });
+
+    const detail = habits.find((h) => h.id === s.detailId) || habits[0];
+    const detailDone = detail.days.filter((v, i) => i < TODAY && v >= detail.target).length;
+    const cells = [];
+    for (let i = 0; i < MONTH_START_WD; i++) cells.push({ label: "", bg: "transparent", fg: "transparent", border: "1px solid transparent" });
+    for (let d = 1; d <= DIM; d++) {
+      const v = detail.days[d - 1];
+      const complete = v >= detail.target;
+      const future = d > TODAY;
+      const partial = !complete && v > 0;
+      cells.push({
+        label: String(d),
+        bg: complete ? accent : partial ? "rgba(46,196,166,.22)" : future ? "transparent" : "#1a1d27",
+        fg: complete ? "#08120f" : future ? "#3a3f4e" : "#7b8296",
+        border: d === TODAY ? "1.5px solid #eceef4" : future ? "1px solid rgba(255,255,255,.05)" : "1px solid transparent",
+      });
+    }
+
+    const trendBars = [];
+    for (let d = TODAY - 6; d <= TODAY; d++) {
+      const c = habits.filter((h) => h.days[d - 1] >= h.target).length;
+      const p = Math.round((c / habits.length) * 100);
+      trendBars.push({ label: String(d), h: Math.max(6, Math.round(p * 1.06)) + "px", color: p >= 100 ? accent : p >= 50 ? "rgba(46,196,166,.55)" : "#242835" });
+    }
+
+    const goalBars = habits.map((h) => {
+      const n = h.days.filter((v, i) => i < TODAY && v >= h.target).length;
+      const p = Math.min(100, Math.round((n / h.goal) * 100));
+      return { name: h.name, label: n + " / " + h.goal, pct: p + "%", color: p >= 100 ? accent : "rgba(46,196,166,.6)" };
+    });
+
+    let totalSlots = 0, totalDone = 0, perfect = 0;
+    for (let d = 1; d <= TODAY; d++) {
+      const c = habits.filter((h) => h.days[d - 1] >= h.target).length;
+      totalSlots += habits.length; totalDone += c;
+      if (c === habits.length) perfect++;
+    }
+
+    const d = s.draft;
+    const chipOn = { bg: "#2c3145", fg: "#eceef4", border: "rgba(255,255,255,.14)" };
+    const chipOff = { bg: "transparent", fg: "#8d94ab", border: "rgba(255,255,255,.09)" };
+    const seg = (on) => (on ? { bg: "#2c3145", fg: "#eceef4" } : { bg: "transparent", fg: "#8d94ab" });
+    const sched = [["daily", "Every day"], ["weekdays", "Weekdays"], ["custom", "Custom"]];
+
+    return {
+      weekdayLabel: "Wednesday", dateLabel: "12 August",
+      doneLabel: doneCount + " of " + habits.length + " done",
+      donePctLabel: pct + "%",
+      scheduledLabel: habits.length + " scheduled",
+      ringOffset: 540.35 * (1 - pct / 100),
+      ringSubline: doneCount === habits.length ? "Day complete" : habits.length - doneCount + " left today",
+      habitRows,
+      weekdayHeads: WD.map((w) => ({ label: w[0] })),
+      isToday: s.tab === "today", isStats: s.tab === "stats", isSettings: s.tab === "settings", isDetail: s.tab === "detail",
+      todayTabColor: s.tab === "today" || s.tab === "detail" ? accent : "#5c6376",
+      statsTabColor: s.tab === "stats" ? accent : "#5c6376",
+      settingsTabColor: s.tab === "settings" ? accent : "#5c6376",
+      goToday: () => this.setState({ tab: "today", detailId: null }),
+      goStats: () => this.setState({ tab: "stats" }),
+      goSettings: () => this.setState({ tab: "settings" }),
+      closeDetail: () => this.setState({ tab: "today", detailId: null }),
+      detailName: detail.name, detailCat: detail.cat,
+      detailStreak: this.streakOf(detail) + "d",
+      detailBest: detail.best + "d",
+      detailGoal: detailDone + "/" + detail.goal,
+      detailMonthLabel: detailDone + " of 12 days",
+      detailCells: cells,
+      detailIsCount: detail.target > 1,
+      detailTarget: String(detail.target > 1 ? detail.target : 3),
+      detailBinaryBg: seg(detail.target === 1).bg, detailBinaryFg: seg(detail.target === 1).fg,
+      detailCountBg: seg(detail.target > 1).bg, detailCountFg: seg(detail.target > 1).fg,
+      detailSetBinary: () => this.patchHabit(detail.id, { target: 1 }),
+      detailSetCount: () => this.patchHabit(detail.id, { target: detail.target > 1 ? detail.target : 3 }),
+      detailTargetPlus: () => this.patchHabit(detail.id, { target: Math.min(50, detail.target + 1) }),
+      detailTargetMinus: () => this.patchHabit(detail.id, { target: Math.max(2, detail.target - 1) }),
+      detailReminderOn: !!detail.rem,
+      detailReminderSummary: this.repeatLabel(detail),
+      detailReminderTrack: detail.rem ? accent : "#2c3145",
+      detailReminderJustify: detail.rem ? "flex-end" : "flex-start",
+      detailReminderKnob: detail.rem ? "#08120f" : "#8d94ab",
+      detailToggleReminder: () => this.patchHabit(detail.id, { rem: detail.rem ? 0 : 1 }),
+      detailReminderTime: detail.remTime,
+      detailSetTime: (e) => this.patchHabit(detail.id, { remTime: e.target.value }),
+      detailRepeatCustom: detail.remRepeat === "custom",
+      detailRepeatOpts: REPEATS.map(([k, label]) => Object.assign({ label, pick: () => this.patchHabit(detail.id, { remRepeat: k }) }, seg(detail.remRepeat === k))),
+      detailDayToggles: WD.map((label, i) => {
+        const on = (detail.remDays || []).indexOf(i) >= 0;
+        return {
+          label: label[0], bg: on ? "#2c3145" : "transparent", fg: on ? "#eceef4" : "#6e7488",
+          border: on ? "rgba(255,255,255,.14)" : "rgba(255,255,255,.08)",
+          pick: () => this.patchHabit(detail.id, { remDays: on ? detail.remDays.filter((x) => x !== i) : (detail.remDays || []).concat([i]) }),
+        };
+      }),
+      monthPctLabel: Math.round((totalDone / totalSlots) * 100) + "%",
+      perfectDays: String(perfect),
+      trendBars, goalBars,
+      reminderTrackBg: s.reminder ? accent : "#2c3145",
+      reminderJustify: s.reminder ? "flex-end" : "flex-start",
+      reminderKnobBg: s.reminder ? "#08120f" : "#8d94ab",
+      reminderTimeColor: s.reminder ? "#eceef4" : "#565c6e",
+      toggleReminder: () => this.setState((p) => ({ reminder: !p.reminder })),
+      sheetOpen: s.sheetOpen,
+      sheetTitle: s.editingId ? "Edit habit" : "New habit",
+      saveLabel: s.editingId ? "Save changes" : "Save habit",
+      openSheet: () => this.setState({ sheetOpen: true, editingId: null, draft: Object.assign({}, s.draft, { name: "" }) }),
+      editDetail: () => this.openEditor(detail.id),
+      closeSheet: () => this.setState({ sheetOpen: false, editingId: null }),
+      draftName: d.name,
+      setDraftName: (e) => this.patchDraft({ name: e.target.value }),
+      catChips: CATS.map((c) => Object.assign({ name: c, pick: () => this.patchDraft({ cat: c }) }, d.cat === c ? chipOn : chipOff)),
+      setTypeBinary: () => this.patchDraft({ type: "binary" }),
+      setTypeCount: () => this.patchDraft({ type: "count" }),
+      typeBinaryBg: seg(d.type === "binary").bg, typeBinaryFg: seg(d.type === "binary").fg,
+      typeCountBg: seg(d.type === "count").bg, typeCountFg: seg(d.type === "count").fg,
+      draftIsCount: d.type === "count", draftTarget: String(d.target),
+      targetPlus: () => this.patchDraft({ target: Math.min(50, d.target + 1) }),
+      targetMinus: () => this.patchDraft({ target: Math.max(2, d.target - 1) }),
+      scheduleOpts: sched.map(([k, label]) => Object.assign({ label, pick: () => this.patchDraft({ schedule: k }) }, seg(d.schedule === k))),
+      draftCustomDays: d.schedule === "custom",
+      dayToggles: WD.map((label, i) => {
+        const on = d.days.indexOf(i) >= 0;
+        return {
+          label: label[0], bg: on ? "#2c3145" : "transparent", fg: on ? "#eceef4" : "#6e7488",
+          border: on ? "rgba(255,255,255,.14)" : "rgba(255,255,255,.08)",
+          pick: () => this.patchDraft({ days: on ? d.days.filter((x) => x !== i) : d.days.concat([i]) }),
+        };
+      }),
+      draftReminderOn: !!d.rem,
+      draftReminderTrack: d.rem ? accent : "#2c3145",
+      draftReminderJustify: d.rem ? "flex-end" : "flex-start",
+      draftReminderKnob: d.rem ? "#08120f" : "#8d94ab",
+      draftToggleReminder: () => this.patchDraft({ rem: !d.rem }),
+      draftReminderTime: d.remTime,
+      setDraftTime: (e) => this.patchDraft({ remTime: e.target.value }),
+      draftRepeatCustom: d.remRepeat === "custom",
+      draftRepeatOpts: REPEATS.map(([k, label]) => Object.assign({ label, pick: () => this.patchDraft({ remRepeat: k }) }, seg(d.remRepeat === k))),
+      draftReminderDayToggles: WD.map((label, i) => {
+        const on = (d.remDays || []).indexOf(i) >= 0;
+        return {
+          label: label[0], bg: on ? "#2c3145" : "transparent", fg: on ? "#eceef4" : "#6e7488",
+          border: on ? "rgba(255,255,255,.14)" : "rgba(255,255,255,.08)",
+          pick: () => this.patchDraft({ remDays: on ? d.remDays.filter((x) => x !== i) : (d.remDays || []).concat([i]) }),
+        };
+      }),
+      draftReminderPreview: this.repeatLabel({ rem: 1, remRepeat: d.remRepeat, remDays: d.remDays, remTime: d.remTime }) + " · " + (d.name.trim() || "this habit"),
+      draftGoal: String(d.goal),
+      goalPlus: () => this.patchDraft({ goal: Math.min(31, d.goal + 1) }),
+      goalMinus: () => this.patchDraft({ goal: Math.max(1, d.goal - 1) }),
+      saveBg: d.name.trim() ? accent : "#232838",
+      saveFg: d.name.trim() ? "#08120f" : "#5c6376",
+      saveHabit: () => {
+        const name = d.name.trim();
+        if (!name) return;
+        const target = d.type === "count" ? d.target : 1;
+        const mark = name.replace(/[^A-Za-z ]/g, "").split(" ").filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("") || "NH";
+        if (s.editingId) {
+          this.setState((p) => ({
+            sheetOpen: false, editingId: null,
+            habits: p.habits.map((h) => (h.id === p.editingId ? Object.assign({}, h, { name, cat: d.cat, target, goal: d.goal, mark, rem: d.rem ? 1 : 0, remTime: d.remTime, remRepeat: d.remRepeat, remDays: d.remDays.slice() }) : h)),
+          }));
+          return;
+        }
+        this.setState((p) => ({
+          sheetOpen: false,
+          habits: p.habits.concat([{ id: "dh_" + Date.now(), name, cat: d.cat, mark, target, goal: d.goal, best: 0, days: new Array(DIM).fill(0), rem: d.rem ? 1 : 0, remTime: d.remTime, remRepeat: d.remRepeat, remDays: d.remDays.slice() }]),
+          draft: Object.assign({}, p.draft, { name: "" }),
+        }));
+      },
+      showStreaks: this.props.showStreaks !== false,
+      showCategoryLabels: this.props.showCategoryLabels !== false,
+    };
+  }
+}
+
+</script>
+</body>
+</html>
