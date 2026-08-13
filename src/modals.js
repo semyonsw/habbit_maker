@@ -1,497 +1,436 @@
 "use strict";
 
-import { ALL_WEEKDAYS, MONTH_NAMES } from "./constants.js";
-import {
-  state,
-  globals,
-  noteModalState,
-} from "./state.js";
-import {
-  uid,
-  sanitize,
-  formatDateKey,
-  normalizeWeekdayArray,
-  normalizeMonthDayArray,
-  normalizeSequenceLength,
-  normalizeSequencePositions,
-  parseDateKey,
-} from "./utils.js?v=2";
-import {
-  saveState,
-  getCurrentMonthData,
-  getHabitEmoji,
-} from "./persistence.js";
-import {
-  getHabitScheduleMode,
-  renderHabitScheduleSelectors,
-  updateHabitScheduleTypeUI,
-  getCheckedValuesFromContainer,
-  updateHabitOrder,
-  getPossibleActiveDaysInMonth,
-} from "./habits.js";
+// The two overlays in the app: the add/edit habit bottom sheet, and a confirm
+// dialog.
+//
+// The sheet edits a draft (globals.habitDraft) and only writes on Save, so
+// backing out with the scrim or Cancel leaves the habit untouched. The detail
+// screen is the opposite -- it writes through immediately -- which is why the
+// two are separate surfaces rather than one shared form.
+
+import { DEFAULT_CATEGORIES, REMINDER_REPEATS, WEEKDAY_LABELS } from "./constants.js";
+import { state, globals } from "./state.js";
+import { uid, sanitize } from "./utils.js?v=2";
+import { deriveHabitMark, saveState } from "./persistence.js";
+import { deleteHabit, getHabitTarget, updateHabitOrder } from "./habits.js";
 import { callRenderer, registerRenderer } from "./render-registry.js";
-import { isMobileLayout } from "./ui-prefs.js";
-import {
-  lockBodyScroll,
-  unlockBodyScroll,
-  trapWithin,
-  releaseTrap,
-} from "./sheet.js";
+import { getWeekStart } from "./ui-prefs.js";
+import { lockBodyScroll, unlockBodyScroll, trapWithin, releaseTrap } from "./sheet.js";
 
-// Ids of every currently-open dialog, innermost last.
-const modalStack = [];
-// Element that had focus when each dialog opened, so it can be restored.
-const modalOpeners = new Map();
+const SCHEDULES = [
+  ["daily", "Every day"],
+  ["weekdays", "Weekdays"],
+  ["custom", "Custom"],
+];
 
-/* --------------------------------------------------- back closes the sheet */
+function weekdayOrder() {
+  return getWeekStart() === "sunday"
+    ? [0, 1, 2, 3, 4, 5, 6]
+    : [1, 2, 3, 4, 5, 6, 0];
+}
 
-// An open dialog gets its own history entry, so the Android back button (and
-// the browser back button) closes it instead of leaving the view. Guarded by a
-// flag so the popstate-driven close does not itself try to pop again.
-let closingFromPopstate = false;
+/* ------------------------------------------------------------------- open */
 
-function pushModalHistory(id) {
-  try {
-    window.history.pushState({ modal: id }, "");
-  } catch (_) {
-    /* history is unavailable in some embedded contexts; dialogs still work */
+function draftFromHabit(habit) {
+  if (!habit) {
+    return {
+      id: null,
+      name: "",
+      categoryId: (state.categories[0] || DEFAULT_CATEGORIES[0]).id,
+      trackType: "check",
+      countTarget: 3,
+      schedule: "daily",
+      days: [1, 3, 5],
+      monthGoal: 26,
+      reminder: { enabled: false, repeat: "daily", days: [], time: "08:00" },
+    };
   }
+  const mode = habit.scheduleMode;
+  const schedule =
+    mode === "specific_weekdays"
+      ? habit.activeWeekdays.length === 5 &&
+        [1, 2, 3, 4, 5].every((d) => habit.activeWeekdays.includes(d))
+        ? "weekdays"
+        : "custom"
+      : "daily";
+  return {
+    id: habit.id,
+    name: habit.name,
+    categoryId: habit.categoryId,
+    trackType: habit.trackType === "count" ? "count" : "check",
+    countTarget: getHabitTarget(habit) > 1 ? getHabitTarget(habit) : 3,
+    schedule,
+    days: habit.activeWeekdays.slice(),
+    monthGoal: Math.max(1, parseInt(habit.monthGoal, 10) || 26),
+    reminder: Object.assign(
+      { enabled: false, repeat: "daily", days: [], time: "08:00" },
+      habit.reminder,
+    ),
+  };
 }
 
-function popModalHistory(id) {
-  if (closingFromPopstate) return;
-  if (window.history.state && window.history.state.modal === id) {
-    window.history.back();
-  }
-}
+export function openHabitSheet(habitId) {
+  const habit = habitId
+    ? state.habits.daily.find((h) => h.id === habitId) || null
+    : null;
+  globals.habitDraft = draftFromHabit(habit);
 
-if (typeof window !== "undefined") {
-  window.addEventListener("popstate", () => {
-    const topId = getTopOpenModalId();
-    if (!topId) return;
-    closingFromPopstate = true;
-    try {
-      closeModal(topId);
-    } finally {
-      closingFromPopstate = false;
-    }
-  });
-}
-
-export function getTopOpenModalId() {
-  // Trust the DOM over the stack: some code paths still toggle .open directly.
-  const open = Array.from(document.querySelectorAll(".modal-overlay.open"));
-  if (!open.length) return null;
-  for (let i = modalStack.length - 1; i >= 0; i -= 1) {
-    if (open.some((el) => el.id === modalStack[i])) return modalStack[i];
-  }
-  return open[open.length - 1].id;
-}
-
-export function closeTopModal() {
-  const id = getTopOpenModalId();
-  if (id) closeModal(id);
-}
-
-// Give the dialog an accessible name without touching index.html: most .modal
-// headers have an <h3> but no id to point aria-labelledby at.
-function ensureDialogSemantics(overlay, id) {
-  const dialog = overlay.querySelector(".modal");
-  if (!dialog) return;
-  dialog.setAttribute("role", "dialog");
-  dialog.setAttribute("aria-modal", "true");
-  if (!dialog.hasAttribute("aria-labelledby")) {
-    const heading = dialog.querySelector(".modal-header h3, .modal-header h2");
-    if (heading) {
-      if (!heading.id) heading.id = `${id}-title`;
-      dialog.setAttribute("aria-labelledby", heading.id);
-    }
-  }
-}
-
-export function openModal(id) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  if (el.classList.contains("open")) return;
-
-  modalOpeners.set(
-    id,
-    document.activeElement instanceof HTMLElement ? document.activeElement : null,
-  );
-  modalStack.push(id);
-
-  ensureDialogSemantics(el, id);
-  el.classList.add("open");
+  const overlay = document.getElementById("habitSheet");
+  const title = document.getElementById("habitSheetTitle");
+  if (title) title.textContent = habit ? "Edit habit" : "New habit";
+  if (!overlay) return;
+  overlay.classList.add("open");
   lockBodyScroll();
-  trapWithin(el);
-  pushModalHistory(id);
-
-  requestAnimationFrame(() => {
-    // Don't auto-focus a field on a phone: it summons the keyboard the instant
-    // the sheet appears and hides most of what just opened.
-    if (isMobileLayout()) {
-      const dialog = el.querySelector(".modal");
-      if (dialog) {
-        dialog.setAttribute("tabindex", "-1");
-        dialog.focus({ preventScroll: true });
-      }
-      return;
-    }
-    const firstInput = el.querySelector(
-      ".modal-body input:not([type='hidden']):not([disabled]), .modal-body textarea:not([disabled]), .modal-body select:not([disabled])",
-    );
-    const firstFocusable =
-      firstInput ||
-      el.querySelector(
-        "input:not([type='hidden']):not([disabled]), textarea:not([disabled]), select:not([disabled]), button:not([disabled]), [href], [tabindex]:not([tabindex='-1'])",
-      );
-    if (firstFocusable instanceof HTMLElement) {
-      firstFocusable.focus({ preventScroll: true });
-    }
-  });
+  renderHabitSheet();
+  trapWithin(overlay);
+  const nameInput = document.getElementById("draftName");
+  if (nameInput && !habit) nameInput.focus();
 }
 
-export function closeModal(id) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  const wasOpen = el.classList.contains("open");
-  el.classList.remove("open");
-  el.querySelector(".modal")?.removeAttribute("aria-modal");
-
-  const at = modalStack.lastIndexOf(id);
-  if (at !== -1) modalStack.splice(at, 1);
-
-  if (!wasOpen) return;
-  unlockBodyScroll();
+export function closeHabitSheet() {
+  const overlay = document.getElementById("habitSheet");
+  if (!overlay) return;
+  overlay.classList.remove("open");
   releaseTrap();
-  popModalHistory(id);
-
-  // Hand focus to the next dialog down, or back to whatever opened this one.
-  const nextId = getTopOpenModalId();
-  if (nextId) {
-    const next = document.getElementById(nextId);
-    if (next) trapWithin(next);
-  } else {
-    const opener = modalOpeners.get(id);
-    if (opener && document.contains(opener)) opener.focus({ preventScroll: true });
-  }
-  modalOpeners.delete(id);
+  unlockBodyScroll();
+  globals.habitDraft = null;
 }
 
-export function openConfirm(title, message, callback) {
+/* ----------------------------------------------------------------- markup */
+
+function reminderPreview(d) {
+  const r = d.reminder;
+  if (!r.enabled) return "";
+  if (r.repeat === "daily") return `Every day · ${r.time} · ${d.name.trim() || "this habit"}`;
+  if (r.repeat === "weekdays")
+    return `Weekdays · ${r.time} · ${d.name.trim() || "this habit"}`;
+  const days = (r.days || [])
+    .slice()
+    .sort((a, b) => a - b)
+    .map((i) => WEEKDAY_LABELS[i])
+    .join(" ");
+  return `${days || "No days"} · ${r.time} · ${d.name.trim() || "this habit"}`;
+}
+
+export function renderHabitSheet() {
+  const body = document.getElementById("habitSheetBody");
+  const d = globals.habitDraft;
+  if (!body || !d) return;
+
+  const cats = state.categories.length ? state.categories : DEFAULT_CATEGORIES;
+
+  let html =
+    '<div class="section-label field-label">Name</div>' +
+    `<input id="draftName" class="text-input" type="text" value="${sanitize(d.name)}" placeholder="e.g. Evening walk" />` +
+    '<div class="section-label field-label">Category</div>' +
+    '<div class="chip-row">' +
+    cats
+      .map(
+        (c) =>
+          `<button type="button" class="chip${c.id === d.categoryId ? " is-on" : ""}" data-cat="${sanitize(c.id)}">${sanitize(c.name)}</button>`,
+      )
+      .join("") +
+    "</div>" +
+    '<div class="section-label field-label">Tracking</div>' +
+    '<div class="segmented">' +
+    `<button type="button" data-draft-track="check" class="${d.trackType === "check" ? "is-active" : ""}">Done / not done</button>` +
+    `<button type="button" data-draft-track="count" class="${d.trackType === "count" ? "is-active" : ""}">Count</button>` +
+    "</div>";
+
+  if (d.trackType === "count") {
+    html +=
+      '<div class="boxed-row">' +
+      '<div class="boxed-row-label">Target per day</div>' +
+      '<div class="stepper">' +
+      '<button type="button" data-draft-target="-1" aria-label="Decrease target">−</button>' +
+      `<div class="stepper-value">${d.countTarget}</div>` +
+      '<button type="button" data-draft-target="1" aria-label="Increase target">+</button>' +
+      "</div></div>";
+  }
+
+  html +=
+    '<div class="section-label field-label">Schedule</div>' +
+    '<div class="segmented">' +
+    SCHEDULES.map(
+      ([key, label]) =>
+        `<button type="button" data-draft-schedule="${key}" class="${d.schedule === key ? "is-active" : ""}">${label}</button>`,
+    ).join("") +
+    "</div>";
+
+  if (d.schedule === "custom") {
+    html +=
+      '<div class="day-toggles">' +
+      weekdayOrder()
+        .map((day) => {
+          const on = d.days.includes(day);
+          return `<button type="button" data-draft-day="${day}" class="${on ? "is-on" : ""}" aria-pressed="${on}">${sanitize(WEEKDAY_LABELS[day][0])}</button>`;
+        })
+        .join("") +
+      "</div>";
+  }
+
+  html +=
+    '<div class="row-split" style="margin-top:20px">' +
+    '<div class="section-label">Reminder</div>' +
+    `<button type="button" class="toggle${d.reminder.enabled ? " is-on" : ""}" data-draft-reminder` +
+    ` role="switch" aria-checked="${d.reminder.enabled}" aria-label="Reminder"><span></span></button>` +
+    "</div>";
+
+  if (d.reminder.enabled) {
+    html +=
+      '<div class="segmented" style="margin-top:8px">' +
+      REMINDER_REPEATS.map((key) => {
+        const label =
+          key === "daily" ? "Every day" : key === "weekdays" ? "Weekdays" : "Custom";
+        return `<button type="button" data-draft-repeat="${key}" class="${d.reminder.repeat === key ? "is-active" : ""}">${label}</button>`;
+      }).join("") +
+      "</div>";
+
+    if (d.reminder.repeat === "custom") {
+      html +=
+        '<div class="day-toggles">' +
+        weekdayOrder()
+          .map((day) => {
+            const on = (d.reminder.days || []).includes(day);
+            return `<button type="button" data-draft-reminder-day="${day}" class="${on ? "is-on" : ""}" aria-pressed="${on}">${sanitize(WEEKDAY_LABELS[day][0])}</button>`;
+          })
+          .join("") +
+        "</div>";
+    }
+
+    html +=
+      '<div class="boxed-row">' +
+      '<div class="boxed-row-label">Time</div>' +
+      `<input type="time" id="draftReminderTime" value="${sanitize(d.reminder.time)}" aria-label="Reminder time" />` +
+      "</div>" +
+      `<div class="sheet-preview">${sanitize(reminderPreview(d))}</div>`;
+  }
+
+  html +=
+    '<div class="boxed-row" style="margin-top:20px">' +
+    '<div class="boxed-row-label">Monthly goal</div>' +
+    '<div class="stepper">' +
+    '<button type="button" data-draft-goal="-1" aria-label="Decrease goal">−</button>' +
+    `<div class="stepper-value">${d.monthGoal}</div>` +
+    '<button type="button" data-draft-goal="1" aria-label="Increase goal">+</button>' +
+    "</div></div>";
+
+  // The design has no delete affordance, but the app has always had one and
+  // dropping it would strand existing habits. Edit mode gets it; Add does not.
+  if (d.id) {
+    html +=
+      '<button type="button" class="btn btn-danger" style="width:100%;margin-top:14px"' +
+      " data-sheet-delete>Delete habit</button>";
+  }
+
+  const canSave = d.name.trim().length > 0;
+  html +=
+    '<div class="sheet-actions">' +
+    '<button type="button" class="btn btn-ghost" data-sheet-cancel>Cancel</button>' +
+    `<button type="button" class="btn btn-primary" data-sheet-save${canSave ? "" : " disabled"}>` +
+    `${d.id ? "Save changes" : "Save habit"}</button>` +
+    "</div>";
+
+  body.innerHTML = html;
+}
+
+/* ------------------------------------------------------------------- save */
+
+function saveDraft() {
+  const d = globals.habitDraft;
+  if (!d) return;
+  const name = d.name.trim();
+  if (!name) return;
+
+  const activeWeekdays =
+    d.schedule === "daily"
+      ? [0, 1, 2, 3, 4, 5, 6]
+      : d.schedule === "weekdays"
+        ? [1, 2, 3, 4, 5]
+        : d.days.slice().sort((a, b) => a - b);
+
+  const fields = {
+    name,
+    categoryId: d.categoryId,
+    trackType: d.trackType,
+    countTarget: d.trackType === "count" ? d.countTarget : 1,
+    monthGoal: d.monthGoal,
+    scheduleMode: activeWeekdays.length === 7 ? "fixed" : "specific_weekdays",
+    activeWeekdays: activeWeekdays.length ? activeWeekdays : [0, 1, 2, 3, 4, 5, 6],
+    activeMonthDays: [],
+    reminder: {
+      enabled: !!d.reminder.enabled,
+      repeat: d.reminder.repeat,
+      days: (d.reminder.days || []).slice().sort((a, b) => a - b),
+      time: d.reminder.time,
+    },
+    mark: deriveHabitMark(name),
+  };
+
+  if (d.id) {
+    const habit = state.habits.daily.find((h) => h.id === d.id);
+    if (habit) Object.assign(habit, fields);
+  } else {
+    state.habits.daily.push(
+      Object.assign({ id: uid("dh"), order: state.habits.daily.length }, fields),
+    );
+    updateHabitOrder();
+  }
+
+  saveState();
+  closeHabitSheet();
+  callRenderer("renderAll");
+}
+
+/* ---------------------------------------------------------------- confirm */
+
+export function openConfirm(title, message, onConfirm) {
+  const overlay = document.getElementById("confirmDialog");
+  if (!overlay) {
+    if (window.confirm(`${title}\n\n${message}`)) onConfirm();
+    return;
+  }
   document.getElementById("confirmTitle").textContent = title;
   document.getElementById("confirmMessage").textContent = message;
-  globals.confirmCallback = callback;
-  openModal("confirmModal");
+  globals.confirmCallback = onConfirm;
+  overlay.classList.add("open");
+  lockBodyScroll();
+  trapWithin(overlay);
 }
 
-export function openHabitModal(habitId) {
-  globals.editingHabitId = habitId || null;
+export function closeConfirm() {
+  const overlay = document.getElementById("confirmDialog");
+  if (!overlay) return;
+  overlay.classList.remove("open");
+  releaseTrap();
+  unlockBodyScroll();
+  globals.confirmCallback = null;
+}
 
-  const title = document.getElementById("habitModalTitle");
-  const name = document.getElementById("habitName");
-  const category = document.getElementById("habitCategory");
-  const type = document.getElementById("habitScheduleType");
-  const goal = document.getElementById("habitGoal");
-  const emoji = document.getElementById("habitEmoji");
+/** True if an overlay was open and has now been closed. Drives Escape and the
+ *  Android back button. */
+export function closeTopOverlay() {
+  const confirmOpen = document
+    .getElementById("confirmDialog")
+    ?.classList.contains("open");
+  if (confirmOpen) {
+    closeConfirm();
+    return true;
+  }
+  const sheetOpen = document
+    .getElementById("habitSheet")
+    ?.classList.contains("open");
+  if (sheetOpen) {
+    closeHabitSheet();
+    return true;
+  }
+  return false;
+}
 
-  category.innerHTML = state.categories
-    .map(
-      (c) =>
-        `<option value='${c.id}'>${sanitize(c.emoji)} ${sanitize(c.name)}</option>`,
-    )
-    .join("");
+/* ---------------------------------------------------------------- binding */
 
-  if (globals.editingHabitId) {
-    const habit = state.habits.daily.find(
-      (h) => h.id === globals.editingHabitId,
-    );
-    if (!habit) return;
-    title.textContent = "Edit Habit";
-    name.value = habit.name;
-    category.value = habit.categoryId;
-    type.value = getHabitScheduleMode(habit);
-    goal.value = habit.monthGoal || 20;
-    emoji.value = getHabitEmoji(habit);
-    renderHabitScheduleSelectors(habit);
-  } else {
-    title.textContent = "Add Habit";
-    name.value = "";
-    goal.value = 20;
-    type.value = "fixed";
-    emoji.value = "📌";
-    const today = new Date();
-    renderHabitScheduleSelectors({
-      scheduleMode: "fixed",
-      activeWeekdays: [...ALL_WEEKDAYS],
-      activeMonthDays: [1],
-      sequenceLength: 2,
-      sequenceActive: [0],
-      sequenceAnchor: formatDateKey(
-        today.getFullYear(),
-        today.getMonth(),
-        today.getDate(),
-      ),
+export function bindOverlayEvents() {
+  const sheet = document.getElementById("habitSheet");
+  if (sheet) {
+    sheet.addEventListener("click", (event) => {
+      const d = globals.habitDraft;
+      if (event.target.closest("#habitSheetScrim")) return closeHabitSheet();
+      if (event.target.closest("[data-sheet-cancel]")) return closeHabitSheet();
+      if (event.target.closest("[data-sheet-save]")) return saveDraft();
+      if (event.target.closest("[data-sheet-delete]")) {
+        return deleteHabit(d && d.id);
+      }
+      if (!d) return;
+
+      const cat = event.target.closest("[data-cat]");
+      if (cat) {
+        d.categoryId = cat.dataset.cat;
+        return renderHabitSheet();
+      }
+      const track = event.target.closest("[data-draft-track]");
+      if (track) {
+        d.trackType = track.dataset.draftTrack;
+        return renderHabitSheet();
+      }
+      const target = event.target.closest("[data-draft-target]");
+      if (target) {
+        const delta = parseInt(target.dataset.draftTarget, 10);
+        d.countTarget = Math.min(50, Math.max(2, d.countTarget + delta));
+        return renderHabitSheet();
+      }
+      const schedule = event.target.closest("[data-draft-schedule]");
+      if (schedule) {
+        d.schedule = schedule.dataset.draftSchedule;
+        return renderHabitSheet();
+      }
+      const day = event.target.closest("[data-draft-day]");
+      if (day) {
+        const value = parseInt(day.dataset.draftDay, 10);
+        const at = d.days.indexOf(value);
+        if (at >= 0) d.days.splice(at, 1);
+        else d.days.push(value);
+        return renderHabitSheet();
+      }
+      if (event.target.closest("[data-draft-reminder]")) {
+        d.reminder.enabled = !d.reminder.enabled;
+        return renderHabitSheet();
+      }
+      const repeat = event.target.closest("[data-draft-repeat]");
+      if (repeat) {
+        d.reminder.repeat = repeat.dataset.draftRepeat;
+        return renderHabitSheet();
+      }
+      const rDay = event.target.closest("[data-draft-reminder-day]");
+      if (rDay) {
+        const value = parseInt(rDay.dataset.draftReminderDay, 10);
+        const days = d.reminder.days || (d.reminder.days = []);
+        const at = days.indexOf(value);
+        if (at >= 0) days.splice(at, 1);
+        else days.push(value);
+        return renderHabitSheet();
+      }
+      const goal = event.target.closest("[data-draft-goal]");
+      if (goal) {
+        const delta = parseInt(goal.dataset.draftGoal, 10);
+        d.monthGoal = Math.min(31, Math.max(1, d.monthGoal + delta));
+        return renderHabitSheet();
+      }
+    });
+
+    // input, not change: the Save button enables as soon as there is a name.
+    sheet.addEventListener("input", (event) => {
+      const d = globals.habitDraft;
+      if (!d) return;
+      if (event.target.id === "draftName") {
+        d.name = event.target.value;
+        const save = sheet.querySelector("[data-sheet-save]");
+        if (save) save.disabled = !d.name.trim();
+      }
+      if (event.target.id === "draftReminderTime") {
+        d.reminder.time = event.target.value;
+        const preview = sheet.querySelector(".sheet-preview");
+        if (preview) preview.textContent = reminderPreview(d);
+      }
     });
   }
 
-  document.getElementById("habitTypeGroup").style.display = "none";
-  document.getElementById("habitScheduleTypeGroup").style.display = "block";
-  document.getElementById("habitGoalGroup").style.display = "block";
-  document.getElementById("habitEmojiGroup").style.display = "block";
-  updateHabitScheduleTypeUI(type.value);
+  const confirm = document.getElementById("confirmDialog");
+  if (confirm) {
+    confirm.addEventListener("click", (event) => {
+      if (event.target.closest("#confirmCancel")) return closeConfirm();
+      if (event.target.closest("#confirmOk")) {
+        const cb = globals.confirmCallback;
+        closeConfirm();
+        if (typeof cb === "function") cb();
+      }
+    });
+  }
 
-  openModal("habitModal");
-}
-
-export function saveHabitModal() {
-  const name = document.getElementById("habitName").value.trim();
-  if (!name) return;
-
-  const categoryId = document.getElementById("habitCategory").value;
-  const scheduleMode = getHabitScheduleMode({
-    scheduleMode: document.getElementById("habitScheduleType").value,
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeTopOverlay();
   });
-  const emoji = document.getElementById("habitEmoji").value || "📌";
-  const activeWeekdays = normalizeWeekdayArray(
-    getCheckedValuesFromContainer("habitActiveWeekdays"),
-  );
-  const activeMonthDays = normalizeMonthDayArray(
-    getCheckedValuesFromContainer("habitActiveMonthDays"),
-  );
-  const sequenceLength = normalizeSequenceLength(
-    document.getElementById("habitSequenceLength").value,
-  );
-  const sequenceActive = normalizeSequencePositions(
-    getCheckedValuesFromContainer("habitSequenceActive"),
-    sequenceLength,
-  );
-  const sequenceAnchorRaw = document.getElementById(
-    "habitSequenceAnchor",
-  ).value;
-  if (scheduleMode === "specific_weekdays" && !activeWeekdays.length) {
-    alert("Select at least one active weekday.");
-    return;
-  }
-  if (scheduleMode === "specific_month_days" && !activeMonthDays.length) {
-    alert("Select at least one active month day.");
-    return;
-  }
-  if (scheduleMode === "custom_sequence" && !sequenceActive.length) {
-    alert("Select at least one active day within the cycle.");
-    return;
-  }
-  let sequenceAnchor = sequenceAnchorRaw;
-  if (scheduleMode === "custom_sequence") {
-    const parsedAnchor = parseDateKey(sequenceAnchorRaw);
-    if (!parsedAnchor) {
-      const today = new Date();
-      sequenceAnchor = formatDateKey(
-        today.getFullYear(),
-        today.getMonth(),
-        today.getDate(),
-      );
-    }
-  }
-
-  const monthGoal = Math.max(
-    1,
-    Math.min(
-      31,
-      parseInt(document.getElementById("habitGoal").value, 10) || 20,
-    ),
-  );
-
-  const possibleActiveDays = getPossibleActiveDaysInMonth(
-    {
-      scheduleMode,
-      activeWeekdays,
-      activeMonthDays,
-      sequenceLength,
-      sequenceActive,
-      sequenceAnchor,
-    },
-    state.currentYear,
-    state.currentMonth,
-  );
-  if (monthGoal > possibleActiveDays) {
-    alert(
-      `Warning: monthly goal ${monthGoal} is higher than possible active days (${possibleActiveDays}) in ${MONTH_NAMES[state.currentMonth]}. Your goal will be saved as entered.`,
-    );
-  }
-
-  if (globals.editingHabitId) {
-    const habit = state.habits.daily.find(
-      (h) => h.id === globals.editingHabitId,
-    );
-    if (habit) {
-      habit.name = name;
-      habit.categoryId = categoryId;
-      habit.type = scheduleMode;
-      habit.scheduleMode = scheduleMode;
-      habit.activeWeekdays =
-        scheduleMode === "specific_weekdays"
-          ? activeWeekdays
-          : [...ALL_WEEKDAYS];
-      habit.activeMonthDays =
-        scheduleMode === "specific_month_days" ? activeMonthDays : [];
-      habit.excludedWeekdays =
-        scheduleMode === "specific_weekdays"
-          ? ALL_WEEKDAYS.filter(
-              (weekday) => !habit.activeWeekdays.includes(weekday),
-            )
-          : [];
-      habit.sequenceLength = sequenceLength;
-      habit.sequenceActive =
-        scheduleMode === "custom_sequence" ? sequenceActive : [];
-      habit.sequenceAnchor =
-        scheduleMode === "custom_sequence" ? sequenceAnchor : "";
-      habit.emoji = emoji;
-      habit.monthGoal = monthGoal;
-    }
-  } else {
-    state.habits.daily.push({
-      id: uid("dh"),
-      name,
-      categoryId,
-      monthGoal,
-      type: scheduleMode,
-      scheduleMode,
-      activeWeekdays:
-        scheduleMode === "specific_weekdays" ? activeWeekdays : [...ALL_WEEKDAYS],
-      activeMonthDays:
-        scheduleMode === "specific_month_days" ? activeMonthDays : [],
-      excludedWeekdays:
-        scheduleMode === "specific_weekdays"
-          ? ALL_WEEKDAYS.filter((weekday) => !activeWeekdays.includes(weekday))
-          : [],
-      sequenceLength,
-      sequenceActive: scheduleMode === "custom_sequence" ? sequenceActive : [],
-      sequenceAnchor: scheduleMode === "custom_sequence" ? sequenceAnchor : "",
-      emoji,
-      order: state.habits.daily.length,
-    });
-  }
-
-  updateHabitOrder();
-  saveState();
-  closeModal("habitModal");
-  callRenderer("renderAll");
-}
-
-export function openCategoryModal(catId) {
-  globals.editingCategoryId = catId || null;
-  const title = document.getElementById("categoryModalTitle");
-  const name = document.getElementById("categoryName");
-  const emoji = document.getElementById("categoryEmoji");
-  const color = document.getElementById("categoryColor");
-
-  if (globals.editingCategoryId) {
-    const cat = state.categories.find(
-      (c) => c.id === globals.editingCategoryId,
-    );
-    if (!cat) return;
-    title.textContent = "Edit Category";
-    name.value = cat.name;
-    emoji.value = cat.emoji;
-    color.value = cat.color;
-  } else {
-    title.textContent = "Add Category";
-    name.value = "";
-    emoji.value = "⭐";
-    color.value = "#3e85b5";
-  }
-
-  openModal("categoryModal");
-}
-
-export function saveCategoryModal() {
-  const name = document.getElementById("categoryName").value.trim();
-  if (!name) return;
-
-  const emoji = document.getElementById("categoryEmoji").value || "⭐";
-  const color = document.getElementById("categoryColor").value || "#3e85b5";
-
-  if (globals.editingCategoryId) {
-    const cat = state.categories.find(
-      (c) => c.id === globals.editingCategoryId,
-    );
-    if (cat) {
-      cat.name = name;
-      cat.emoji = emoji;
-      cat.color = color;
-    }
-  } else {
-    state.categories.push({ id: uid("cat"), name, emoji, color });
-  }
-
-  saveState();
-  closeModal("categoryModal");
-  callRenderer("renderAll");
-}
-
-export function openNoteModal(habitId, day) {
-  const monthData = getCurrentMonthData();
-  if (!monthData.dailyNotes[habitId]) {
-    monthData.dailyNotes[habitId] = {};
-  }
-
-  Object.assign(noteModalState, { habitId, day });
-  const habit = state.habits.daily.find((h) => h.id === habitId);
-  document.getElementById("noteModalTitle").textContent = habit
-    ? `${habit.name} - ${formatDateKey(state.currentYear, state.currentMonth, day)}`
-    : "Daily Note";
-  document.getElementById("noteText").value =
-    monthData.dailyNotes[habitId][day] || "";
-  openModal("noteModal");
-}
-
-export function saveNoteModal() {
-  if (!noteModalState.habitId || !noteModalState.day) return;
-  const monthData = getCurrentMonthData();
-  const value = document.getElementById("noteText").value.trim();
-
-  if (!monthData.dailyNotes[noteModalState.habitId]) {
-    monthData.dailyNotes[noteModalState.habitId] = {};
-  }
-
-  if (value) {
-    monthData.dailyNotes[noteModalState.habitId][noteModalState.day] = value;
-  } else {
-    delete monthData.dailyNotes[noteModalState.habitId][noteModalState.day];
-    if (
-      Object.keys(monthData.dailyNotes[noteModalState.habitId]).length === 0
-    ) {
-      delete monthData.dailyNotes[noteModalState.habitId];
-    }
-  }
-
-  saveState();
-  closeModal("noteModal");
-  Object.assign(noteModalState, { habitId: null, day: null });
-  // Both surfaces show a "has note" marker, and only one of them is rendered at
-  // a time depending on the layout.
-  callRenderer("renderDailyHabitsGrid");
-  callRenderer("renderDayFocus");
-}
-
-export function saveMonthlyReview() {
-  const monthData = getCurrentMonthData();
-  monthData.monthlyReview = {
-    wins: document.getElementById("monthlyWins").value.trim(),
-    blockers: document.getElementById("monthlyBlockers").value.trim(),
-    focus: document.getElementById("monthlyFocus").value.trim(),
-  };
-  saveState();
-}
-
-export function renderMonthlyReview() {
-  const review = getCurrentMonthData().monthlyReview;
-  document.getElementById("monthlyWins").value = review.wins || "";
-  document.getElementById("monthlyBlockers").value = review.blockers || "";
-  document.getElementById("monthlyFocus").value = review.focus || "";
 }
 
 registerRenderer("openConfirm", openConfirm);
-registerRenderer("renderMonthlyReview", renderMonthlyReview);
-registerRenderer("openNoteModal", openNoteModal);
+registerRenderer("openHabitSheet", openHabitSheet);
+registerRenderer("closeHabitSheet", closeHabitSheet);
