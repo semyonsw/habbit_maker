@@ -1,8 +1,6 @@
 "use strict";
 
 export const STORAGE_KEY = "habitTracker_v1";
-export const SECURE_SETTINGS_KEY = "habitTracker_secure_settings_v1";
-export const API_KEY_CACHE_KEY = "habitTracker_summary_api_key_cache_v1";
 export const LOGS_STORAGE_KEY = "habitTracker_logs_v1";
 export const SIDEBAR_COLLAPSE_KEY = "habitTracker_sidebarCollapsed_v1";
 export const SCHEMA_VERSION = 5;
@@ -49,19 +47,6 @@ export const PDFJS_WORKER_URL = "vendor/pdfjs/pdf.worker.min.js";
 export const READER_DARK_ENABLED_KEY = "habitTracker_readerDarkEnabled_v1";
 export const READER_DARK_MODE_KEY = "habitTracker_readerDarkMode_v1";
 export const ANALYTICS_DISPLAY_MODE_KEY = "habitTracker_analyticsDisplayMode_v1";
-export const GEMINI_API_BASE_URL =
-  "https://generativelanguage.googleapis.com/v1beta";
-export const GEMINI_MODELS = [
-  "gemini-2.5-pro",
-  "gemini-2.5-flash",
-  "gemini-2.5-flash-lite",
-  "gemini-2.5-flash-image",
-  "gemini-2.5-pro-preview-tts",
-  "gemini-2.5-flash-preview-tts",
-  "gemini-flash-latest",
-];
-export const SUMMARY_MAX_CHARS_PER_CHUNK_DEFAULT = 12000;
-export const SUMMARY_MAX_PAGES_PER_RUN_DEFAULT = 120;
 export const MAX_LOG_RECORDS = 1000;
 
 export const APP_VERSION = "1.0.0";

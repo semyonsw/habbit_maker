@@ -40,7 +40,6 @@
     <title>Habit Maker | Local-First Habit Tracker</title>
     <!-- Self-hosted (offline) fonts, math styles, and charts. -->
     <link rel="stylesheet" href="vendor/fonts/fonts.css" />
-    <link rel="stylesheet" href="vendor/katex/katex.min.css" />
     <script defer src="vendor/chartjs/chart.umd.min.js"></script>
     <link rel="stylesheet" href="styles.css" />
     <link
@@ -413,106 +412,6 @@
                   No file uploaded yet.
                 </p>
                 <p class="books-help-text">Maximum PDF size: 70MB.</p>
-                <!-- <details> rather than a plain heading: this block is ~200px
-                     of optional configuration that would otherwise push the
-                     upload button off a phone screen. Every control keeps its
-                     id and stays in the DOM, so bindEvents() is unaffected. -->
-                <details class="books-ai-settings books-ai-details">
-                  <summary><h4>Summary AI Settings</h4></summary>
-                  <div class="form-group">
-                    <label for="summaryApiKeyInput">Gemini API Key</label>
-                    <input
-                      id="summaryApiKeyInput"
-                      type="password"
-                      placeholder="Paste your Gemini API key"
-                    />
-                    <p class="books-help-text" id="summaryApiKeySavedLabel">
-                      No API key saved yet.
-                    </p>
-                    <div class="books-ai-actions">
-                      <button
-                        class="btn-secondary"
-                        id="summaryApiKeyUnlockBtn"
-                        type="button"
-                      >
-                        Unlock Saved Key
-                      </button>
-                      <button
-                        class="btn-secondary"
-                        id="summaryApiKeyClearBtn"
-                        type="button"
-                      >
-                        Delete Saved Key
-                      </button>
-                    </div>
-                  </div>
-                  <div class="form-group">
-                    <label for="summaryModelInput">Gemini Model</label>
-                    <div class="model-picker" id="summaryModelPicker">
-                      <input
-                        id="summaryModelInput"
-                        type="text"
-                        placeholder="Search model: pro, flash, 3.1..."
-                        autocomplete="off"
-                        aria-autocomplete="list"
-                        aria-expanded="false"
-                        aria-controls="summaryModelDropdown"
-                      />
-                      <button
-                        class="model-picker-toggle"
-                        id="summaryModelToggle"
-                        type="button"
-                        aria-label="Toggle model list"
-                      >
-                        <span aria-hidden="true">▾</span>
-                      </button>
-                      <div
-                        class="model-picker-dropdown"
-                        id="summaryModelDropdown"
-                        role="listbox"
-                      ></div>
-                    </div>
-                  </div>
-                  <div class="form-group">
-                    <label for="summaryLanguageInput">Summary Language</label>
-                    <select
-                      id="summaryLanguageInput"
-                      aria-label="Summary language"
-                    >
-                      <option value="English" selected>English</option>
-                      <option value="Armenian">Armenian</option>
-                      <option value="Russian">Russian</option>
-                    </select>
-                  </div>
-                  <div class="form-group books-ai-toggle-row">
-                    <label for="summaryRememberApiKeyToggle"
-                      >Keep unlock cache on this device (7 days)</label
-                    >
-                    <input
-                      id="summaryRememberApiKeyToggle"
-                      type="checkbox"
-                      checked
-                      disabled
-                    />
-                  </div>
-                  <div class="form-group books-ai-toggle-row">
-                    <label for="summaryConsolidateToggle"
-                      >Consolidate previous + incremental summary</label
-                    >
-                    <input
-                      id="summaryConsolidateToggle"
-                      type="checkbox"
-                      checked
-                    />
-                  </div>
-                  <button
-                    class="btn-secondary"
-                    id="btnSaveSummarySettings"
-                    type="button"
-                  >
-                    Save Summary Settings
-                  </button>
-                </details>
               </div>
             </section>
 
@@ -1521,31 +1420,6 @@
         </div>
       </div>
     </div>
-    <div class="modal-overlay" id="summaryModal">
-      <div class="modal modal-lg">
-        <div class="modal-header">
-          <h3 id="summaryModalTitle">Bookmark Summary</h3>
-          <button class="modal-close" id="summaryModalClose">&times;</button>
-        </div>
-        <div class="modal-body">
-          <p class="summary-detection-text" id="summaryDetectionText"></p>
-          <p class="summary-run-status" id="summaryRunStatus"></p>
-          <div class="summary-content" id="summaryBody"></div>
-          <h4>Summary History</h4>
-          <ul class="summary-history-list" id="summaryHistoryList"></ul>
-        </div>
-        <div class="modal-footer summary-modal-footer">
-          <button class="btn-secondary" id="summaryModalCancel">Close</button>
-          <button class="btn-secondary" id="summaryCopyBtn">Copy</button>
-          <button class="btn-secondary" id="summaryRegenerateBtn">
-            Regenerate Latest Segment
-          </button>
-          <button class="btn-primary" id="summaryRebuildBtn">
-            Rebuild Full Summary
-          </button>
-        </div>
-      </div>
-    </div>
 
     <div class="modal-overlay" id="settingsModal">
       <div class="modal">
@@ -1762,9 +1636,6 @@
          through that, so an eager tag was 320KB of parse before first paint for
          a secondary surface. It stays in the service worker PRECACHE, so
          opening the reader offline still works. -->
-    <script src="vendor/marked/marked.min.js"></script>
-    <script src="vendor/katex/katex.min.js"></script>
-    <script src="vendor/katex/auto-render.min.js"></script>
     <script>
       // Boot-time error surface. These handlers must stay: the in-app logging
       // handlers only start after bindEvents(), so anything that fails during

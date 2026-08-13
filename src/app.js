@@ -4,7 +4,6 @@
 
 import {
   STORAGE_KEY,
-  SECURE_SETTINGS_KEY,
   LOGS_STORAGE_KEY,
   SIDEBAR_COLLAPSE_KEY,
   READER_DARK_ENABLED_KEY,
@@ -15,12 +14,6 @@ import {
   PDF_STORE_NAME,
 } from "./constants.js";
 import { loadLogs, appendLogEntry } from "./logging.js";
-import {
-  loadSecureSettings,
-  maybeMigrateLegacyApiKey,
-  tryUnlockOnStartup,
-  applyBookSummarySettingsToInputs,
-} from "./encryption.js";
 import { loadState } from "./persistence.js";
 import { loadAnalyticsPreferences, loadBookOpenMode } from "./preferences.js";
 import { initSidebarCollapse, initTopClock } from "./layout.js";
@@ -48,11 +41,6 @@ import {
   deleteHistoryEvent,
 } from "./modals.js";
 import { openReportAttachment } from "./render-report.js";
-import {
-  summarizeBookmark,
-  viewBookmarkSummary,
-  selectSummaryForModal,
-} from "./ai-summary.js";
 import {
   setGlobalLoaderMessage,
   hideGlobalLoader,
@@ -108,11 +96,6 @@ window.HabitApp = {
   // through the same in-app / phone-PDF-app choice as a bookmark.
   readBook(bookId) {
     openBookmarkTarget(bookId, 1, null);
-  },
-  summarizeBookmark,
-  viewBookmarkSummary,
-  selectSummary(bookId, bookmarkId, summaryId) {
-    selectSummaryForModal(bookId, bookmarkId, summaryId);
   },
   editReport(reportId) {
     openReportModal(reportId);
@@ -206,17 +189,15 @@ function collectLegacyPrefsBundle() {
 
 async function buildLegacyBundleFromBrowser() {
   const state = readJsonFromLocalStorage(STORAGE_KEY);
-  const secureSettings = readJsonFromLocalStorage(SECURE_SETTINGS_KEY);
   const logs = readJsonFromLocalStorage(LOGS_STORAGE_KEY);
   const prefs = collectLegacyPrefsBundle();
   const pdfs = await readAllPdfBlobsFromIndexedDB();
   const isEmpty =
     !state &&
-    !secureSettings &&
     !logs &&
     Object.keys(prefs).length === 0 &&
     pdfs.length === 0;
-  return { state, secureSettings, logs, prefs, pdfs, isEmpty };
+  return { state, logs, prefs, pdfs, isEmpty };
 }
 
 async function tryFetchBackupBundle() {
@@ -247,7 +228,6 @@ async function runLegacyMigration() {
       }
       bundle = {
         state: backup,
-        secureSettings: null,
         logs: null,
         prefs: {},
         pdfs: [],
@@ -263,7 +243,6 @@ async function runLegacyMigration() {
 
   const payload = {
     state: bundle.state,
-    secureSettings: bundle.secureSettings,
     logs: bundle.logs,
     prefs: bundle.prefs,
   };
@@ -380,7 +359,6 @@ async function init() {
     }
 
     await loadLogs();
-    await loadSecureSettings();
     await loadState();
     await loadAnalyticsPreferences();
     await loadBookOpenMode();
@@ -391,15 +369,11 @@ async function init() {
     bindSheetGestures((id) => closeModal(id));
     initKeyboardInset();
     await initSidebarCollapse();
-    applyBookSummarySettingsToInputs();
 
     const inReaderMode = await initReaderMode();
     if (inReaderMode) {
       return;
     }
-
-    await maybeMigrateLegacyApiKey();
-    await tryUnlockOnStartup();
 
     initTopClock();
 

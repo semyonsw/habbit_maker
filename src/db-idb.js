@@ -28,15 +28,7 @@ const PUT_STATE_DEBOUNCE_MS = 150;
 // kv key conventions. Anything starting with "__" is reserved (never returned
 // by getPrefs / never written by patchPrefs), mirroring the old server rules.
 const STATE_KEY = "__state__";
-const SECURE_PREFIX = "__secure__:";
 const META_PREFIX = "__meta__:";
-const SECURE_FIELDS = [
-  "keyCiphertext",
-  "saltBase64",
-  "ivBase64",
-  "kdfIterations",
-  "keyUpdatedAt",
-];
 const PDF_FILE_ID_RE = /^[A-Za-z0-9_\-]{1,128}$/;
 
 // ---------------------------------------------------------------------------
@@ -154,21 +146,6 @@ export async function importLegacy(bundle) {
     }
   }
 
-  const secure =
-    bundle && typeof bundle.secureSettings === "object" && bundle.secureSettings
-      ? bundle.secureSettings
-      : null;
-  if (secure) {
-    for (const f of SECURE_FIELDS) {
-      if (f in secure) {
-        kv.put({
-          key: SECURE_PREFIX + f,
-          value: secure[f] == null ? null : secure[f],
-        });
-      }
-    }
-  }
-
   const logs = Array.isArray(bundle && bundle.logs) ? bundle.logs : [];
   for (const entry of logs.slice(-MAX_LOG_RECORDS)) {
     if (entry && typeof entry === "object" && entry.id != null) {
@@ -256,38 +233,6 @@ if (typeof window !== "undefined") {
   window.addEventListener("beforeunload", flushOnHide);
 }
 
-// ---------------------------------------------------------------------------
-// Secure settings (encrypted API-key material)
-// ---------------------------------------------------------------------------
-
-export async function getSecureSettings() {
-  const out = {};
-  for (const f of SECURE_FIELDS) {
-    const v = await kvGet(SECURE_PREFIX + f);
-    if (v !== undefined && v !== null) out[f] = v;
-  }
-  if (out.kdfIterations !== undefined && out.kdfIterations !== null) {
-    const n = Number(out.kdfIterations);
-    if (!Number.isNaN(n)) out.kdfIterations = n;
-  }
-  return out;
-}
-
-export async function putSecureSettings(blob) {
-  const b = blob || {};
-  const db = await openDB();
-  const tx = db.transaction(IDB_KV_STORE, "readwrite");
-  const store = tx.objectStore(IDB_KV_STORE);
-  for (const f of SECURE_FIELDS) store.delete(SECURE_PREFIX + f);
-  for (const f of SECURE_FIELDS) {
-    if (f in b) {
-      const v = b[f];
-      store.put({ key: SECURE_PREFIX + f, value: v === undefined ? null : v });
-    }
-  }
-  await txDone(tx);
-  return { ok: true };
-}
 
 // ---------------------------------------------------------------------------
 // Preferences (plain key-value; "__"-prefixed keys are reserved)

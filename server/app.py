@@ -25,7 +25,6 @@ MAX_PDF_BYTES = int(
 )  # 80 MiB; client cap is 70 MiB
 MAX_BOOKMARK_HISTORY = 200
 MAX_LOG_RECORDS = 1000
-MIN_KDF_ITERATIONS = 200_000  # OWASP-aligned floor for PBKDF2-SHA256.
 CHUNK = 64 * 1024
 PDF_FILE_ID_RE = re.compile(r"^[A-Za-z0-9_\-]{1,128}$")
 
@@ -119,7 +118,6 @@ def put_state_blob(conn, state):
 
 def import_legacy(conn, payload):
     state = payload.get("state") if isinstance(payload, dict) else None
-    secure_settings = payload.get("secureSettings") if isinstance(payload, dict) else None
     logs = payload.get("logs") if isinstance(payload, dict) else None
     prefs = payload.get("prefs") if isinstance(payload, dict) else None
 
@@ -129,7 +127,7 @@ def import_legacy(conn, payload):
         for table in (
             "summaries", "bookmark_history", "bookmarks", "books",
             "monthly_review", "daily_notes", "daily_completions",
-            "habits_daily", "categories", "app_logs", "prefs", "secure_settings",
+            "habits_daily", "categories", "app_logs", "prefs",
         ):
             conn.execute(f"DELETE FROM {table}")
         # Re-seed schema_meta default
@@ -138,14 +136,6 @@ def import_legacy(conn, payload):
         if isinstance(state, dict):
             put_state_blob(conn, state)
             _decompose_state_into_tables(conn, state)
-
-        if isinstance(secure_settings, dict):
-            for k in ("keyCiphertext", "saltBase64", "ivBase64", "kdfIterations", "keyUpdatedAt"):
-                v = secure_settings.get(k)
-                conn.execute(
-                    "INSERT INTO secure_settings(key, value) VALUES(?, ?)",
-                    (k, None if v is None else str(v)),
-                )
 
         if isinstance(prefs, dict):
             for k, v in prefs.items():
@@ -500,8 +490,6 @@ class Handler(BaseHTTPRequestHandler):
             return self._api_migration_status()
         if path == "/api/state":
             return self._api_get_state()
-        if path == "/api/secure-settings":
-            return self._api_get_secure_settings()
         if path == "/api/logs":
             return self._api_get_logs()
         if path == "/api/prefs":
@@ -524,8 +512,6 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         if path == "/api/state":
             return self._api_put_state()
-        if path == "/api/secure-settings":
-            return self._api_put_secure_settings()
         if path == "/api/prefs":
             return self._api_put_prefs()
         return self._send_json(HTTPStatus.NOT_FOUND, {"error": "not_found"})
@@ -590,57 +576,6 @@ class Handler(BaseHTTPRequestHandler):
                 conn.execute("BEGIN IMMEDIATE")
                 put_state_blob(conn, body)
                 _decompose_state_into_tables(conn, body)
-                conn.execute("COMMIT")
-            finally:
-                conn.close()
-        self._send_json(HTTPStatus.OK, {"ok": True})
-
-    def _api_get_secure_settings(self):
-        with DB_LOCK:
-            conn = get_conn()
-            try:
-                rows = conn.execute(
-                    "SELECT key, value FROM secure_settings").fetchall()
-            finally:
-                conn.close()
-        out = {r["key"]: r["value"] for r in rows}
-        # Coerce kdfIterations to int when present (matches client expectation).
-        if out.get("kdfIterations") is not None:
-            try:
-                out["kdfIterations"] = int(out["kdfIterations"])
-            except (TypeError, ValueError):
-                pass
-        self._send_json(HTTPStatus.OK, out)
-
-    def _api_put_secure_settings(self):
-        body = self._read_json_body(max_bytes=256 * 1024)
-        if not isinstance(body, dict):
-            return self._send_json(HTTPStatus.BAD_REQUEST, {"error": "expected_object"})
-        if "kdfIterations" in body and body["kdfIterations"] is not None:
-            try:
-                iterations = int(body["kdfIterations"])
-            except (TypeError, ValueError):
-                return self._send_json(
-                    HTTPStatus.BAD_REQUEST, {"error": "invalid_kdf_iterations"}
-                )
-            if iterations < MIN_KDF_ITERATIONS:
-                return self._send_json(
-                    HTTPStatus.BAD_REQUEST, {"error": "kdf_iterations_too_low"}
-                )
-            body["kdfIterations"] = iterations
-        with DB_LOCK:
-            conn = get_conn()
-            try:
-                conn.execute("BEGIN IMMEDIATE")
-                conn.execute("DELETE FROM secure_settings")
-                for k in ("keyCiphertext", "saltBase64", "ivBase64",
-                          "kdfIterations", "keyUpdatedAt"):
-                    if k in body:
-                        v = body[k]
-                        conn.execute(
-                            "INSERT INTO secure_settings(key, value) VALUES(?, ?)",
-                            (k, None if v is None else str(v)),
-                        )
                 conn.execute("COMMIT")
             finally:
                 conn.close()

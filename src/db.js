@@ -51,8 +51,6 @@ export const importLegacy = (...a) => impl.importLegacy(...a);
 export const getState = (...a) => impl.getState(...a);
 export const putState = (...a) => impl.putState(...a);
 export const flushPendingState = (...a) => impl.flushPendingState(...a);
-export const getSecureSettings = (...a) => impl.getSecureSettings(...a);
-export const putSecureSettings = (...a) => impl.putSecureSettings(...a);
 export const getPrefs = (...a) => impl.getPrefs(...a);
 export const patchPrefs = (...a) => impl.patchPrefs(...a);
 export const getLogs = (...a) => impl.getLogs(...a);

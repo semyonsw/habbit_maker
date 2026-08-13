@@ -38,12 +38,6 @@ import {
 } from "./books.js";
 import { exportData, importData, setBackupStatus } from "./data-io.js";
 import { bindLogsControls } from "./render-logs.js";
-import { bindSummaryModelPicker } from "./model-picker.js";
-import {
-  saveBookSummarySettingsFromInputs,
-  unlockStoredApiKeyInteractive,
-  wipeStoredApiKey,
-} from "./encryption.js";
 import {
   updateHabitScheduleTypeUI,
   renderSequenceCheckboxes,
@@ -56,12 +50,6 @@ import {
   getDefaultState,
 } from "./persistence.js";
 import { callRenderer } from "./render-registry.js";
-import {
-  closeSummaryModal,
-  regenerateLatestSummarySegment,
-  rebuildFullSummary,
-  copySelectedSummaryToClipboard,
-} from "./ai-summary.js";
 import { appendLogEntry } from "./logging.js";
 import {
   bindUiAppearanceControls,
@@ -188,73 +176,6 @@ export function bindEvents() {
     .getElementById("historyEventModalSave")
     .addEventListener("click", saveHistoryEventModal);
 
-  document
-    .getElementById("summaryModalClose")
-    .addEventListener("click", closeSummaryModal);
-  document
-    .getElementById("summaryModalCancel")
-    .addEventListener("click", closeSummaryModal);
-  document
-    .getElementById("summaryRegenerateBtn")
-    .addEventListener("click", regenerateLatestSummarySegment);
-  document
-    .getElementById("summaryRebuildBtn")
-    .addEventListener("click", rebuildFullSummary);
-  document.getElementById("summaryCopyBtn").addEventListener("click", () => {
-    copySelectedSummaryToClipboard().catch((err) => {
-      appendLogEntry({
-        level: "error",
-        component: "clipboard",
-        operation: "summaryCopyBtn.click",
-        message: "Unhandled clipboard error in copy action.",
-        error: err,
-      });
-      alert("Failed to copy summary.");
-    });
-  });
-
-  document
-    .getElementById("btnSaveSummarySettings")
-    .addEventListener("click", () => {
-      saveBookSummarySettingsFromInputs().catch((error) => {
-        appendLogEntry({
-          level: "error",
-          component: "secure-settings",
-          operation: "btnSaveSummarySettings.click",
-          message: "Unhandled settings save error.",
-          error,
-        });
-        alert("Failed to save summary settings.");
-      });
-    });
-
-  const unlockBtn = document.getElementById("summaryApiKeyUnlockBtn");
-  if (unlockBtn) {
-    unlockBtn.addEventListener("click", () => {
-      unlockStoredApiKeyInteractive().catch((error) => {
-        appendLogEntry({
-          level: "error",
-          component: "secure-settings",
-          operation: "summaryApiKeyUnlockBtn.click",
-          message: "Unhandled unlock error.",
-          error,
-        });
-      });
-    });
-  }
-
-  const clearBtn = document.getElementById("summaryApiKeyClearBtn");
-  if (clearBtn) {
-    clearBtn.addEventListener("click", () => {
-      const ok = window.confirm(
-        "Delete the saved encrypted API key from this device?",
-      );
-      if (!ok) return;
-      wipeStoredApiKey();
-    });
-  }
-
-  bindSummaryModelPicker();
   bindLogsControls();
 
   document

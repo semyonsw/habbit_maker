@@ -2093,142 +2093,6 @@ body.is-modal-open-fixed {
   color: #fca5a5;
 }
 
-.books-ai-settings {
-  margin-top: 16px;
-  border-top: 1px solid var(--gray-100);
-  padding-top: 14px;
-}
-
-.books-ai-settings h4 {
-  font-family: var(--font-display);
-  color: var(--gray-900);
-  margin-bottom: 10px;
-}
-
-.books-ai-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-top: 8px;
-}
-
-.books-ai-actions .btn-secondary {
-  padding: 7px 10px;
-  font-size: 0.8rem;
-}
-
-.model-picker {
-  position: relative;
-  z-index: 90;
-}
-
-.model-picker input {
-  padding-right: 40px;
-}
-
-.model-picker-toggle {
-  position: absolute;
-  top: 50%;
-  right: 8px;
-  transform: translateY(-50%);
-  border: none;
-  background: transparent;
-  color: var(--gray-500);
-  width: 26px;
-  height: 26px;
-  border-radius: 999px;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition: all var(--transition);
-}
-
-.model-picker-toggle:hover {
-  background: rgba(88, 165, 209, 0.18);
-  color: var(--gray-100);
-}
-
-.model-picker.open .model-picker-toggle {
-  transform: translateY(-50%) rotate(180deg);
-}
-
-.model-picker-dropdown {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: calc(100% + 6px);
-  z-index: 220;
-  max-height: 250px;
-  overflow-y: scroll;
-  overflow-x: hidden;
-  scrollbar-gutter: stable;
-  overscroll-behavior: contain;
-  touch-action: pan-y;
-  display: none;
-  border-radius: var(--radius-md);
-  border: 1px solid rgba(88, 165, 209, 0.35);
-  background: #08152b;
-  box-shadow:
-    0 14px 30px rgba(2, 8, 23, 0.58),
-    inset 0 1px 0 rgba(148, 163, 184, 0.15);
-  padding: 6px;
-}
-
-.model-picker.open .model-picker-dropdown {
-  display: block;
-}
-
-.model-picker-dropdown::-webkit-scrollbar {
-  width: 8px;
-}
-
-.model-picker-dropdown::-webkit-scrollbar-thumb {
-  background: rgba(88, 165, 209, 0.45);
-  border-radius: 999px;
-}
-
-.model-picker-option {
-  width: 100%;
-  text-align: left;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  background: transparent;
-  color: #ffffff;
-  text-shadow: 0 0 0 transparent;
-  font-weight: 600;
-  font-size: 0.96rem;
-  letter-spacing: 0.1px;
-  padding: 10px 12px;
-  cursor: pointer;
-  transition: all var(--transition);
-}
-
-.model-picker-option:hover,
-.model-picker-option.active {
-  background: rgba(88, 165, 209, 0.24);
-  border-color: rgba(88, 165, 209, 0.45);
-  transform: translateX(1px);
-}
-
-.model-picker-empty {
-  padding: 10px 12px;
-  color: var(--gray-400);
-  font-size: 0.84rem;
-}
-
-.books-ai-toggle-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.books-ai-toggle-row input[type="checkbox"] {
-  width: 16px;
-  height: 16px;
-}
-
 .books-list,
 #bookmarksPanel {
   display: flex;
@@ -2368,17 +2232,6 @@ body.is-modal-open-fixed {
 .bookmark-updated {
   color: var(--gray-500);
   font-size: 0.78rem;
-}
-
-.bookmark-summary-status {
-  margin-top: 6px;
-  display: inline-block;
-  font-size: 0.76rem;
-  color: var(--gray-700);
-  border: 1px solid rgba(88, 165, 209, 0.35);
-  border-radius: 999px;
-  padding: 4px 8px;
-  background: rgba(88, 165, 209, 0.1);
 }
 
 .logs-card {
@@ -2898,43 +2751,9 @@ body.is-modal-open-fixed {
   box-shadow: 0 6px 12px rgba(2, 8, 23, 0.2);
 }
 
-.bookmark-summarize-btn.is-loading {
-  background: linear-gradient(
-    120deg,
-    rgba(88, 165, 209, 0.24),
-    rgba(31, 74, 119, 0.36)
-  );
-  border-color: rgba(88, 165, 209, 0.7);
-  color: var(--gray-900);
-  cursor: progress;
-  box-shadow: 0 0 0 1px rgba(88, 165, 209, 0.28);
-}
-
-.bookmark-summarize-btn.is-loading:hover {
-  border-color: rgba(88, 165, 209, 0.7);
-  color: var(--gray-900);
-}
-
-.bookmark-summarize-btn.is-loading::after {
-  content: "";
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  border: 2px solid currentColor;
-  border-top-color: transparent;
-  animation: summaryBtnSpin 0.75s linear infinite;
-}
-
 @keyframes summaryBtnSpin {
   to {
     transform: rotate(360deg);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .bookmark-summarize-btn.is-loading::after {
-    animation: none;
-    opacity: 0.72;
   }
 }
 
@@ -2966,8 +2785,7 @@ body.is-modal-open-fixed {
 .btn-export:active,
 .btn-import:active,
 .manage-btn:active,
-.bookmark-history-btn:active,
-.summary-history-btn:active {
+.bookmark-history-btn:active {
   transform: translateY(0) scale(0.98);
 }
 
@@ -2976,8 +2794,7 @@ body.is-modal-open-fixed {
 .btn-danger:focus-visible,
 .btn-export:focus-visible,
 .btn-import:focus-visible,
-.bookmark-history-btn:focus-visible,
-.summary-history-btn:focus-visible {
+.bookmark-history-btn:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
 }
@@ -3217,205 +3034,16 @@ body.is-modal-open-fixed {
   font-size: 0.9rem;
 }
 
-.summary-modal-footer {
-  flex-wrap: wrap;
-}
-
-.summary-detection-text {
-  margin-bottom: 8px;
-  color: var(--gray-700);
-  font-size: 0.88rem;
-}
-
-.summary-run-status {
-  margin-bottom: 12px;
-  color: var(--gray-600);
-  font-size: 0.84rem;
-}
-
-.summary-content {
-  border: 1px solid var(--gray-100);
-  border-radius: var(--radius-md);
-  padding: 12px;
-  min-height: 180px;
-  max-height: 360px;
-  overflow: auto;
-  background: rgba(15, 29, 62, 0.32);
-  color: var(--gray-800);
-  white-space: normal;
-  line-height: 1.45;
-  margin-bottom: 14px;
-}
-
-.summary-loading-state {
-  min-height: 150px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  gap: 10px;
-  padding: 14px;
-}
-
-.summary-loading-spinner {
-  width: 34px;
-  height: 34px;
-  border-radius: 999px;
-  border: 3px solid rgba(88, 165, 209, 0.4);
-  border-top-color: rgba(88, 165, 209, 0.95);
-  animation: summaryBodySpin 0.85s linear infinite;
-}
-
-.summary-loading-title {
-  margin: 0;
-  color: var(--gray-900);
-  font-weight: 600;
-  font-size: 1rem;
-}
-
-.summary-loading-subtitle {
-  margin: 0;
-  color: var(--gray-600);
-  font-size: 0.84rem;
-}
-
 @keyframes summaryBodySpin {
   to {
     transform: rotate(360deg);
   }
 }
 
-.summary-content h2,
-.summary-content h3,
-.summary-content h4 {
-  margin: 0 0 10px;
-  color: var(--gray-900);
-  line-height: 1.25;
-}
-
-.summary-content h2 {
-  font-size: 1.08rem;
-  letter-spacing: 0.3px;
-}
-
-.summary-content h3 {
-  font-size: 1rem;
-}
-
-.summary-content h4 {
-  font-size: 0.93rem;
-  color: var(--gray-700);
-}
-
-.summary-content p {
-  margin: 0 0 10px;
-}
-
-.summary-content p:last-child {
-  margin-bottom: 0;
-}
-
-.summary-content ul {
-  margin: 0 0 10px;
-  padding-left: 1.15rem;
-}
-
-.summary-content ul ul {
-  margin-top: 6px;
-  margin-bottom: 6px;
-}
-
-.summary-content li {
-  margin: 4px 0;
-  color: var(--gray-800);
-}
-
-.summary-content strong {
-  color: var(--gray-900);
-}
-
-.summary-content em {
-  color: var(--gray-700);
-}
-
-.summary-content code {
-  display: inline-block;
-  font-family: "JetBrains Mono", "Consolas", monospace;
-  font-size: 0.8rem;
-  padding: 1px 6px;
-  border-radius: 999px;
-  border: 1px solid rgba(88, 165, 209, 0.35);
-  background: rgba(17, 28, 51, 0.8);
-  color: var(--gray-900);
-}
-
-.summary-content .katex {
-  color: var(--gray-900);
-  font-size: 1.02em;
-}
-
-.summary-content .katex-display {
-  margin: 0.75rem 0;
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding-bottom: 2px;
-}
-
-.summary-content .katex-display > .katex {
-  padding: 0.2rem 0;
-}
-
-.summary-history-list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.summary-history-item {
-  font-size: 0.83rem;
-  color: var(--gray-600);
-}
-
-.summary-history-btn {
-  width: 100%;
-  text-align: left;
-  border: 1px solid var(--gray-100);
-  background: var(--purple-50);
-  color: var(--gray-700);
-  border-radius: var(--radius-sm);
-  padding: 8px 10px;
-  cursor: pointer;
-  transition: all var(--transition);
-}
-
-.summary-history-item.running .summary-history-btn,
-.summary-history-btn.running {
-  cursor: progress;
-  border-color: rgba(88, 165, 209, 0.6);
-  background: rgba(88, 165, 209, 0.14);
-  color: var(--gray-900);
-}
-
-.summary-history-item.active .summary-history-btn,
-.summary-history-btn:hover {
-  border-color: var(--purple-300);
-  background: var(--purple-100);
-  color: var(--gray-900);
-}
-
 @media (prefers-reduced-motion: reduce) {
   .global-loading-spinner {
     animation: none;
     opacity: 0.72;
-  }
-
-  .summary-loading-spinner {
-    animation: none;
-    opacity: 0.7;
   }
 
   .view.active,
@@ -3925,12 +3553,12 @@ html[data-ui-mode="mobile"] .sidebar.open ~ .mobile-menu-toggle {
   .logs-toolbar select,
   .reader-controls input,
   .reader-dark-mode,
-  .model-picker-input,
   .settings-section input,
   .settings-section select,
   .settings-section textarea {
     font-size: 16px;
   }
+
 
   .form-group input[type="text"],
   .form-group input[type="number"],
@@ -3956,15 +3584,12 @@ html[data-ui-mode="mobile"] .sidebar.open ~ .mobile-menu-toggle {
   .modal-close,
   .manage-btn,
   .bookmark-history-btn,
-  .summary-history-btn,
   .month-nav,
   .nav-tab,
   .bottom-nav-btn,
   .undo-toast-btn,
   .undo-toast-close,
   .habit-action-item,
-  .model-picker-toggle,
-  .model-picker-option,
   .reader-history-picker-item,
   .schedule-day-option {
     min-height: 44px;
@@ -4120,11 +3745,6 @@ html[data-ui-mode="mobile"] .sidebar.open ~ .mobile-menu-toggle {
 
   .habit-mountains-card h3 {
     font-size: 1.2rem;
-  }
-
-  .bookmark-summarize-btn.is-loading::after {
-    width: 13px;
-    height: 13px;
   }
 
   .undo-toast {
@@ -5075,9 +4695,6 @@ html[data-ui-mode="mobile"] .bookmark-history {
   overflow-y: auto;
   overscroll-behavior: contain;
 }
-html[data-ui-mode="mobile"] .books-ai-actions > button {
-  width: 100%;
-}
 
 /* ---- Analytics ---- */
 html[data-ui-mode="mobile"] .chart-frame {
@@ -5302,19 +4919,6 @@ html[data-ui-mode="mobile"] .modal-footer > button {
 /* Long textareas must not eat the sheet. */
 html[data-ui-mode="mobile"] .modal-body textarea {
   max-height: 34vh;
-}
-
-/* #summaryModal has four footer actions -- 2x2 beats four stacked rows. */
-html[data-ui-mode="mobile"] .summary-modal-footer {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-html[data-ui-mode="mobile"] .summary-modal-footer > button {
-  width: 100%;
-}
-html[data-ui-mode="mobile"] .summary-content {
-  max-height: 46vh;
 }
 
 /* Habit modal schedule pickers. @media (pointer: coarse) already hides the

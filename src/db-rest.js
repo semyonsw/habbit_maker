@@ -107,19 +107,6 @@ if (typeof window !== "undefined") {
   });
 }
 
-export async function getSecureSettings() {
-  const data = await jsonFetch(`${API_BASE}/secure-settings`);
-  return data && typeof data === "object" ? data : {};
-}
-
-export async function putSecureSettings(blob) {
-  return jsonFetch(`${API_BASE}/secure-settings`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(blob || {}),
-  });
-}
-
 export async function getPrefs() {
   const data = await jsonFetch(`${API_BASE}/prefs`);
   return data && typeof data === "object" ? data : {};

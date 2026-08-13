@@ -21,12 +21,6 @@ import {
   formatDateKey,
 } from "./utils.js?v=2";
 import { appendLogEntry } from "./logging.js";
-import {
-  hasStoredEncryptedApiKey,
-  ensureModelAllowed,
-  ensureSummaryLanguageAllowed,
-  _bindSaveState,
-} from "./encryption.js";
 import * as db from "./db.js";
 
 export function getDefaultMonthData() {
@@ -65,23 +59,6 @@ export function ensureBooksShape(input) {
   if (typeof input.books.activeBookId !== "string") {
     input.books.activeBookId = null;
   }
-  if (!isPlainObject(input.books.ai)) {
-    input.books.ai = {};
-  }
-  input.books.ai.apiKey = "";
-  input.books.ai.apiKeyMode = "encrypted";
-  input.books.ai.apiKeySaved = hasStoredEncryptedApiKey();
-  input.books.ai.apiKeyLastUpdated = String(
-    input.books.ai.apiKeyLastUpdated || "",
-  );
-  input.books.ai.model = ensureModelAllowed(input.books.ai.model);
-  input.books.ai.summaryLanguage = ensureSummaryLanguageAllowed(
-    input.books.ai.summaryLanguage,
-  );
-  delete input.books.ai.chunkChars;
-  delete input.books.ai.maxPagesPerRun;
-  input.books.ai.consolidateMode =
-    input.books.ai.consolidateMode === false ? false : true;
 
   input.books.items = input.books.items
     .filter((book) => isPlainObject(book) && typeof book.bookId === "string")
@@ -502,9 +479,6 @@ export function saveState() {
     });
   });
 }
-
-// Bind saveState to encryption module to break circular dependency
-_bindSaveState(saveState);
 
 export function getCategoryById(categoryId) {
   return state.categories.find((c) => c.id === categoryId) || null;

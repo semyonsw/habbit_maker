@@ -12,8 +12,8 @@
 const CACHE_VERSION = "v9";
 const CACHE_NAME = `habit-shell-${CACHE_VERSION}`;
 
-// Core shell precached on install. The woff2 font binaries (Inter / Playfair /
-// KaTeX) are intentionally NOT listed here — they are runtime-cached on first
+// Core shell precached on install. The woff2 font binaries are intentionally
+// NOT listed here — they are runtime-cached on first
 // load by the fetch handler below, which keeps install fast and resilient.
 const PRECACHE = [
   "./",
@@ -25,7 +25,6 @@ const PRECACHE = [
   "icons/icon-maskable-192.png",
   "icons/icon-maskable-512.png",
   // ES modules
-  "src/ai-summary.js",
   "src/app.js",
   "src/books.js",
   "src/constants.js",
@@ -33,7 +32,6 @@ const PRECACHE = [
   "src/db.js",
   "src/db-rest.js",
   "src/db-idb.js",
-  "src/encryption.js",
   "src/events.js",
   "src/habits.js",
   "src/idb.js",
@@ -42,7 +40,6 @@ const PRECACHE = [
   "src/logging.js",
   "src/modals.js",
   "src/native.js",
-  "src/model-picker.js",
   "src/pdf-reader.js",
   "src/persistence.js",
   "src/preferences.js",
@@ -62,10 +59,6 @@ const PRECACHE = [
   "vendor/pdfjs/pdf.min.js",
   "vendor/pdfjs/pdf.worker.min.js",
   "vendor/chartjs/chart.umd.min.js",
-  "vendor/marked/marked.min.js",
-  "vendor/katex/katex.min.js",
-  "vendor/katex/auto-render.min.js",
-  "vendor/katex/katex.min.css",
   "vendor/fonts/fonts.css",
 ];
 

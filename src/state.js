@@ -52,16 +52,6 @@ export const bookOpenModalState = {
   page: 1,
   bookmarkId: null,
 };
-export const summaryModalState = {
-  bookId: null,
-  bookmarkId: null,
-  selectedSummaryId: null,
-  statusText: "",
-  detectionText: "",
-  externalSummary: null,
-  isRunning: false,
-  pendingRun: null,
-};
 
 export let idbPromise = null;
 export function setIdbPromise(p) {
@@ -80,29 +70,10 @@ export const linkedHoverState = {
   source: null,
 };
 
-export const secureSettings = {
-  keyCiphertext: null,
-  saltBase64: null,
-  ivBase64: null,
-  kdfIterations: 200000,
-  keyUpdatedAt: null,
-};
-
-export const runtimeSecrets = {
-  apiKey: "",
-  unlockedAt: null,
-};
-
 export let appLogs = [];
 export function setAppLogs(logs) {
   appLogs = logs;
 }
-
-export const summaryModelPickerState = {
-  isOpen: false,
-  activeIndex: -1,
-  filtered: [],
-};
 
 export const liveLogFileState = {
   enabled: false,

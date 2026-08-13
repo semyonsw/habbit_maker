@@ -15,10 +15,7 @@ import {
   refreshBookBlobStatus,
 } from "./books.js";
 import {
-  getBookmarkLastSummarizedPage,
-  getLatestBookmarkSummary,
 } from "./books.js";
-import { applyBookSummarySettingsToInputs } from "./encryption.js";
 import { syncBookOpenModeControls } from "./preferences.js";
 import { registerRenderer } from "./render-registry.js";
 
@@ -168,7 +165,7 @@ export function renderBookmarksPanel() {
     return;
   }
 
-  // The bookmarks themselves stay usable (editing, summaries) without the PDF;
+  // The bookmarks themselves stay usable (editing) without the PDF;
   // only opening them needs the file, so this is a banner rather than a block.
   const missingFileBanner = booksBlobStatus[book.bookId]
     ? ""
@@ -181,11 +178,6 @@ export function renderBookmarksPanel() {
 
   const bookmarksHtml = book.bookmarks
     .map((bm) => {
-      const latestSummary = getLatestBookmarkSummary(bm);
-      const lastSummarizedPage = getBookmarkLastSummarizedPage(bm);
-      const summaryStatus = latestSummary
-        ? `Latest summary: pages ${latestSummary.startPage}-${latestSummary.endPage}`
-        : "No summaries yet";
       const historyHtml = (Array.isArray(bm.history) ? bm.history : [])
         .slice(0, 8)
         .map(
@@ -194,7 +186,7 @@ export function renderBookmarksPanel() {
         )
         .join("");
 
-      return `<article class='bookmark-item'><div class='bookmark-main'><h4>${sanitize(bm.label)}</h4><p>PDF page ${bm.pdfPage} · Real page ${formatRealBookPage(bm.realPage)}</p><p>${sanitize(bm.note || "No note")}</p><p class='bookmark-updated'>Updated ${sanitize(formatIsoForDisplay(bm.updatedAt))}</p><p class='bookmark-summary-status'>${sanitize(summaryStatus)}${lastSummarizedPage ? ` · summarized through page ${lastSummarizedPage}` : ""}</p></div><div class='bookmark-actions'><button class='btn-primary' type='button' onclick="HabitApp.openBookmark('${book.bookId}', ${bm.pdfPage}, '${bm.bookmarkId}')">Open at Bookmark</button><button class='btn-secondary bookmark-summarize-btn' type='button' data-summary-book-id='${sanitize(book.bookId)}' data-summary-bookmark-id='${sanitize(bm.bookmarkId)}' onclick="HabitApp.summarizeBookmark('${book.bookId}', '${bm.bookmarkId}')">Summarize up to Bookmark</button><button class='btn-secondary' type='button' onclick="HabitApp.viewBookmarkSummary('${book.bookId}', '${bm.bookmarkId}')">View Summaries</button><button class='btn-secondary' type='button' onclick="HabitApp.editBookmark('${book.bookId}', '${bm.bookmarkId}')">Edit</button><button class='btn-danger' type='button' onclick="HabitApp.deleteBookmark('${book.bookId}', '${bm.bookmarkId}')">Delete</button></div><ul class='bookmark-history'>${historyHtml || "<li>No history yet.</li>"}</ul></article>`;
+      return `<article class='bookmark-item'><div class='bookmark-main'><h4>${sanitize(bm.label)}</h4><p>PDF page ${bm.pdfPage} · Real page ${formatRealBookPage(bm.realPage)}</p><p>${sanitize(bm.note || "No note")}</p><p class='bookmark-updated'>Updated ${sanitize(formatIsoForDisplay(bm.updatedAt))}</p></div><div class='bookmark-actions'><button class='btn-primary' type='button' onclick="HabitApp.openBookmark('${book.bookId}', ${bm.pdfPage}, '${bm.bookmarkId}')">Open at Bookmark</button><button class='btn-secondary' type='button' onclick="HabitApp.editBookmark('${book.bookId}', '${bm.bookmarkId}')">Edit</button><button class='btn-danger' type='button' onclick="HabitApp.deleteBookmark('${book.bookId}', '${bm.bookmarkId}')">Delete</button></div><ul class='bookmark-history'>${historyHtml || "<li>No history yet.</li>"}</ul></article>`;
     })
     .join("");
 
@@ -205,7 +197,6 @@ export async function renderBooksView() {
   await refreshBookBlobStatus();
   await renderBooksList();
   renderBookmarksPanel();
-  applyBookSummarySettingsToInputs();
   syncBookOpenModeControls();
 }
 
