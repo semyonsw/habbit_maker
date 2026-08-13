@@ -1,7 +1,7 @@
 {
   "name": "habbit_maker",
   "version": "1.0.0",
-  "description": "Local-first habit tracker and PDF reader with optional AI summaries.",
+  "description": "Local-first habit tracker.",
   "scripts": {
     "lint": "eslint src/**/*.js",
     "lint:fix": "eslint src/**/*.js --fix",
@@ -15,7 +15,6 @@
   },
   "keywords": [
     "habit-tracker",
-    "pdf-reader",
     "local-first",
     "sqlite",
     "vanilla-js"

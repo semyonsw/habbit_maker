@@ -1,7 +1,7 @@
 // Assemble the Capacitor web payload into www/.
 //
 // The web app has no build step -- the repo root IS the served site. But the
-// root also holds node_modules/, .git/, server/, data.db, books/*.pdf and the
+// root also holds node_modules/, .git/, server/, data.db and the
 // android/ project itself, and Capacitor copies `webDir` wholesale into the
 // APK's assets. So we stage an explicit allow-list instead of pointing webDir
 // at ".".

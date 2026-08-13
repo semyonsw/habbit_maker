@@ -22,13 +22,17 @@ habit-tracker-backup-*.json
 .env
 .env.*
 
-# SQLite database and PDF storage
+# SQLite database
 data.db
 data.db-journal
 data.db-wal
 data.db-shm
-books/*.pdf
-books/*.tmp
+
+# Leftover blob storage from the removed books/reports features. The
+# directories are no longer created or used, but an existing install may still
+# have files in them -- never commit those.
+books/
+files/
 
 # Capacitor / Android packaging
 node_modules/
