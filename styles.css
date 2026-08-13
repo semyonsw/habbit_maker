@@ -2453,137 +2453,10 @@ body.is-modal-open-fixed {
   color: #fecaca;
 }
 
-.reader-mode {
-  min-height: 100vh;
-  min-height: 100dvh;
-  padding: 16px;
-  background:
-    radial-gradient(
-      circle at 20% 0%,
-      rgba(88, 165, 209, 0.12),
-      transparent 40%
-    ),
-    var(--purple-25);
-}
-
-/* sticky, not fixed. `fixed` + width:100vw was wrong twice over: 100vw counts
-   the scrollbar (horizontal overflow), and a fixed bar reserves no space, so
-   the PDF canvas started underneath it. Sticky works because .reader-mode is
-   not itself a scroll container -- the page scrolls. */
-.reader-topbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  margin: 0 -16px 12px;
-  position: sticky;
-  top: 0;
-  z-index: 1000;
-  background: #0f1628;
-  border-bottom: 1px solid var(--gray-800);
-  padding: max(12px, var(--safe-t)) max(24px, var(--safe-r)) 12px
-    max(24px, var(--safe-l));
-  box-sizing: border-box;
-}
-
-.reader-topbar h2 {
-  color: var(--gray-900);
-  font-family: var(--font-display);
-}
-
-.reader-topbar p {
-  color: var(--gray-600);
-}
-
-.reader-controls {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.reader-controls input {
-  width: 84px;
-  padding: 8px;
-  border: 1px solid var(--gray-300);
-  border-radius: var(--radius-sm);
-  background: var(--purple-50);
-  color: var(--gray-800);
-}
-
-.reader-dark-mode {
-  padding: 8px;
-  border: 1px solid var(--gray-300);
-  border-radius: var(--radius-sm);
-  background: var(--purple-50);
-  color: var(--gray-800);
-}
-
-.reader-dark-mode:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-/* Touch page-turn zones (index.html #readerTapPrev / #readerTapNext). Hidden
-   unless the pointer is coarse; transparent and non-preventDefault so pinch
-   zoom over them still works. Trade-off: text selection in the outer 26% of
-   the page is lost on touch, which is fine for a page-image reader. */
-.reader-tapzone {
-  display: none;
-}
-
-@media (pointer: coarse) {
-  .reader-tapzone {
-    display: block;
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    width: 26%;
-    border: 0;
-    padding: 0;
-    background: transparent;
-    z-index: 2;
-    cursor: pointer;
-  }
-  .reader-tapzone--prev {
-    left: 0;
-  }
-  .reader-tapzone--next {
-    right: 0;
-  }
-  .reader-tapzone:active {
-    background: rgba(255, 255, 255, 0.04);
-  }
-}
-
-.reader-canvas-wrap {
-  position: relative;
-  overflow: auto;
-  border: 1px solid var(--gray-100);
-  border-radius: var(--radius-md);
-  background: #0f1628;
-  padding: 10px;
-  transition:
-    transform 0.2s,
-    font-size 0.2s;
-}
-
 #readerCanvas {
   display: block;
   margin: 0 auto;
   max-width: 100%;
-}
-
-.reader-dark-enabled .reader-canvas-wrap {
-  background: #02050c;
-}
-
-#readerCanvas.reader-dark-full {
-  filter: invert(1) hue-rotate(180deg);
-}
-
-#readerCanvas.reader-dark-text {
-  filter: invert(1) grayscale(0.35) contrast(1.12) brightness(0.95);
 }
 
 .manage-header h2 {
@@ -2946,92 +2819,6 @@ body.is-modal-open-fixed {
     transform: translateY(0);
     opacity: 1;
   }
-}
-
-.reader-history-picker-subtitle {
-  margin: 0 0 16px;
-  color: var(--gray-700);
-  font-size: 0.92rem;
-  line-height: 1.5;
-}
-
-.reader-history-picker-subtitle strong {
-  color: var(--gray-900);
-  font-weight: 600;
-}
-
-.reader-history-picker-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  max-height: 50vh;
-  max-height: 50dvh;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding: 2px;
-  margin: 0 -2px;
-}
-
-.reader-history-picker-item {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 14px 16px;
-  background: var(--glass-surface-soft);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  text-align: left;
-  width: 100%;
-  font-family: inherit;
-  color: inherit;
-  transition:
-    transform var(--transition),
-    border-color var(--transition),
-    box-shadow var(--transition),
-    background var(--transition);
-}
-
-.reader-history-picker-item:hover,
-.reader-history-picker-item:focus-visible {
-  transform: translateY(-1px);
-  border-color: var(--purple-500);
-  box-shadow:
-    0 6px 18px rgba(99, 102, 241, 0.18),
-    var(--glass-shadow-sm);
-  outline: none;
-  background: var(--glass-surface-strong);
-}
-
-.reader-history-picker-item:active {
-  transform: translateY(0);
-}
-
-.reader-history-picker-item__label {
-  font-family: var(--font-display);
-  font-size: 1.05rem;
-  font-weight: 600;
-  color: var(--gray-900);
-  line-height: 1.3;
-}
-
-.reader-history-picker-item__meta {
-  color: var(--gray-600);
-  font-size: 0.84rem;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 10px;
-}
-
-.reader-history-picker-item__meta span {
-  white-space: nowrap;
-}
-
-.reader-history-picker-empty {
-  text-align: center;
-  color: var(--gray-600);
-  padding: 18px 8px;
-  font-size: 0.9rem;
 }
 
 @keyframes summaryBodySpin {
@@ -3551,14 +3338,11 @@ html[data-ui-mode="mobile"] .sidebar.open ~ .mobile-menu-toggle {
   .form-group textarea,
   .logs-toolbar input,
   .logs-toolbar select,
-  .reader-controls input,
-  .reader-dark-mode,
   .settings-section input,
   .settings-section select,
   .settings-section textarea {
     font-size: 16px;
   }
-
 
   .form-group input[type="text"],
   .form-group input[type="number"],
@@ -3590,7 +3374,6 @@ html[data-ui-mode="mobile"] .sidebar.open ~ .mobile-menu-toggle {
   .undo-toast-btn,
   .undo-toast-close,
   .habit-action-item,
-  .reader-history-picker-item,
   .schedule-day-option {
     min-height: 44px;
   }
@@ -4790,54 +4573,6 @@ html[data-ui-mode="mobile"] .nav-tab {
   padding: 14px;
 }
 
-/* ---- Reader top bar clears the notch ---- */
-/* ---- PDF reader ----
-   Title and status stack; the controls move to a fixed bottom bar within thumb
-   reach, scrolling horizontally rather than wrapping into four rows. */
-html[data-ui-mode="mobile"] .reader-mode {
-  padding: 0 12px calc(64px + var(--safe-b));
-}
-html[data-ui-mode="mobile"] .reader-topbar {
-  display: block;
-  margin: 0 -12px 10px;
-  padding: max(10px, var(--safe-t)) 14px 10px;
-}
-html[data-ui-mode="mobile"] .reader-topbar h2 {
-  font-size: 1rem;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-html[data-ui-mode="mobile"] .reader-topbar p {
-  font-size: 0.72rem;
-}
-html[data-ui-mode="mobile"] .reader-controls {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 1000;
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-  gap: 6px;
-  padding: 8px max(10px, var(--safe-l)) calc(8px + var(--safe-b))
-    max(10px, var(--safe-r));
-  background: #0f1628;
-  border-top: 1px solid var(--gray-800);
-}
-html[data-ui-mode="mobile"] .reader-controls::-webkit-scrollbar {
-  display: none;
-}
-html[data-ui-mode="mobile"] .reader-controls > * {
-  flex: 0 0 auto;
-}
-html[data-ui-mode="mobile"] .reader-controls input {
-  width: 64px;
-}
-
 /* ---- Toast sits above the bottom nav ---- */
 html[data-ui-mode="mobile"] .undo-toast {
   left: 14px;
@@ -4974,29 +4709,6 @@ html[data-ui-mode="mobile"] #habitSequenceActive.schedule-days-grid {
   line-height: 1.5;
 }
 
-/* Books view: where "Open at Bookmark" sends you. */
-.books-open-mode {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.books-open-mode label {
-  font-size: 0.78rem;
-  color: var(--gray-600);
-  white-space: nowrap;
-}
-
-.books-open-mode select {
-  padding: 7px 10px;
-  border: 1px solid var(--gray-300);
-  border-radius: var(--radius-sm);
-  background: var(--purple-50);
-  color: var(--gray-800);
-  font-size: 0.82rem;
-}
-
 /* A book whose PDF is not on this device -- the normal state after importing a
    metadata-only backup. The fix sits inside the warning, not in a menu. */
 .books-missing-file {
@@ -5038,256 +4750,14 @@ html[data-ui-mode="mobile"] #habitSequenceActive.schedule-days-grid {
   color: #f59e0b;
 }
 
-/* "Read in this app" vs "Open in my PDF app". */
-.book-open-choice {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  width: 100%;
-  margin-bottom: 10px;
-  padding: 14px 16px;
-  text-align: left;
-  font-family: inherit;
-  color: inherit;
-  cursor: pointer;
-  background: var(--glass-surface-soft);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-md);
-  transition:
-    transform var(--transition),
-    border-color var(--transition),
-    background var(--transition);
-}
-
-.book-open-choice:hover,
-.book-open-choice:focus-visible {
-  transform: translateY(-1px);
-  border-color: var(--purple-500);
-  background: var(--glass-surface-strong);
-  outline: none;
-}
-
-.book-open-choice:active {
-  transform: translateY(0);
-}
-
-.book-open-choice__title {
-  font-family: var(--font-display);
-  font-size: 1.02rem;
-  font-weight: 600;
-  color: var(--gray-900);
-}
-
-.book-open-choice__hint {
-  font-size: 0.82rem;
-  color: var(--gray-600);
-  line-height: 1.45;
-}
-
-.book-open-remember {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 4px;
-  font-size: 0.86rem;
-  color: var(--gray-700);
-  cursor: pointer;
-}
-
-.book-open-remember input {
-  width: 18px;
-  height: 18px;
-  accent-color: var(--purple-500);
-}
-
-/* Reader topbar: the back button lives next to the title. */
-.reader-identity {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-
-.reader-close {
-  flex: 0 0 auto;
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
-  border: 1px solid var(--gray-300);
-  background: var(--purple-50);
-  color: var(--gray-800);
-  font-size: 1.15rem;
-  line-height: 1;
-  cursor: pointer;
-  transition:
-    background var(--transition),
-    border-color var(--transition);
-}
-
-.reader-close:hover,
-.reader-close:focus-visible {
-  background: var(--purple-600);
-  border-color: var(--purple-400);
-  color: var(--white);
-  outline: none;
-}
-
-/* Reader bookmark manager. */
-.reader-bookmarks-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-top: 14px;
-  max-height: 50vh;
-  max-height: 50dvh;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding: 2px;
-  margin-left: -2px;
-  margin-right: -2px;
-}
-
-.reader-bookmark-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  flex-wrap: wrap;
-  padding: 12px 14px;
-  background: var(--glass-surface-soft);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-md);
-}
-
-.reader-bookmark-row.is-current {
-  border-color: var(--purple-500);
-  background: var(--glass-surface-strong);
-}
-
-.reader-bookmark-row__info {
-  flex: 1 1 180px;
-  min-width: 0;
-}
-
-.reader-bookmark-row__label {
-  font-family: var(--font-display);
-  font-weight: 600;
-  color: var(--gray-900);
-  overflow-wrap: anywhere;
-}
-
-.reader-bookmark-row__meta {
-  margin-top: 2px;
-  font-size: 0.8rem;
-  color: var(--gray-600);
-}
-
-.reader-bookmark-row__actions {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.reader-bookmark-row__actions button {
-  padding: 7px 12px;
-  font-size: 0.82rem;
-}
-
-.reader-bookmark-row__actions button:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
-
-.reader-bookmarks-empty {
-  text-align: center;
-  color: var(--gray-600);
-  padding: 18px 8px;
-  font-size: 0.9rem;
-}
-
 /* Phone: the books card header stacks, and the bookmark rows go full width so
    their buttons stay tappable rather than squeezing onto one line. */
 html[data-ui-mode="mobile"] .books-card-header {
   flex-wrap: wrap;
 }
 
-html[data-ui-mode="mobile"] .books-open-mode {
-  width: 100%;
-}
-
-html[data-ui-mode="mobile"] .books-open-mode select {
-  flex: 1 1 auto;
-}
-
-html[data-ui-mode="mobile"] .reader-bookmark-row__actions {
-  width: 100%;
-}
-
-html[data-ui-mode="mobile"] .reader-bookmark-row__actions button {
-  flex: 1 1 0;
-  min-height: 40px;
-}
-
 html[data-ui-mode="mobile"] .books-missing-file button {
   width: 100%;
-}
-
-/* The floating hamburger is fixed to the top-left corner, which is exactly
-   where the reader's back button sits. */
-html.reader-open .mobile-menu-toggle,
-html.reader-open .mobile-menu-close {
-  display: none;
-}
-
-/* ============================================================================
-   Reader controls on a phone
-   ----------------------------------------------------------------------------
-   The bar carries eleven controls. At the shared desktop sizing (10px/24px
-   padding plus the 44px touch minimum) about four of them fit on a 390px
-   screen, so the row became a long scroll of oversized pills. Here every
-   control collapses to a 40px tile -- still a comfortable touch target, just
-   not a shape built for a mouse -- and the ones that are unmistakable as icons
-   drop their labels (kept in title/aria-label). Everything through
-   "Bookmarks" now fits without scrolling.
-   ========================================================================= */
-
-html[data-ui-mode="mobile"] .reader-controls {
-  gap: 5px;
-  padding: 6px max(8px, var(--safe-l)) calc(6px + var(--safe-b))
-    max(8px, var(--safe-r));
-  align-items: center;
-}
-
-html[data-ui-mode="mobile"] .reader-controls .btn-primary,
-html[data-ui-mode="mobile"] .reader-controls .btn-secondary {
-  min-height: 40px;
-  height: 40px;
-  padding: 0 12px;
-  font-size: 0.78rem;
-  font-weight: 600;
-  border-radius: 11px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0;
-  /* The shared :hover lift reads as a stuck, raised button after a tap, since
-     touch leaves hover applied until something else is touched. */
-  transform: none;
-  box-shadow: none;
-}
-
-/* Square icon tiles. font-size:0 hides the text node without removing it from
-   the accessibility tree the way display:none would. */
-html[data-ui-mode="mobile"] .reader-controls .reader-icon-btn {
-  width: 40px;
-  padding: 0;
-  font-size: 0;
-}
-
-html[data-ui-mode="mobile"] .reader-controls .reader-icon-btn::before {
-  font-size: 1.1rem;
-  line-height: 1;
-  font-weight: 500;
 }
 
 html[data-ui-mode="mobile"] #readerPrevPage::before {
@@ -5336,33 +4806,6 @@ html[data-ui-mode="mobile"] #readerDarkToggle[aria-pressed="true"]::before {
   content: "☀";
 }
 
-/* Disabled until dark mode is on, so until then it is just a dead 90px gap. */
-html[data-ui-mode="mobile"] .reader-dark-mode:disabled {
-  display: none;
-}
-html[data-ui-mode="mobile"] .reader-dark-mode {
-  height: 40px;
-  padding: 0 8px;
-  font-size: 0.78rem;
-  border-radius: 11px;
-}
-
-html[data-ui-mode="mobile"] .reader-controls input {
-  width: 52px;
-  height: 40px;
-  padding: 0 6px;
-  text-align: center;
-  border-radius: 11px;
-  /* The spinners eat half the field at this width. */
-  -moz-appearance: textfield;
-  appearance: textfield;
-}
-html[data-ui-mode="mobile"] .reader-controls input::-webkit-outer-spin-button,
-html[data-ui-mode="mobile"] .reader-controls input::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-
 /* "2 / 71" between the arrows, styled as the readout of that pair rather than
    as loose text. */
 html[data-ui-mode="mobile"] #readerPageIndicator {
@@ -5378,10 +4821,4 @@ html[data-ui-mode="mobile"] #readerPageIndicator {
   font-size: 0.78rem;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-}
-
-/* Lifts the bar off the page edge so it reads as a floating control strip
-   rather than a slab welded to the bottom of the screen. */
-html[data-ui-mode="mobile"] .reader-controls {
-  box-shadow: 0 -6px 18px rgba(2, 8, 23, 0.35);
 }

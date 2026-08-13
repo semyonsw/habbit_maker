@@ -4,29 +4,18 @@ import {
   MAX_PDF_FILE_SIZE_MB,
   MAX_PDF_FILE_SIZE_BYTES,
   MAX_BOOKMARK_HISTORY,
-  PDFJS_WORKER_URL,
 } from "./constants.js";
 import {
   state,
   setBooksBlobStatus,
   booksBlobStatus,
-  readerState,
 } from "./state.js";
 import { uid, nowIso, isPlainObject } from "./utils.js?v=2";
 import { appendLogEntry } from "./logging.js";
 import { idbGetPdfBlob, idbSavePdfBlob } from "./idb.js";
 import { saveState } from "./persistence.js";
 import { callRenderer } from "./render-registry.js";
-import { getBookOpenMode } from "./preferences.js";
 import { openPdfExternally, isNative } from "./native.js";
-import {
-  ensurePdfJsLibLoaded,
-  renderPdfPagePreviewDataUrl,
-} from "./pdf-reader.js";
-
-const bookCoverPreviewCache = new Map();
-const bookCoverPreviewTasks = new Map();
-const bookCoverPreviewFailed = new Set();
 
 export function getBookById(bookId) {
   return state.books.items.find((b) => b.bookId === bookId) || null;
@@ -34,93 +23,6 @@ export function getBookById(bookId) {
 
 export function getActiveBook() {
   return getBookById(state.books.activeBookId);
-}
-
-export function getBookCoverPreview(bookId) {
-  const value = bookCoverPreviewCache.get(String(bookId || ""));
-  return typeof value === "string" && value.trim().length ? value : null;
-}
-
-export function clearBookCoverPreview(bookId) {
-  const safeBookId = String(bookId || "");
-  if (!safeBookId) return;
-  bookCoverPreviewCache.delete(safeBookId);
-  bookCoverPreviewTasks.delete(safeBookId);
-  bookCoverPreviewFailed.delete(safeBookId);
-}
-
-export async function ensureBookCoverPreview(bookId) {
-  const safeBookId = String(bookId || "");
-  if (!safeBookId) return null;
-  if (bookCoverPreviewCache.has(safeBookId)) {
-    return getBookCoverPreview(safeBookId);
-  }
-  if (bookCoverPreviewFailed.has(safeBookId)) {
-    return null;
-  }
-  if (bookCoverPreviewTasks.has(safeBookId)) {
-    return bookCoverPreviewTasks.get(safeBookId);
-  }
-
-  const task = (async () => {
-    const book = getBookById(safeBookId);
-    if (!book || !book.fileId) return null;
-
-    let pdfDoc = null;
-    try {
-      const blob = await idbGetPdfBlob(book.fileId);
-      if (!blob) {
-        bookCoverPreviewFailed.add(safeBookId);
-        return null;
-      }
-
-      const pdfjsLib = await ensurePdfJsLibLoaded();
-      if (!pdfjsLib) {
-        bookCoverPreviewFailed.add(safeBookId);
-        return null;
-      }
-
-      pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_URL;
-      const pdfData = await blob.arrayBuffer();
-      const loadingTask = pdfjsLib.getDocument({ data: pdfData });
-      pdfDoc = await loadingTask.promise;
-
-      const previewDataUrl = await renderPdfPagePreviewDataUrl(pdfDoc, {
-        pageNumber: 1,
-        maxWidth: 170,
-        quality: 0.74,
-      });
-
-      if (!previewDataUrl) {
-        bookCoverPreviewFailed.add(safeBookId);
-        return null;
-      }
-
-      bookCoverPreviewCache.set(safeBookId, previewDataUrl);
-      return previewDataUrl;
-    } catch (error) {
-      bookCoverPreviewFailed.add(safeBookId);
-      appendLogEntry({
-        level: "warn",
-        component: "books",
-        operation: "ensureBookCoverPreview",
-        message: "Failed to generate book cover preview.",
-        error,
-        context: { bookId: safeBookId },
-      });
-      return null;
-    } finally {
-      if (pdfDoc && typeof pdfDoc.destroy === "function") {
-        try {
-          await pdfDoc.destroy();
-        } catch (_) {}
-      }
-      bookCoverPreviewTasks.delete(safeBookId);
-    }
-  })();
-
-  bookCoverPreviewTasks.set(safeBookId, task);
-  return task;
 }
 
 export function getBookmarkById(book, bookmarkId) {
@@ -389,7 +291,6 @@ export async function replaceBookFile(bookId, file) {
   saveState();
 
   // The cached cover belongs to the old bytes.
-  clearBookCoverPreview(bookId);
 
   setBookUploadStatus(
     `${isReplacement ? "Replaced" : "Linked"} the file for "${book.title}": ${file.name}.`,
@@ -445,36 +346,15 @@ export async function handleBookFilePicked() {
 
 /* -------------------------------------------------- opening a bookmark page */
 
-// "Open at Bookmark" honours the Books view's open-mode setting: the in-app
-// reader (which lands on the exact page), the phone's own PDF app, or a prompt
-// per tap.
-export function openBookmarkTarget(bookId, page, bookmarkId) {
+// "Open at Bookmark" hands the file to the phone's own PDF app. The in-app
+// reader that used to be the other half of this choice is gone.
+export function openBookmarkTarget(bookId, page) {
   const book = getBookById(bookId);
   if (!book) return;
   const safePage = Math.max(1, parseInt(page, 10) || 1);
-
-  const mode = getBookOpenMode();
-  if (mode === "app") {
-    openBookInAppReader(bookId, safePage, bookmarkId);
-    return;
-  }
-  if (mode === "external") {
-    openBookInExternalViewer(bookId, safePage).catch((error) => {
-      logBookOpenFailure("openBookInExternalViewer", error, bookId);
-    });
-    return;
-  }
-  callRenderer("openBookOpenModal", bookId, safePage, bookmarkId);
-}
-
-export function openBookInAppReader(bookId, page, bookmarkId) {
-  const opening = callRenderer("openReaderInPage", bookId, page, bookmarkId);
-  if (opening && typeof opening.catch === "function") {
-    opening.catch((error) => {
-      logBookOpenFailure("openReaderInPage", error, bookId);
-      alert("Could not open the reader. See the Logs view for details.");
-    });
-  }
+  openBookInExternalViewer(bookId, safePage).catch((error) => {
+    logBookOpenFailure("openBookInExternalViewer", error, bookId);
+  });
 }
 
 function logBookOpenFailure(operation, error, bookId) {
@@ -625,82 +505,4 @@ export async function saveBookFromUpload() {
 
   await refreshBookBlobStatus();
   callRenderer("renderBooksView");
-}
-
-export function addReaderHistoryToBookmark(book, bookmark, page) {
-  if (!book || !bookmark) return;
-  const safePage = Math.max(1, parseInt(page, 10) || 1);
-  bookmark.pdfPage = safePage;
-  bookmark.updatedAt = nowIso();
-  addBookmarkHistoryEvent(
-    bookmark,
-    "reader-note",
-    `Reader action on PDF page ${safePage}`,
-  );
-  book.bookmarks.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
-  book.updatedAt = nowIso();
-  saveState();
-}
-
-export function addBookmarkOnCurrentReaderPage() {
-  const book = readerState.book;
-  if (!book) return;
-
-  const page = Math.max(1, parseInt(readerState.currentPage, 10) || 1);
-  const sourceBookmark = readerState.sourceBookmarkId
-    ? book.bookmarks.find((b) => b.bookmarkId === readerState.sourceBookmarkId)
-    : null;
-  const openedFromSameBookmarkPage =
-    !!sourceBookmark && page === readerState.sourcePage;
-
-  if (openedFromSameBookmarkPage) {
-    addReaderHistoryToBookmark(book, sourceBookmark, page);
-    document.getElementById("readerStatusText").textContent =
-      `History added to \"${sourceBookmark.label}\".`;
-    return;
-  }
-
-  if (!Array.isArray(book.bookmarks) || book.bookmarks.length === 0) {
-    callRenderer("openBookmarkModal", book.bookId, null, {
-      prefillPdfPage: page,
-    });
-    return;
-  }
-
-  callRenderer("openReaderHistoryPicker", book.bookId, page);
-}
-
-// Repoints an existing bookmark at the page currently on screen in the reader.
-// This is the "I've read on since last time" action -- the whole point of a
-// bookmark -- and it keeps the bookmark's label, note, real-page offset and
-// summaries instead of making the user create a new one.
-export function moveBookmarkToReaderPage(bookmarkId) {
-  const book = readerState.book;
-  if (!book) return null;
-  const bookmark = getBookmarkById(book, bookmarkId);
-  if (!bookmark) return null;
-
-  const page = Math.max(1, parseInt(readerState.currentPage, 10) || 1);
-  const previousPage = Math.max(1, parseInt(bookmark.pdfPage, 10) || 1);
-  if (previousPage === page) return bookmark;
-
-  // Keep the real-page offset the bookmark already carries, so a bookmark set
-  // up as "PDF 30 = printed page 1" still reports the printed page correctly
-  // after being moved.
-  const realPage = parseInt(bookmark.realPage, 10);
-  if (Number.isFinite(realPage)) {
-    bookmark.realPage = Math.max(1, realPage + (page - previousPage));
-  }
-
-  bookmark.pdfPage = page;
-  bookmark.updatedAt = nowIso();
-  addBookmarkHistoryEvent(
-    bookmark,
-    "moved",
-    `Moved from PDF page ${previousPage} to ${page}`,
-  );
-  book.bookmarks.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
-  book.updatedAt = nowIso();
-  saveState();
-  return bookmark;
 }

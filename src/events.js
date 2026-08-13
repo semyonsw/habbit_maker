@@ -1,7 +1,7 @@
 "use strict";
 
 import { MONTH_NAMES } from "./constants.js";
-import { state, globals, readerHistoryPickerState } from "./state.js";
+import { state, globals } from "./state.js";
 import { monthKey } from "./utils.js?v=2";
 import { navigateMonth } from "./habits.js";
 import {
@@ -24,9 +24,6 @@ import {
   openConfirm,
   saveMonthlyReview,
   chooseFileForEditedBook,
-  chooseBookOpenInApp,
-  chooseBookOpenExternal,
-  addBookmarkFromReaderPanel,
 } from "./modals.js";
 import { navigateTo } from "./router.js";
 import { setSidebarCollapsed, applySidebarCollapseState } from "./layout.js";
@@ -43,7 +40,7 @@ import {
   renderSequenceCheckboxes,
   getCheckedValuesFromContainer,
 } from "./habits.js";
-import { setAnalyticsDisplayMode, setBookOpenMode } from "./preferences.js";
+import { setAnalyticsDisplayMode } from "./preferences.js";
 import {
   getDefaultMonthData,
   saveState,
@@ -208,22 +205,6 @@ export function bindEvents() {
   });
 
   document
-    .getElementById("readerHistoryPickerClose")
-    .addEventListener("click", () => closeModal("readerHistoryPickerModal"));
-  document
-    .getElementById("readerHistoryPickerCancel")
-    .addEventListener("click", () => closeModal("readerHistoryPickerModal"));
-  document
-    .getElementById("readerHistoryPickerCreateNew")
-    .addEventListener("click", () => {
-      const { bookId, page } = readerHistoryPickerState;
-      closeModal("readerHistoryPickerModal");
-      if (bookId) {
-        openBookmarkModal(bookId, null, { prefillPdfPage: page });
-      }
-    });
-
-  document
     .getElementById("monthlyReviewSave")
     .addEventListener("click", saveMonthlyReview);
 
@@ -383,15 +364,6 @@ export function bindEvents() {
     bookModalFileBtn.addEventListener("click", chooseFileForEditedBook);
   }
 
-  const openModeSelect = document.getElementById("bookOpenModeSelect");
-  if (openModeSelect) {
-    openModeSelect.addEventListener("change", (e) =>
-      setBookOpenMode(e.target.value),
-    );
-  }
-
-  bindReaderBookmarkControls();
-
   document
     .getElementById("btnBookCreate")
     .addEventListener("click", () => openBookModal());
@@ -422,24 +394,6 @@ export function bindEvents() {
       error: event && event.reason ? event.reason : "Promise rejection",
     });
   });
-}
-
-// The two dialogs that make bookmarks work from inside a book: the "in the app
-// or in my PDF app?" chooser, and the reader's bookmark manager.
-function bindReaderBookmarkControls() {
-  const bind = (id, handler, event = "click") => {
-    const el = document.getElementById(id);
-    if (el) el.addEventListener(event, handler);
-  };
-
-  bind("bookOpenInApp", chooseBookOpenInApp);
-  bind("bookOpenExternal", chooseBookOpenExternal);
-  bind("bookOpenModalClose", () => closeModal("bookOpenModal"));
-  bind("bookOpenModalCancel", () => closeModal("bookOpenModal"));
-
-  bind("readerBookmarksAdd", addBookmarkFromReaderPanel);
-  bind("readerBookmarksClose", () => closeModal("readerBookmarksModal"));
-  bind("readerBookmarksDone", () => closeModal("readerBookmarksModal"));
 }
 
 // The mobile bottom nav only has room for five entries, so Manage, Logs,

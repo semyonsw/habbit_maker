@@ -1,82 +1,8 @@
 "use strict";
 
-import { readerState, analyticsState, booksUiState } from "./state.js";
+import { analyticsState } from "./state.js";
 import { callRenderer } from "./render-registry.js";
 import * as db from "./db.js";
-
-export function loadReaderThemePreferencesFromBlob(prefs) {
-  const blob = prefs && typeof prefs === "object" ? prefs : {};
-  readerState.darkEnabled = blob.readerDarkEnabled === true;
-  readerState.darkMode = blob.readerDarkMode === "text" ? "text" : "full";
-}
-
-export async function loadReaderThemePreferences() {
-  try {
-    const prefs = await db.getPrefs();
-    loadReaderThemePreferencesFromBlob(prefs);
-  } catch (_) {
-    loadReaderThemePreferencesFromBlob({});
-  }
-}
-
-export function persistReaderThemePreferences() {
-  db.patchPrefs({
-    readerDarkEnabled: readerState.darkEnabled === true,
-    readerDarkMode: readerState.darkMode === "text" ? "text" : "full",
-  }).catch(() => {});
-}
-
-export function applyReaderThemeClasses() {
-  const root = document.getElementById("readerMode");
-  const canvas = document.getElementById("readerCanvas");
-  if (!root || !canvas) return;
-
-  root.classList.toggle("reader-dark-enabled", readerState.darkEnabled);
-  canvas.classList.toggle("reader-dark-full", false);
-  canvas.classList.toggle("reader-dark-text", false);
-
-  if (readerState.darkEnabled) {
-    canvas.classList.add(
-      readerState.darkMode === "text"
-        ? "reader-dark-text"
-        : "reader-dark-full",
-    );
-  }
-}
-
-export function updateReaderThemeControls() {
-  const toggle = document.getElementById("readerDarkToggle");
-  const mode = document.getElementById("readerDarkMode");
-  if (!toggle || !mode) return;
-
-  toggle.setAttribute("aria-pressed", String(readerState.darkEnabled));
-  // Short label: this button sits in a single-row control strip that becomes a
-  // horizontally scrolling bar on a phone. The full wording lives in title/
-  // aria-label so nothing is lost. (Set via textContent, so no child elements.)
-  toggle.textContent = readerState.darkEnabled ? "Dark: ON" : "Dark: OFF";
-  const full = readerState.darkEnabled
-    ? "Read in dark theme: ON"
-    : "Read in dark theme: OFF";
-  toggle.title = full;
-  toggle.setAttribute("aria-label", full);
-
-  mode.value = readerState.darkMode;
-  mode.disabled = !readerState.darkEnabled;
-}
-
-export function toggleReaderDarkTheme() {
-  readerState.darkEnabled = !readerState.darkEnabled;
-  persistReaderThemePreferences();
-  applyReaderThemeClasses();
-  updateReaderThemeControls();
-}
-
-export function setReaderDarkMode(mode) {
-  readerState.darkMode = mode === "text" ? "text" : "full";
-  persistReaderThemePreferences();
-  applyReaderThemeClasses();
-  updateReaderThemeControls();
-}
 
 export function loadAnalyticsPreferencesFromBlob(prefs) {
   const blob = prefs && typeof prefs === "object" ? prefs : {};
@@ -140,37 +66,3 @@ export function setAnalyticsDisplayMode(mode) {
   syncAnalyticsModeControls();
   callRenderer("renderAnalyticsView");
 }
-
-/* ------------------------------------------------- how bookmarks are opened */
-
-const BOOK_OPEN_MODES = ["ask", "app", "external"];
-
-function normalizeBookOpenMode(value) {
-  return BOOK_OPEN_MODES.includes(String(value)) ? String(value) : "ask";
-}
-
-export function getBookOpenMode() {
-  return normalizeBookOpenMode(booksUiState.openMode);
-}
-
-export async function loadBookOpenMode() {
-  try {
-    const prefs = await db.getPrefs();
-    booksUiState.openMode = normalizeBookOpenMode(prefs && prefs.bookOpenMode);
-  } catch (_) {
-    booksUiState.openMode = "ask";
-  }
-  syncBookOpenModeControls();
-}
-
-export function syncBookOpenModeControls() {
-  const select = document.getElementById("bookOpenModeSelect");
-  if (select) select.value = getBookOpenMode();
-}
-
-export function setBookOpenMode(mode) {
-  booksUiState.openMode = normalizeBookOpenMode(mode);
-  db.patchPrefs({ bookOpenMode: booksUiState.openMode }).catch(() => {});
-  syncBookOpenModeControls();
-}
-

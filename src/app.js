@@ -6,8 +6,6 @@ import {
   STORAGE_KEY,
   LOGS_STORAGE_KEY,
   SIDEBAR_COLLAPSE_KEY,
-  READER_DARK_ENABLED_KEY,
-  READER_DARK_MODE_KEY,
   ANALYTICS_DISPLAY_MODE_KEY,
   PDF_DB_NAME,
   PDF_DB_VERSION,
@@ -15,11 +13,10 @@ import {
 } from "./constants.js";
 import { loadLogs, appendLogEntry } from "./logging.js";
 import { loadState } from "./persistence.js";
-import { loadAnalyticsPreferences, loadBookOpenMode } from "./preferences.js";
+import { loadAnalyticsPreferences } from "./preferences.js";
 import { initSidebarCollapse, initTopClock } from "./layout.js";
 import { initUiPrefs } from "./ui-prefs.js";
 import { bindEvents } from "./events.js";
-import { initReaderMode } from "./pdf-reader.js";
 import { setBookUploadStatus } from "./books.js";
 import { callRenderer } from "./render-registry.js";
 import { deleteHabit, deleteCategory, moveDailyHabit } from "./habits.js";
@@ -88,14 +85,12 @@ window.HabitApp = {
     openHistoryEventModal(bookId, bookmarkId, eventId);
   },
   deleteHistoryEvent,
-  openBookmark(bookId, page, bookmarkId) {
-    openBookmarkTarget(bookId, page, bookmarkId);
+  openBookmark(bookId, page) {
+    openBookmarkTarget(bookId, page);
   },
   chooseBookFile,
-  // "Read" on a book card: no bookmark involved, so start at page 1 and go
-  // through the same in-app / phone-PDF-app choice as a bookmark.
   readBook(bookId) {
-    openBookmarkTarget(bookId, 1, null);
+    openBookmarkTarget(bookId, 1);
   },
   editReport(reportId) {
     openReportModal(reportId);
@@ -173,17 +168,8 @@ function collectLegacyPrefsBundle() {
   const out = {};
   const sidebar = readStringFromLocalStorage(SIDEBAR_COLLAPSE_KEY);
   if (sidebar !== null) out.sidebarCollapsed = sidebar === "1";
-  const dark = readStringFromLocalStorage(READER_DARK_ENABLED_KEY);
-  if (dark !== null) out.readerDarkEnabled = dark === "1";
-  const darkMode = readStringFromLocalStorage(READER_DARK_MODE_KEY);
-  if (darkMode !== null) out.readerDarkMode = darkMode;
   const analytics = readStringFromLocalStorage(ANALYTICS_DISPLAY_MODE_KEY);
   if (analytics !== null) out.analyticsDisplayMode = analytics;
-  const zoom = readStringFromLocalStorage("readerZoomLevel");
-  if (zoom !== null) {
-    const n = parseFloat(zoom);
-    if (!isNaN(n)) out.readerZoomLevel = n;
-  }
   return out;
 }
 
@@ -361,7 +347,6 @@ async function init() {
     await loadLogs();
     await loadState();
     await loadAnalyticsPreferences();
-    await loadBookOpenMode();
     await initUiPrefs();
     bindEvents();
     // Bottom-sheet mechanics: drag-to-dismiss and on-screen-keyboard tracking.
@@ -369,11 +354,6 @@ async function init() {
     bindSheetGestures((id) => closeModal(id));
     initKeyboardInset();
     await initSidebarCollapse();
-
-    const inReaderMode = await initReaderMode();
-    if (inReaderMode) {
-      return;
-    }
 
     initTopClock();
 

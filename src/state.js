@@ -43,10 +43,6 @@ export const historyEventModalState = {
   editingBookmarkId: null,
   editingEventId: null,
 };
-export const readerHistoryPickerState = {
-  bookId: null,
-  page: 1,
-};
 export const bookOpenModalState = {
   bookId: null,
   page: 1,
@@ -88,31 +84,4 @@ export const analyticsState = {
   displayMode: "percent",
 };
 
-// How "Open at Bookmark" behaves: "app" (in-app reader, lands on the exact
-// page), "external" (hand the file to the phone's PDF app) or "ask" (choose per
-// tap). Persisted through prefs, see preferences.js.
-export const booksUiState = {
-  openMode: "ask",
-};
 
-export const readerState = {
-  pdfDoc: null,
-  book: null,
-  currentPage: 1,
-  totalPages: 0,
-  renderTask: null,
-  resizeHandlerBound: false,
-  resizeTimer: null,
-  darkEnabled: false,
-  darkMode: "full",
-  sourceBookmarkId: null,
-  sourcePage: null,
-  // true when the reader is showing over the app (no navigation), false for the
-  // standalone ?reader=1 tab. Drives the Close button and the back gesture.
-  isInPage: false,
-  ownsHistoryEntry: false,
-  eventsBound: false,
-  // Multiplier on top of fit-to-width. Drives a real re-render (crisp at any
-  // scale) rather than a CSS transform on the scroll container.
-  zoom: 1,
-};

@@ -9,9 +9,6 @@ import {
   bookModalState,
   bookmarkModalState,
   historyEventModalState,
-  readerHistoryPickerState,
-  bookOpenModalState,
-  readerState,
   booksBlobStatus,
 } from "./state.js";
 import {
@@ -19,8 +16,6 @@ import {
   nowIso,
   sanitize,
   formatDateKey,
-  formatIsoForDisplay,
-  formatRealBookPage,
   formatByteSize,
   normalizeWeekdayArray,
   normalizeMonthDayArray,
@@ -44,20 +39,9 @@ import {
 import {
   getBookById,
   addBookmarkHistoryEvent,
-  addReaderHistoryToBookmark,
   refreshBookBlobStatus,
-  clearBookCoverPreview,
   chooseBookFile,
-  moveBookmarkToReaderPage,
-  openBookInAppReader,
-  openBookInExternalViewer,
 } from "./books.js";
-import {
-  goToReaderPage,
-  updateReaderBookmarkButton,
-} from "./pdf-reader.js";
-import { setBookOpenMode } from "./preferences.js";
-import { isNative } from "./native.js";
 import { idbDeletePdfBlob } from "./idb.js";
 import { uploadFile, deleteFile } from "./db.js";
 import { callRenderer, registerRenderer } from "./render-registry.js";
@@ -821,7 +805,6 @@ export async function deleteBook(bookId) {
     "Delete Book",
     `Delete \"${book.title}\" and all its bookmarks?`,
     async () => {
-      clearBookCoverPreview(bookId);
       state.books.items = state.books.items.filter((b) => b.bookId !== bookId);
       if (state.books.activeBookId === bookId) {
         state.books.activeBookId = state.books.items[0]
@@ -951,9 +934,6 @@ export function saveBookmark() {
   saveState();
   closeModal("bookmarkModal");
   callRenderer("renderBooksView");
-  if (readerState.book && readerState.book.bookId === book.bookId) {
-    updateReaderBookmarkButton();
-  }
 }
 
 export function deleteBookmark(bookId, bookmarkId) {
@@ -1068,264 +1048,8 @@ export function renderMonthlyReview() {
   document.getElementById("monthlyFocus").value = review.focus || "";
 }
 
-export function openReaderHistoryPicker(bookId, page) {
-  const book = getBookById(bookId);
-  if (!book) return;
-
-  const safePage = Math.max(1, parseInt(page, 10) || 1);
-  const bookmarks = Array.isArray(book.bookmarks) ? book.bookmarks : [];
-
-  if (bookmarks.length === 0) {
-    openBookmarkModal(bookId, null, { prefillPdfPage: safePage });
-    return;
-  }
-
-  Object.assign(readerHistoryPickerState, {
-    bookId,
-    page: safePage,
-  });
-
-  const subtitle = document.getElementById("readerHistoryPickerSubtitle");
-  if (subtitle) {
-    subtitle.textContent = "";
-    subtitle.append("You're on PDF page ");
-    const strong = document.createElement("strong");
-    strong.textContent = String(safePage);
-    subtitle.appendChild(strong);
-    subtitle.append(
-      ". Tap a bookmark to add this session to it, or create a new one.",
-    );
-  }
-
-  const listEl = document.getElementById("readerHistoryPickerList");
-  if (!listEl) return;
-  listEl.textContent = "";
-
-  bookmarks.forEach((bm) => {
-    const card = document.createElement("button");
-    card.type = "button";
-    card.className = "reader-history-picker-item";
-    card.dataset.bookmarkId = bm.bookmarkId;
-    card.setAttribute("role", "listitem");
-
-    const labelEl = document.createElement("div");
-    labelEl.className = "reader-history-picker-item__label";
-    labelEl.textContent = bm.label || "Bookmark";
-
-    const metaEl = document.createElement("div");
-    metaEl.className = "reader-history-picker-item__meta";
-
-    const pdfSpan = document.createElement("span");
-    pdfSpan.textContent = `PDF ${bm.pdfPage}`;
-    metaEl.appendChild(pdfSpan);
-
-    const realSpan = document.createElement("span");
-    realSpan.textContent = `Real ${formatRealBookPage(bm.realPage)}`;
-    metaEl.appendChild(realSpan);
-
-    if (bm.updatedAt) {
-      const updatedSpan = document.createElement("span");
-      updatedSpan.textContent = `Updated ${formatIsoForDisplay(bm.updatedAt)}`;
-      metaEl.appendChild(updatedSpan);
-    }
-
-    card.appendChild(labelEl);
-    card.appendChild(metaEl);
-
-    card.addEventListener("click", () => {
-      addReaderHistoryToBookmark(book, bm, safePage);
-      const statusText = document.getElementById("readerStatusText");
-      if (statusText) {
-        statusText.textContent = `History added to "${bm.label || "Bookmark"}".`;
-      }
-      closeModal("readerHistoryPickerModal");
-    });
-
-    listEl.appendChild(card);
-  });
-
-  openModal("readerHistoryPickerModal");
-}
-
-/* ----------------------------------------- "open in app or in my PDF app?" */
-
-// Shown when the Books view's open mode is "Ask each time". The point of the
-// choice: the in-app reader lands on the exact bookmarked page, while an
-// external reader gets the file but no page (Android has no standard intent
-// for that), so which one is better depends on the moment.
-export function openBookOpenModal(bookId, page, bookmarkId) {
-  const book = getBookById(bookId);
-  if (!book) return;
-  const safePage = Math.max(1, parseInt(page, 10) || 1);
-
-  Object.assign(bookOpenModalState, {
-    bookId,
-    page: safePage,
-    bookmarkId: bookmarkId || null,
-  });
-
-  const subtitle = document.getElementById("bookOpenSubtitle");
-  if (subtitle) {
-    subtitle.textContent = `${book.title} · page ${safePage}`;
-  }
-  const remember = document.getElementById("bookOpenRemember");
-  if (remember) remember.checked = false;
-
-  const externalHint = document.getElementById("bookOpenExternalHint");
-  if (externalHint) {
-    externalHint.textContent = isNative()
-      ? `Opens the file in your phone's PDF app — turn to page ${safePage} there.`
-      : `Opens the file in a new browser tab at page ${safePage}.`;
-  }
-
-  openModal("bookOpenModal");
-}
-
-function resolveBookOpenChoice(choice) {
-  const { bookId, page, bookmarkId } = bookOpenModalState;
-  if (!bookId) return;
-
-  const remember = document.getElementById("bookOpenRemember");
-  if (remember && remember.checked) {
-    setBookOpenMode(choice);
-  }
-
-  closeModal("bookOpenModal");
-  bookOpenModalState.bookId = null;
-
-  if (choice === "external") {
-    openBookInExternalViewer(bookId, page).catch(() => {
-      alert("Could not hand the file to another app. Try the in-app reader.");
-    });
-    return;
-  }
-  openBookInAppReader(bookId, page, bookmarkId);
-}
-
-export function chooseBookOpenInApp() {
-  resolveBookOpenChoice("app");
-}
-
-export function chooseBookOpenExternal() {
-  resolveBookOpenChoice("external");
-}
-
-/* ------------------------------------------ bookmarks, from inside the book */
-
-// The reader's bookmark manager: jump to any bookmark, move one to where you
-// have actually read to, or drop a new one -- all without leaving the page.
-export function openReaderBookmarksPanel() {
-  const book = readerState.book;
-  if (!book) return;
-
-  const page = Math.max(1, parseInt(readerState.currentPage, 10) || 1);
-
-  const subtitle = document.getElementById("readerBookmarksSubtitle");
-  if (subtitle) {
-    subtitle.textContent = `${book.title} · you are on PDF page ${page} of ${readerState.totalPages || "?"}`;
-  }
-
-  const addBtn = document.getElementById("readerBookmarksAdd");
-  if (addBtn) addBtn.textContent = `＋ New bookmark on page ${page}`;
-
-  const listEl = document.getElementById("readerBookmarksList");
-  if (!listEl) return;
-  listEl.textContent = "";
-
-  // Also the refresh path: after "Move to N" this runs again while the dialog
-  // is already open, and openModal() is a no-op in that case.
-  openModal("readerBookmarksModal");
-
-  const bookmarks = Array.isArray(book.bookmarks) ? book.bookmarks : [];
-  if (!bookmarks.length) {
-    const empty = document.createElement("p");
-    empty.className = "reader-bookmarks-empty";
-    empty.textContent =
-      "No bookmarks in this book yet. Add one on the page you are reading.";
-    listEl.appendChild(empty);
-    return;
-  }
-
-  bookmarks.forEach((bm) => {
-    const bookmarkPage = Math.max(1, parseInt(bm.pdfPage, 10) || 1);
-    const row = document.createElement("div");
-    row.className = "reader-bookmark-row";
-    if (bookmarkPage === page) row.classList.add("is-current");
-
-    const info = document.createElement("div");
-    info.className = "reader-bookmark-row__info";
-
-    const label = document.createElement("div");
-    label.className = "reader-bookmark-row__label";
-    label.textContent = bm.label || "Bookmark";
-    info.appendChild(label);
-
-    const meta = document.createElement("div");
-    meta.className = "reader-bookmark-row__meta";
-    meta.textContent = `PDF ${bookmarkPage} · Real ${formatRealBookPage(bm.realPage)} · updated ${formatIsoForDisplay(bm.updatedAt)}`;
-    info.appendChild(meta);
-
-    row.appendChild(info);
-
-    const actions = document.createElement("div");
-    actions.className = "reader-bookmark-row__actions";
-
-    const goBtn = document.createElement("button");
-    goBtn.type = "button";
-    goBtn.className = "btn-secondary";
-    goBtn.textContent = "Go";
-    goBtn.disabled = bookmarkPage === page;
-    goBtn.addEventListener("click", () => {
-      closeModal("readerBookmarksModal");
-      goToReaderPage(bookmarkPage);
-    });
-    actions.appendChild(goBtn);
-
-    const moveBtn = document.createElement("button");
-    moveBtn.type = "button";
-    moveBtn.className = "btn-primary";
-    moveBtn.textContent = `Move to ${page}`;
-    moveBtn.disabled = bookmarkPage === page;
-    moveBtn.addEventListener("click", () => {
-      const moved = moveBookmarkToReaderPage(bm.bookmarkId);
-      const status = document.getElementById("readerStatusText");
-      if (status && moved) {
-        status.textContent = `"${moved.label}" now points at page ${page}.`;
-      }
-      openReaderBookmarksPanel();
-      updateReaderBookmarkButton();
-    });
-    actions.appendChild(moveBtn);
-
-    const editBtn = document.createElement("button");
-    editBtn.type = "button";
-    editBtn.className = "btn-secondary";
-    editBtn.textContent = "Edit";
-    editBtn.addEventListener("click", () => {
-      closeModal("readerBookmarksModal");
-      openBookmarkModal(book.bookId, bm.bookmarkId);
-    });
-    actions.appendChild(editBtn);
-
-    row.appendChild(actions);
-    listEl.appendChild(row);
-  });
-}
-
-export function addBookmarkFromReaderPanel() {
-  const book = readerState.book;
-  if (!book) return;
-  const page = Math.max(1, parseInt(readerState.currentPage, 10) || 1);
-  closeModal("readerBookmarksModal");
-  openBookmarkModal(book.bookId, null, { prefillPdfPage: page });
-}
-
-// Register openConfirm so other modules can call it via callRenderer
 registerRenderer("openConfirm", openConfirm);
-registerRenderer("openBookOpenModal", openBookOpenModal);
-registerRenderer("openReaderBookmarksPanel", openReaderBookmarksPanel);
 registerRenderer("refreshBookModalFileRow", renderBookModalFileRow);
 registerRenderer("openBookmarkModal", openBookmarkModal);
-registerRenderer("openReaderHistoryPicker", openReaderHistoryPicker);
 registerRenderer("renderMonthlyReview", renderMonthlyReview);
 registerRenderer("openNoteModal", openNoteModal);

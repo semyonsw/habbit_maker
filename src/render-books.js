@@ -9,17 +9,9 @@ import {
 } from "./utils.js?v=2";
 import {
   getActiveBook,
-  getBookById,
-  getBookCoverPreview,
-  ensureBookCoverPreview,
   refreshBookBlobStatus,
 } from "./books.js";
-import {
-} from "./books.js";
-import { syncBookOpenModeControls } from "./preferences.js";
 import { registerRenderer } from "./render-registry.js";
-
-let booksCoverObserver = null;
 
 function getBookCoverFallbackLabel(book) {
   const rawTitle = String((book && book.title) || "Book").trim();
@@ -27,100 +19,13 @@ function getBookCoverFallbackLabel(book) {
   return rawTitle.slice(0, 1).toUpperCase();
 }
 
-function renderBookCoverMarkup(book, previewDataUrl) {
-  if (previewDataUrl) {
-    return `<img class='books-item-cover-image' src='${previewDataUrl}' alt='${sanitize(book.title || "Book")} cover preview' loading='lazy' decoding='async'>`;
-  }
+function renderBookCoverMarkup(book) {
   return `<div class='books-item-cover-fallback' aria-hidden='true'><span>${sanitize(getBookCoverFallbackLabel(book))}</span></div>`;
-}
-
-async function hydrateBookCoverElement(container) {
-  if (!(container instanceof HTMLElement)) return;
-  const bookId = String(container.dataset.bookCoverId || "");
-  if (!bookId) return;
-  const stateValue = String(container.dataset.bookCoverState || "");
-  if (stateValue === "ready" || stateValue === "loading") return;
-
-  container.dataset.bookCoverState = "loading";
-  container.classList.add("is-loading");
-
-  const previewDataUrl = await ensureBookCoverPreview(bookId);
-  if (!container.isConnected) return;
-
-  container.classList.remove("is-loading");
-  const book = getBookById(bookId);
-  container.innerHTML = renderBookCoverMarkup(
-    book || { title: "Book" },
-    previewDataUrl,
-  );
-
-  if (previewDataUrl) {
-    container.dataset.bookCoverState = "ready";
-    container.classList.remove("failed");
-    container.classList.add("ready");
-  } else {
-    container.dataset.bookCoverState = "failed";
-    container.classList.remove("ready");
-    container.classList.add("failed");
-  }
-}
-
-function bindBookCoverLazyLoading(root) {
-  if (!(root instanceof HTMLElement)) return;
-  if (booksCoverObserver) {
-    booksCoverObserver.disconnect();
-    booksCoverObserver = null;
-  }
-
-  const nodes = Array.from(root.querySelectorAll("[data-book-cover-id]"));
-  if (!nodes.length) return;
-
-  const eagerNodes = nodes.slice(0, Math.min(4, nodes.length));
-  eagerNodes.forEach((node) => {
-    const stateValue = String(node.dataset.bookCoverState || "");
-    if (stateValue === "ready") return;
-    hydrateBookCoverElement(node);
-  });
-
-  if (typeof IntersectionObserver !== "function") {
-    nodes.forEach((node) => {
-      hydrateBookCoverElement(node);
-    });
-    return;
-  }
-
-  const observer = new IntersectionObserver(
-    (entries) => {
-      entries.forEach((entry) => {
-        if (!entry.isIntersecting) return;
-        const target = entry.target;
-        observer.unobserve(target);
-        hydrateBookCoverElement(target);
-      });
-    },
-    {
-      root: null,
-      rootMargin: "120px 0px",
-      threshold: 0.02,
-    },
-  );
-  booksCoverObserver = observer;
-
-  nodes.forEach((node) => {
-    const stateValue = String(node.dataset.bookCoverState || "");
-    if (stateValue === "ready") return;
-    if (eagerNodes.includes(node)) return;
-    observer.observe(node);
-  });
 }
 
 export async function renderBooksList() {
   const list = document.getElementById("booksList");
   if (!list) return;
-  if (booksCoverObserver) {
-    booksCoverObserver.disconnect();
-    booksCoverObserver = null;
-  }
 
   if (state.books.items.length === 0) {
     list.innerHTML =
@@ -132,9 +37,7 @@ export async function renderBooksList() {
     .map((book) => {
       const active = state.books.activeBookId === book.bookId ? "active" : "";
       const hasBlob = !!booksBlobStatus[book.bookId];
-      const previewDataUrl = getBookCoverPreview(book.bookId);
-      const coverState = previewDataUrl ? "ready" : "pending";
-      const coverMarkup = renderBookCoverMarkup(book, previewDataUrl);
+      const coverMarkup = renderBookCoverMarkup(book);
 
       // A book with no bytes on this device is the normal state right after
       // importing a backup that carried metadata only: the file path in it was
@@ -147,11 +50,9 @@ export async function renderBooksList() {
         ? `<button class='btn-primary' type='button' onclick="HabitApp.readBook('${book.bookId}')">Read</button>`
         : "";
 
-      return `<article class='books-item ${active}'><div class='books-item-main'><h4>${sanitize(book.title)}</h4><p>${sanitize(book.author || "Unknown author")}</p><p class='books-file-meta'>${sanitize(book.fileName)} · ${Math.round((book.fileSize || 0) / 1024)}KB</p>${missingFileMarkup}<div class='books-item-actions'><button class='btn-secondary' type='button' onclick="HabitApp.setActiveBook('${book.bookId}')">Select</button>${readButton}<button class='btn-secondary' type='button' onclick="HabitApp.editBook('${book.bookId}')">Edit</button><button class='btn-danger' type='button' onclick="HabitApp.deleteBook('${book.bookId}')">Delete</button></div></div><div class='books-item-cover ${coverState === "ready" ? "ready" : "pending"}' data-book-cover-id='${sanitize(book.bookId)}' data-book-cover-state='${coverState}'>${coverMarkup}</div></article>`;
+      return `<article class='books-item ${active}'><div class='books-item-main'><h4>${sanitize(book.title)}</h4><p>${sanitize(book.author || "Unknown author")}</p><p class='books-file-meta'>${sanitize(book.fileName)} · ${Math.round((book.fileSize || 0) / 1024)}KB</p>${missingFileMarkup}<div class='books-item-actions'><button class='btn-secondary' type='button' onclick="HabitApp.setActiveBook('${book.bookId}')">Select</button>${readButton}<button class='btn-secondary' type='button' onclick="HabitApp.editBook('${book.bookId}')">Edit</button><button class='btn-danger' type='button' onclick="HabitApp.deleteBook('${book.bookId}')">Delete</button></div></div><div class='books-item-cover'>${coverMarkup}</div></article>`;
     })
     .join("");
-
-  bindBookCoverLazyLoading(list);
 }
 
 export function renderBookmarksPanel() {
@@ -197,7 +98,6 @@ export async function renderBooksView() {
   await refreshBookBlobStatus();
   await renderBooksList();
   renderBookmarksPanel();
-  syncBookOpenModeControls();
 }
 
 registerRenderer("renderBooksView", renderBooksView);

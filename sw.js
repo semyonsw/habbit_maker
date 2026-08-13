@@ -40,7 +40,6 @@ const PRECACHE = [
   "src/logging.js",
   "src/modals.js",
   "src/native.js",
-  "src/pdf-reader.js",
   "src/persistence.js",
   "src/preferences.js",
   "src/router.js",
@@ -56,8 +55,6 @@ const PRECACHE = [
   "src/state.js",
   "src/utils.js",
   // Vendored libraries
-  "vendor/pdfjs/pdf.min.js",
-  "vendor/pdfjs/pdf.worker.min.js",
   "vendor/chartjs/chart.umd.min.js",
   "vendor/fonts/fonts.css",
 ];

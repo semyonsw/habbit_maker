@@ -40,12 +40,6 @@ export const IDB_KV_STORE = "kv";
 export const IDB_LOGS_STORE = "logs";
 export const IDB_PDF_STORE = "pdfs";
 
-// Vendored offline copies (see vendor/). Relative paths resolve against the
-// document base URL, so they work under a GitHub Pages project subpath too.
-export const PDFJS_SCRIPT_URLS = ["vendor/pdfjs/pdf.min.js"];
-export const PDFJS_WORKER_URL = "vendor/pdfjs/pdf.worker.min.js";
-export const READER_DARK_ENABLED_KEY = "habitTracker_readerDarkEnabled_v1";
-export const READER_DARK_MODE_KEY = "habitTracker_readerDarkMode_v1";
 export const ANALYTICS_DISPLAY_MODE_KEY = "habitTracker_analyticsDisplayMode_v1";
 export const MAX_LOG_RECORDS = 1000;
 

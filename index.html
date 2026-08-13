@@ -418,14 +418,6 @@
             <section class="books-card books-card--library">
               <div class="books-card-header">
                 <h3>My Books</h3>
-                <div class="books-open-mode">
-                  <label for="bookOpenModeSelect">Open bookmarks in</label>
-                  <select id="bookOpenModeSelect">
-                    <option value="ask">Ask each time</option>
-                    <option value="app">This app's reader</option>
-                    <option value="external">Phone's PDF app</option>
-                  </select>
-                </div>
               </div>
               <div class="books-list" id="booksList"></div>
               <!-- One shared picker for every "choose this book's file" button;
@@ -1161,37 +1153,6 @@
         </div>
       </div>
     </div>
-    <div class="modal-overlay" id="readerHistoryPickerModal">
-      <div class="modal">
-        <div class="modal-header">
-          <h3>Save reading session</h3>
-          <button class="modal-close" id="readerHistoryPickerClose">
-            &times;
-          </button>
-        </div>
-        <div class="modal-body">
-          <p
-            class="reader-history-picker-subtitle"
-            id="readerHistoryPickerSubtitle"
-          >
-            Tap a bookmark to add this session to it, or create a new one.
-          </p>
-          <div
-            class="reader-history-picker-list"
-            id="readerHistoryPickerList"
-            role="list"
-          ></div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn-secondary" id="readerHistoryPickerCancel">
-            Cancel
-          </button>
-          <button class="btn-primary" id="readerHistoryPickerCreateNew">
-            + Create new bookmark
-          </button>
-        </div>
-      </div>
-    </div>
     <div class="modal-overlay" id="noteModal">
       <div class="modal modal-sm">
         <div class="modal-header">
@@ -1283,54 +1244,6 @@
         <div class="modal-footer">
           <button class="btn-secondary" id="bookModalCancel">Cancel</button>
           <button class="btn-primary" id="bookModalSave">Save</button>
-        </div>
-      </div>
-    </div>
-    <div class="modal-overlay" id="bookOpenModal">
-      <div class="modal modal-sm">
-        <div class="modal-header">
-          <h3>Open at bookmark</h3>
-          <button class="modal-close" id="bookOpenModalClose">&times;</button>
-        </div>
-        <div class="modal-body">
-          <p class="modal-subtitle" id="bookOpenSubtitle"></p>
-          <button class="book-open-choice" id="bookOpenInApp" type="button">
-            <span class="book-open-choice__title">Read in this app</span>
-            <span class="book-open-choice__hint">
-              Opens straight on the bookmarked page, with dark mode and one-tap
-              bookmark updates.
-            </span>
-          </button>
-          <button class="book-open-choice" id="bookOpenExternal" type="button">
-            <span class="book-open-choice__title">Open in my PDF app</span>
-            <span class="book-open-choice__hint" id="bookOpenExternalHint">
-            </span>
-          </button>
-          <label class="book-open-remember">
-            <input id="bookOpenRemember" type="checkbox" />
-            <span>Remember my choice</span>
-          </label>
-        </div>
-        <div class="modal-footer">
-          <button class="btn-secondary" id="bookOpenModalCancel">Cancel</button>
-        </div>
-      </div>
-    </div>
-    <div class="modal-overlay" id="readerBookmarksModal">
-      <div class="modal">
-        <div class="modal-header">
-          <h3>Bookmarks</h3>
-          <button class="modal-close" id="readerBookmarksClose">&times;</button>
-        </div>
-        <div class="modal-body">
-          <p class="modal-subtitle" id="readerBookmarksSubtitle"></p>
-          <button class="btn-primary" id="readerBookmarksAdd" type="button">
-            ＋ New bookmark here
-          </button>
-          <div class="reader-bookmarks-list" id="readerBookmarksList"></div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn-secondary" id="readerBookmarksDone">Done</button>
         </div>
       </div>
     </div>
@@ -1455,137 +1368,6 @@
       </div>
     </div>
 
-    <section id="readerMode" class="reader-mode" style="display: none">
-      <header class="reader-topbar" id="readerTopbar">
-        <div class="reader-identity">
-          <!-- Only shown by pdf-reader.js when the reader is layered over the
-               app; the standalone ?reader=1 tab has nothing to go back to. -->
-          <button
-            id="readerClose"
-            class="reader-close"
-            type="button"
-            title="Back to the app"
-            aria-label="Back to the app"
-          >
-            ←
-          </button>
-          <div>
-            <h2 id="readerBookTitle">Reader</h2>
-            <p id="readerStatusText">Loading PDF...</p>
-          </div>
-        </div>
-        <div class="reader-controls">
-          <!-- On a phone these collapse to icons (see .reader-controls in
-               styles.css), so the labels have to live in aria-label too. -->
-          <button
-            id="readerPrevPage"
-            class="btn-secondary reader-icon-btn"
-            type="button"
-            title="Previous page"
-            aria-label="Previous page"
-          >
-            Prev
-          </button>
-          <span id="readerPageIndicator">0 / 0</span>
-          <button
-            id="readerNextPage"
-            class="btn-secondary reader-icon-btn"
-            type="button"
-            title="Next page"
-            aria-label="Next page"
-          >
-            Next
-          </button>
-          <input
-            id="readerJumpPage"
-            type="number"
-            min="1"
-            value="1"
-            aria-label="Go to page"
-          />
-          <button
-            id="readerGoPage"
-            class="btn-primary reader-icon-btn"
-            type="button"
-            title="Go to that page"
-            aria-label="Go to that page"
-          >
-            Go
-          </button>
-          <button
-            id="readerAddBookmarkOnPage"
-            class="btn-primary"
-            type="button"
-            title="Add bookmark on this page"
-            aria-label="Add bookmark on this page"
-          >
-            ＋ Bookmark
-          </button>
-          <button
-            id="readerBookmarksBtn"
-            class="btn-primary"
-            type="button"
-            title="Jump to, move or add bookmarks"
-          >
-            Bookmarks
-          </button>
-          <button
-            id="readerDarkToggle"
-            class="btn-secondary reader-icon-btn"
-            type="button"
-            aria-pressed="false"
-          >
-            Read in dark theme: OFF
-          </button>
-          <select
-            id="readerDarkMode"
-            class="reader-dark-mode"
-            aria-label="Dark reading mode"
-            disabled
-          >
-            <option value="full">Full invert</option>
-            <option value="text">Text-focused</option>
-          </select>
-          <button
-            id="readerZoomIn"
-            class="btn-secondary reader-icon-btn"
-            type="button"
-            title="Zoom in"
-            aria-label="Zoom in"
-          >
-            +
-          </button>
-          <button
-            id="readerZoomOut"
-            class="btn-secondary reader-icon-btn"
-            type="button"
-            title="Zoom out"
-            aria-label="Zoom out"
-          >
-            -
-          </button>
-        </div>
-      </header>
-      <div class="reader-canvas-wrap" id="readerBookContainer">
-        <canvas id="readerCanvas"></canvas>
-        <!-- Page turning on touch. Real buttons rather than a swipe handler:
-             .reader-canvas-wrap is overflow:auto, so once the page is zoomed in
-             a horizontal drag has to pan it. Shown only on coarse pointers. -->
-        <button
-          id="readerTapPrev"
-          class="reader-tapzone reader-tapzone--prev"
-          type="button"
-          aria-label="Previous page"
-        ></button>
-        <button
-          id="readerTapNext"
-          class="reader-tapzone reader-tapzone--next"
-          type="button"
-          aria-label="Next page"
-        ></button>
-      </div>
-    </section>
-
     <button class="mobile-menu-toggle" id="mobileMenuToggle" aria-label="Open menu">
       <svg
         width="24"
@@ -1614,6 +1396,7 @@
       </svg>
     </button>
 
+
     <div class="undo-toast" id="undoToast" role="status" aria-live="polite">
       <span id="undoToastMessage">Action completed.</span>
       <div class="undo-toast-actions">
@@ -1631,11 +1414,6 @@
       </div>
     </div>
 
-    <!-- pdf.js is NOT loaded eagerly: ensurePdfJsLibLoaded() in
-         src/pdf-reader.js injects it on demand and all three consumers go
-         through that, so an eager tag was 320KB of parse before first paint for
-         a secondary surface. It stays in the service worker PRECACHE, so
-         opening the reader offline still works. -->
     <script>
       // Boot-time error surface. These handlers must stay: the in-app logging
       // handlers only start after bindEvents(), so anything that fails during
@@ -1754,10 +1532,7 @@
               // sw.js calls skipWaiting(), so a new worker takes over while the
               // page is still running the previously cached JS. Reload to get a
               // matched set -- but not while the user is mid-task.
-              var busy =
-                document.querySelector(".modal-overlay.open") ||
-                (document.getElementById("readerMode") || {}).style?.display ===
-                  "block";
+              var busy = document.querySelector(".modal-overlay.open");
               if (busy) {
                 document.addEventListener("visibilitychange", function once() {
                   if (document.visibilityState === "hidden") {
