@@ -78,80 +78,9 @@ export function validateImportedState(imported) {
     errors.push("months must be an object.");
   }
 
-  if (imported.books !== undefined) {
-    if (!isPlainObject(imported.books)) {
-      errors.push("books must be an object when provided.");
-    } else {
-      if (!Array.isArray(imported.books.items)) {
-        errors.push("books.items must be an array.");
-      } else {
-        imported.books.items.forEach((book, i) => {
-          if (!isPlainObject(book)) {
-            errors.push(`books.items[${i}] must be an object.`);
-            return;
-          }
-          if (typeof book.bookId !== "string" || !book.bookId.trim()) {
-            errors.push(`books.items[${i}].bookId must be a non-empty string.`);
-          }
-          if (book.bookmarks !== undefined && !Array.isArray(book.bookmarks)) {
-            errors.push(`books.items[${i}].bookmarks must be an array.`);
-          }
-          if (Array.isArray(book.bookmarks)) {
-            book.bookmarks.forEach((bm, j) => {
-              if (!isPlainObject(bm)) {
-                errors.push(
-                  `books.items[${i}].bookmarks[${j}] must be an object.`,
-                );
-                return;
-              }
-              if (typeof bm.bookmarkId !== "string" || !bm.bookmarkId.trim()) {
-                errors.push(
-                  `books.items[${i}].bookmarks[${j}].bookmarkId must be a non-empty string.`,
-                );
-              }
-              if (!Number.isFinite(Number(bm.pdfPage))) {
-                errors.push(
-                  `books.items[${i}].bookmarks[${j}].pdfPage must be numeric.`,
-                );
-              }
-              const hasRealPageValue =
-                bm.realPage !== undefined &&
-                bm.realPage !== null &&
-                String(bm.realPage).trim() !== "";
-              if (hasRealPageValue && !Number.isFinite(Number(bm.realPage))) {
-                errors.push(
-                  `books.items[${i}].bookmarks[${j}].realPage must be numeric when provided.`,
-                );
-              }
-              if (bm.history !== undefined && !Array.isArray(bm.history)) {
-                errors.push(
-                  `books.items[${i}].bookmarks[${j}].history must be an array.`,
-                );
-              }
-            });
-          }
-        });
-      }
-    }
-  }
-
-  if (imported.pdfBlobs !== undefined) {
-    if (!isPlainObject(imported.pdfBlobs)) {
-      errors.push("pdfBlobs must be an object when provided.");
-    } else {
-      Object.entries(imported.pdfBlobs).forEach(([fileId, encoded], i) => {
-        if (typeof fileId !== "string" || !fileId.trim()) {
-          errors.push(`pdfBlobs entry ${i + 1} has an invalid fileId key.`);
-        }
-        if (typeof encoded !== "string" || !encoded.trim()) {
-          errors.push(
-            `pdfBlobs[${fileId || i}] must be a non-empty base64 string.`,
-          );
-        }
-      });
-    }
-  }
-
+  // `books` and `pdfBlobs` from an older backup are not validated: they are
+  // dropped on import rather than read, so a malformed one cannot hurt us and
+  // rejecting the whole file over it would lose the habits alongside it.
   return { ok: errors.length === 0, errors };
 }
 

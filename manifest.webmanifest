@@ -1,7 +1,7 @@
 {
   "name": "Habit Maker",
   "short_name": "Habits",
-  "description": "Local-first habit tracker and PDF bookmark workspace. All data stays on your device.",
+  "description": "Local-first habit tracker. All data stays on your device.",
   "lang": "en",
   "_comment_id": "No explicit \"id\": it resolves against the ORIGIN, not the manifest URL, so \"./\" would mean https://host/ and orphan every existing install. The implicit default (start_url) is already correct.",
   "start_url": "./",

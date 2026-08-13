@@ -4,8 +4,8 @@
  * are RELATIVE (no leading slash) so they resolve against the service worker's
  * scope, which works under a GitHub Pages project subpath (/habbit_maker/).
  *
- * App DATA lives in IndexedDB, not over HTTP — only static shell GETs reach the
- * fetch handler. Cross-origin requests (e.g. the Gemini API) are never touched.
+ * App DATA lives in IndexedDB, not over HTTP — only static shell GETs reach
+ * the fetch handler. Cross-origin requests are never touched.
  */
 "use strict";
 
