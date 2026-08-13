@@ -3990,11 +3990,6 @@ html[data-ui-mode="mobile"] .sidebar.open ~ .mobile-menu-toggle {
     height: 40px;
   }
 
-  .feedback-image-remove {
-    width: 32px;
-    height: 32px;
-  }
-
   /* The checkbox is hidden and the whole <label> becomes the chip -- see
      habits.js renderSequenceCheckboxes(), which emits
      <label><input type=checkbox><span>. :has(input:checked) already skins it. */
@@ -4283,200 +4278,6 @@ html[data-ui-mode="mobile"] .sidebar.open ~ .mobile-menu-toggle {
 }
 
 .settings-mailto-hint[hidden] {
-  display: none;
-}
-
-.feedback-emailjs-details {
-  margin: 0 0 14px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
-  background: rgba(255, 255, 255, 0.02);
-}
-
-.feedback-emailjs-details > summary {
-  cursor: pointer;
-  font-size: 0.85rem;
-  color: var(--gray-300, #cbd5e1);
-  user-select: none;
-  list-style: revert;
-}
-
-.feedback-emailjs-details[open] > summary {
-  margin-bottom: 8px;
-}
-
-.feedback-emailjs-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.feedback-emailjs-status {
-  font-size: 0.8rem;
-  color: var(--gray-300, #cbd5e1);
-}
-
-.feedback-emailjs-status.is-success {
-  color: #6ee7b7;
-}
-
-.feedback-emailjs-status.is-error {
-  color: #fca5a5;
-}
-
-.feedback-emailjs-status[hidden] {
-  display: none;
-}
-
-.feedback-preview-ai-note {
-  padding: 6px 10px;
-  border-radius: 8px;
-  border: 1px solid rgba(167, 139, 250, 0.35);
-  background: rgba(167, 139, 250, 0.08);
-  color: #c4b5fd;
-}
-
-.feedback-preview-ai-note[hidden] {
-  display: none;
-}
-
-.feedback-loading-view {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 14px;
-  padding: 28px 12px;
-}
-
-.feedback-loading-spinner {
-  width: 36px;
-  height: 36px;
-  border: 3px solid rgba(255, 255, 255, 0.12);
-  border-top-color: #93c5fd;
-  border-radius: 50%;
-  animation: feedbackSpin 0.9s linear infinite;
-}
-
-@keyframes feedbackSpin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.modal-overlay#settingsModal.is-feedback-expanded .modal {
-  max-width: 720px;
-  transition: max-width 0.25s ease;
-}
-
-.modal-overlay#settingsModal.is-feedback-expanded .modal-body {
-  padding-top: 20px;
-  padding-bottom: 20px;
-}
-
-.modal-overlay#settingsModal.is-feedback-expanded #feedbackPreviewBody {
-  min-height: 240px;
-  resize: vertical;
-}
-
-.modal-overlay#settingsModal.is-feedback-expanded #feedbackPreviewSubject {
-  font-size: 0.95rem;
-}
-
-/* ---- Feedback: screenshot attachments ---- */
-.feedback-image-input {
-  width: 100%;
-  font-size: 0.82rem;
-  color: var(--gray-300, #cbd5e1);
-}
-
-.feedback-image-list {
-  margin-top: 10px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.feedback-image-list[hidden] {
-  display: none;
-}
-
-.feedback-image-thumb {
-  position: relative;
-  width: 84px;
-  height: 84px;
-  border-radius: var(--radius-sm, 8px);
-  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
-  overflow: hidden;
-  background: rgba(255, 255, 255, 0.04);
-}
-
-.feedback-image-thumb img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-.feedback-image-remove {
-  position: absolute;
-  top: 3px;
-  right: 3px;
-  width: 20px;
-  height: 20px;
-  padding: 0;
-  border: none;
-  border-radius: 50%;
-  background: rgba(0, 0, 0, 0.62);
-  color: #fff;
-  font-size: 15px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.feedback-image-remove:hover {
-  background: #dc2626;
-}
-
-.feedback-image-cap {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  padding: 2px 4px;
-  font-size: 0.66rem;
-  color: #fff;
-  background: rgba(0, 0, 0, 0.55);
-  text-align: center;
-}
-
-.feedback-image-note.is-warn {
-  color: #fbbf24;
-}
-
-.feedback-image-note[hidden] {
-  display: none;
-}
-
-.feedback-preview-image-note {
-  margin: 0;
-  padding: 6px 10px;
-  border-radius: 8px;
-  border: 1px solid rgba(96, 165, 250, 0.35);
-  background: rgba(96, 165, 250, 0.08);
-  color: #93c5fd;
-}
-
-.feedback-preview-image-note.is-warn {
-  border-color: rgba(245, 158, 11, 0.4);
-  background: rgba(245, 158, 11, 0.08);
-  color: #fbbf24;
-}
-
-.feedback-preview-image-note[hidden] {
   display: none;
 }
 
@@ -5498,7 +5299,7 @@ html[data-ui-mode="mobile"] .modal-footer > button {
   min-height: 48px;
 }
 
-/* Long textareas (#feedbackPreviewBody is rows=10) must not eat the sheet. */
+/* Long textareas must not eat the sheet. */
 html[data-ui-mode="mobile"] .modal-body textarea {
   max-height: 34vh;
 }
@@ -5514,12 +5315,6 @@ html[data-ui-mode="mobile"] .summary-modal-footer > button {
 }
 html[data-ui-mode="mobile"] .summary-content {
   max-height: 46vh;
-}
-
-/* The feedback flow widens the settings dialog on desktop; pointless once the
-   sheet is already full-width. */
-html[data-ui-mode="mobile"] .modal-overlay.is-feedback-expanded .modal {
-  max-width: 100%;
 }
 
 /* Habit modal schedule pickers. @media (pointer: coarse) already hides the

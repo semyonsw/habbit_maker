@@ -65,31 +65,6 @@ export const SUMMARY_MAX_PAGES_PER_RUN_DEFAULT = 120;
 export const MAX_LOG_RECORDS = 1000;
 
 export const APP_VERSION = "1.0.0";
-export const FEEDBACK_GITHUB_REPO = "semyonsw/habbit_maker";
-export const FEEDBACK_EMAIL = "semyonsw@gmail.com";
-export const FEEDBACK_URL_LENGTH_WARNING_THRESHOLD = 7500;
-
-// Feedback screenshot attachments.
-export const FEEDBACK_MAX_IMAGES = 6;
-// Reject a single source image larger than this before it ever enters memory.
-export const FEEDBACK_MAX_IMAGE_BYTES = 12 * 1024 * 1024;
-// Longest edge the email attachment is scaled down to before the size loop.
-export const FEEDBACK_EMAIL_ATTACH_MAX_WIDTH = 1400;
-// Target DECODED size of the email attachment. EmailJS caps attachments at
-// 500KB on paid plans, so aim below that with headroom (base64 transport adds
-// ~33%, but the cap applies to the decoded file, which is what we measure).
-export const FEEDBACK_EMAIL_ATTACH_BUDGET_BYTES = 480 * 1024;
-
-export const EMAILJS_API_URL = "https://api.emailjs.com/api/v1.0/email/send";
-export const EMAILJS_PUBLIC_KEY_STORAGE = "habitTracker_emailjs_publicKey_v1";
-export const EMAILJS_SERVICE_ID_STORAGE = "habitTracker_emailjs_serviceId_v1";
-export const EMAILJS_TEMPLATE_ID_STORAGE = "habitTracker_emailjs_templateId_v1";
-// Separate template used ONLY when screenshots are attached. It must declare a
-// single Variable Attachment (parameter name `content`, filename `{{filename}}`).
-// Kept separate so text-only feedback never hits an empty-attachment 422.
-export const EMAILJS_ATTACH_TEMPLATE_ID_STORAGE =
-  "habitTracker_emailjs_attachTemplateId_v1";
-export const GEMINI_POLISH_MODEL = "gemini-2.5-flash-lite";
 
 export const DEFAULT_CATEGORIES = [
   { id: "cat_health", name: "Health", emoji: "\u2764\uFE0F", color: "#3E85B5" },

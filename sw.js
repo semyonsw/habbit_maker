@@ -35,7 +35,6 @@ const PRECACHE = [
   "src/db-idb.js",
   "src/encryption.js",
   "src/events.js",
-  "src/feedback.js",
   "src/habits.js",
   "src/idb.js",
   "src/layout.js",

@@ -64,19 +64,6 @@ import {
 } from "./ai-summary.js";
 import { appendLogEntry } from "./logging.js";
 import {
-  openFeedbackPanel,
-  bindFeedbackForm,
-  submitFeedbackToGithub,
-  submitFeedbackToMail,
-  saveEmailJsConfigFromInputs,
-  sendFromPreview,
-  previewBackToForm,
-  retryAiPolish,
-  sendRawWithoutAi,
-  errorBackToForm,
-  handleFeedbackImageInputChange,
-} from "./feedback.js";
-import {
   bindUiAppearanceControls,
   syncUiAppearanceControls,
 } from "./ui-prefs.js";
@@ -388,7 +375,7 @@ export function bindEvents() {
   if (settingsBtn) {
     settingsBtn.addEventListener("click", () => {
       syncUiAppearanceControls();
-      openFeedbackPanel();
+      openModal("settingsModal");
     });
   }
   const settingsClose = document.getElementById("settingsModalClose");
@@ -401,43 +388,6 @@ export function bindEvents() {
       closeModal("settingsModal"),
     );
   }
-  const feedbackGithubBtn = document.getElementById("feedbackSubmitGithub");
-  if (feedbackGithubBtn) {
-    feedbackGithubBtn.addEventListener("click", submitFeedbackToGithub);
-  }
-  const feedbackMailtoBtn = document.getElementById("feedbackSubmitMailto");
-  if (feedbackMailtoBtn) {
-    feedbackMailtoBtn.addEventListener("click", submitFeedbackToMail);
-  }
-  const emailjsSaveBtn = document.getElementById("emailjsSave");
-  if (emailjsSaveBtn) {
-    emailjsSaveBtn.addEventListener("click", saveEmailJsConfigFromInputs);
-  }
-  const feedbackImageInput = document.getElementById("feedbackImageInput");
-  if (feedbackImageInput) {
-    feedbackImageInput.addEventListener("change", handleFeedbackImageInputChange);
-  }
-  const previewSendBtn = document.getElementById("feedbackPreviewSend");
-  if (previewSendBtn) {
-    previewSendBtn.addEventListener("click", sendFromPreview);
-  }
-  const previewBackBtn = document.getElementById("feedbackPreviewBack");
-  if (previewBackBtn) {
-    previewBackBtn.addEventListener("click", previewBackToForm);
-  }
-  const errorRetryBtn = document.getElementById("feedbackErrorRetry");
-  if (errorRetryBtn) {
-    errorRetryBtn.addEventListener("click", retryAiPolish);
-  }
-  const errorSendRawBtn = document.getElementById("feedbackErrorSendRaw");
-  if (errorSendRawBtn) {
-    errorSendRawBtn.addEventListener("click", sendRawWithoutAi);
-  }
-  const errorCancelBtn = document.getElementById("feedbackErrorCancel");
-  if (errorCancelBtn) {
-    errorCancelBtn.addEventListener("click", errorBackToForm);
-  }
-  bindFeedbackForm();
   bindUiAppearanceControls();
 
   window.addEventListener("resize", applySidebarCollapseState);
