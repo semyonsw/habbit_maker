@@ -10,9 +10,6 @@ import {
   openCategoryModal,
   saveCategoryModal,
   saveNoteModal,
-  openReportModal,
-  saveReportModal,
-  handleReportFileInputChange,
   openModal,
   closeModal,
   closeTopModal,
@@ -22,7 +19,6 @@ import {
 import { navigateTo } from "./router.js";
 import { setSidebarCollapsed, applySidebarCollapseState } from "./layout.js";
 import { exportData, importData, setBackupStatus } from "./data-io.js";
-import { bindLogsControls } from "./render-logs.js";
 import {
   updateHabitScheduleTypeUI,
   renderSequenceCheckboxes,
@@ -114,24 +110,6 @@ export function bindEvents() {
   document
     .getElementById("noteModalSave")
     .addEventListener("click", saveNoteModal);
-
-  document
-    .getElementById("btnAddReport")
-    .addEventListener("click", () => openReportModal());
-  document
-    .getElementById("reportModalClose")
-    .addEventListener("click", () => closeModal("reportModal"));
-  document
-    .getElementById("reportModalCancel")
-    .addEventListener("click", () => closeModal("reportModal"));
-  document
-    .getElementById("reportModalSave")
-    .addEventListener("click", saveReportModal);
-  document
-    .getElementById("reportAttachInput")
-    .addEventListener("change", handleReportFileInputChange);
-
-  bindLogsControls();
 
   document
     .getElementById("confirmModalClose")

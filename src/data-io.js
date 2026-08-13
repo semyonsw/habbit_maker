@@ -182,7 +182,6 @@ export function importData(file) {
       saveState();
       callRenderer("renderAll");
 
-      callRenderer("renderReportView");
 
       setBackupStatus(
         hadEmbeddedPdfs

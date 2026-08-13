@@ -1948,171 +1948,10 @@ body.is-modal-open-fixed {
   }
 }
 
-.books-header {
-  margin-bottom: 20px;
-}
-
-.books-header h2 {
-  font-family: var(--font-display);
-  font-size: 2rem;
-  color: var(--gray-900);
-}
-
-.books-header p {
-  margin-top: 4px;
-  color: var(--gray-600);
-}
-
 @keyframes coverShimmer {
   to {
     transform: translateX(120%);
   }
-}
-
-.logs-card {
-  padding: 18px;
-}
-
-/* Was repeat(6, minmax(120px, 1fr)) -> a hard 720px minimum, propped up by a
-   6->3->2->1 media ladder. auto-fit does the whole ladder in one line. */
-.logs-toolbar {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
-  gap: 10px;
-  margin-bottom: 12px;
-}
-
-.logs-toolbar input,
-.logs-toolbar select {
-  width: 100%;
-}
-
-.logs-live-status {
-  margin: 0;
-  grid-column: 1 / -1;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--gray-200);
-  background: var(--purple-50);
-  color: var(--gray-600);
-  padding: 7px 10px;
-  font-size: 0.82rem;
-}
-
-.logs-live-status.active {
-  border-color: rgba(34, 197, 94, 0.45);
-  color: #22c55e;
-  background: rgba(34, 197, 94, 0.08);
-}
-
-.logs-live-status.inactive {
-  border-color: rgba(245, 158, 11, 0.35);
-  color: #f59e0b;
-  background: rgba(245, 158, 11, 0.1);
-}
-
-.logs-table {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  max-height: 65vh;
-  max-height: 65dvh;
-  overflow: auto;
-  overscroll-behavior: contain;
-  padding-right: 4px;
-}
-
-/* A flex item defaults to min-width:auto, so the <pre class="logs-context">
-   inside each entry pushes the whole card to its max-content width even though
-   the <pre> itself scrolls. */
-.logs-table > * {
-  min-width: 0;
-}
-
-.logs-empty {
-  margin: 0;
-  padding: 12px;
-  background: var(--purple-50);
-  border: 1px solid var(--gray-100);
-  border-radius: var(--radius-md);
-  color: var(--gray-500);
-}
-
-.logs-entry {
-  border-radius: var(--radius-md);
-  border: 1px solid var(--gray-100);
-  background: var(--purple-50);
-  padding: 10px;
-}
-
-.logs-entry-top {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-  margin-bottom: 6px;
-}
-
-.logs-pill {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 58px;
-  border-radius: 999px;
-  padding: 2px 8px;
-  font-size: 0.7rem;
-  font-weight: 700;
-  letter-spacing: 0.4px;
-  color: var(--white);
-  background: var(--gray-500);
-}
-
-.logs-entry.logs-error .logs-pill {
-  background: #dc2626;
-}
-
-.logs-entry.logs-warn .logs-pill {
-  background: #d97706;
-}
-
-.logs-entry.logs-info .logs-pill {
-  background: #0369a1;
-}
-
-.logs-entry.logs-debug .logs-pill {
-  background: #6d28d9;
-}
-
-.logs-time,
-.logs-component,
-.logs-operation {
-  font-size: 0.76rem;
-  color: var(--gray-500);
-}
-
-.logs-message {
-  font-size: 0.9rem;
-  color: var(--gray-800);
-  margin-bottom: 6px;
-}
-
-.logs-error {
-  font-size: 0.82rem;
-  color: #fca5a5;
-  margin-bottom: 6px;
-}
-
-.logs-context {
-  margin: 0;
-  padding: 8px;
-  background: rgba(15, 23, 42, 0.88);
-  color: #e2e8f0;
-  border-radius: 8px;
-  border: 1px solid rgba(148, 163, 184, 0.3);
-  font-size: 0.74rem;
-  line-height: 1.35;
-  max-width: 100%;
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
 }
 
 #readerCanvas {
@@ -2705,124 +2544,6 @@ body.is-modal-open-fixed {
   font-size: 0.9rem;
 }
 
-/* Reports view */
-.reports-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.report-card {
-  padding: 16px;
-}
-
-.report-card-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-
-.report-card-title {
-  font-size: 1rem;
-  font-weight: 700;
-  color: var(--gray-800);
-  word-break: break-word;
-}
-
-.report-card-actions {
-  display: flex;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-/* These carry the text "Edit"/"Delete", but .manage-btn is a hard 32x32 icon
-   box -- the labels overflow it at every viewport. */
-.report-card-actions .manage-btn {
-  width: auto;
-  min-width: 0;
-  padding: 0 12px;
-}
-
-.report-card-meta {
-  margin-top: 4px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  font-size: 0.78rem;
-  color: var(--gray-500);
-}
-
-.report-card-note {
-  margin-top: 10px;
-  font-size: 0.9rem;
-  color: var(--gray-700);
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.report-card-attachments {
-  margin-top: 12px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.report-attach-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border: 1px solid var(--gray-200);
-  border-radius: var(--radius-md);
-  padding: 5px 10px;
-  font-size: 0.8rem;
-  background: var(--purple-50);
-  color: var(--gray-700);
-  cursor: pointer;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.report-attach-chip:hover {
-  border-color: var(--purple-600);
-}
-
-.report-attach-size {
-  color: var(--gray-400);
-  font-size: 0.72rem;
-}
-
-.report-attachments {
-  margin-top: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.report-attach-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 10px;
-  border: 1px solid var(--gray-200);
-  border-radius: var(--radius-sm);
-  padding: 6px 10px;
-  font-size: 0.82rem;
-}
-
-.report-attach-name {
-  word-break: break-word;
-}
-
-.report-attach-empty {
-  font-size: 0.8rem;
-  color: var(--gray-400);
-}
-
 .mobile-menu-toggle {
   display: none;
   position: fixed;
@@ -2963,8 +2684,6 @@ html[data-ui-mode="mobile"] .sidebar.open ~ .mobile-menu-toggle {
   .form-group input[type="password"],
   .form-group select,
   .form-group textarea,
-  .logs-toolbar input,
-  .logs-toolbar select,
   .settings-section input,
   .settings-section select,
   .settings-section textarea {
@@ -4058,48 +3777,13 @@ html[data-ui-mode="mobile"] .data-actions {
 html[data-ui-mode="mobile"] .data-actions > button {
   width: 100%;
 }
-
-/* ---- Logs ---- */
-html[data-ui-mode="mobile"] .logs-toolbar {
-  grid-template-columns: 1fr 1fr;
-}
 html[data-ui-mode="mobile"] #logsComponentFilter,
 html[data-ui-mode="mobile"] #logsTextFilter {
   grid-column: 1 / -1;
 }
-/* Wrapping beats a nested horizontal scroller inside an already-scrolling
-   card inside a scrolling page. */
-html[data-ui-mode="mobile"] .logs-context {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  overflow-x: visible;
-  max-height: 160px;
-  overflow-y: auto;
-}
-html[data-ui-mode="mobile"] .logs-table {
-  max-height: none;
-  overflow: visible;
-}
-html[data-ui-mode="mobile"] .logs-show-more {
-  width: 100%;
-}
-
-/* ---- Reports ---- */
-html[data-ui-mode="mobile"] .report-card-header {
-  flex-direction: column;
-  align-items: stretch;
-}
-html[data-ui-mode="mobile"] .report-card-actions {
-  justify-content: flex-end;
-}
 html[data-ui-mode="mobile"] #btnAddReport {
   width: 100%;
   justify-content: center;
-}
-html[data-ui-mode="mobile"] .report-attach-row {
-  flex-direction: column;
-  align-items: stretch;
-  gap: 6px;
 }
 
 /* ---- Completion mountains card ---- */

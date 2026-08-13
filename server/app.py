@@ -1,8 +1,8 @@
 """Habit Tracker local server.
 
 Serves the static frontend (index.html, src/, styles.css, ...) AND a small
-JSON API backed by a real SQLite file (`data.db`) plus a `files/` directory
-for attachment blobs. Replaces the previous `py -m http.server 3000` launch.
+JSON API backed by a real SQLite file (`data.db`).
+Replaces the previous `py -m http.server 3000` launch.
 
 Single-user, localhost only (binds 127.0.0.1). Stdlib only -- no pip install.
 """
@@ -22,16 +22,9 @@ HOST = os.environ.get("HABIT_HOST", "127.0.0.1")
 PORT = int(os.environ.get("HABIT_PORT", "3000"))
 MAX_LOG_RECORDS = 1000
 CHUNK = 64 * 1024
-FILE_ID_RE = re.compile(r"^[A-Za-z0-9_\-]{1,128}$")
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH = os.environ.get("HABIT_DB_PATH") or os.path.join(ROOT_DIR, "data.db")
-# Generic attachment store (report attachments; any MIME type). Blobs are
-# stored raw with no extension; the client tracks the MIME type in state.
-FILES_DIR = os.environ.get("HABIT_FILES_DIR") or os.path.join(ROOT_DIR, "files")
-MAX_FILE_BYTES = int(
-    os.environ.get("HABIT_MAX_FILE_BYTES", str(80 * 1024 * 1024))
-)
 MIGRATIONS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "migrations.sql")
 
 DB_LOCK = threading.Lock()
@@ -45,7 +38,6 @@ def get_conn():
 
 
 def init_db():
-    os.makedirs(FILES_DIR, exist_ok=True)
     with open(MIGRATIONS_PATH, "r", encoding="utf-8") as f:
         ddl = f.read()
     conn = get_conn()
@@ -53,15 +45,6 @@ def init_db():
         conn.executescript(ddl)
     finally:
         conn.close()
-    # Sweep stale .tmp files left over from a crashed upload.
-    for sweep_dir in (FILES_DIR,):
-        for entry in os.listdir(sweep_dir):
-            if entry.endswith(".tmp"):
-                try:
-                    os.remove(os.path.join(sweep_dir, entry))
-                except OSError:
-                    pass
-
 
 def get_meta(conn, key, default=None):
     row = conn.execute("SELECT value FROM schema_meta WHERE key=?", (key,)).fetchone()
@@ -388,10 +371,6 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/prefs":
             return self._api_get_prefs()
 
-        m = re.match(r"^/api/file/([^/]+)$", path)
-        if m:
-            return self._api_get_file(m.group(1))
-
         if path.startswith("/api/"):
             return self._send_json(HTTPStatus.NOT_FOUND, {"error": "not_found"})
 
@@ -411,16 +390,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._api_import_legacy()
         if path == "/api/logs":
             return self._api_post_log()
-        m = re.match(r"^/api/file/([^/]+)$", path)
-        if m:
-            return self._api_post_file(m.group(1))
         return self._send_json(HTTPStatus.NOT_FOUND, {"error": "not_found"})
 
     def do_DELETE(self):
         path = urlparse(self.path).path
-        m = re.match(r"^/api/file/([^/]+)$", path)
-        if m:
-            return self._api_delete_file(m.group(1))
         if path == "/api/logs":
             return self._api_clear_logs()
         return self._send_json(HTTPStatus.NOT_FOUND, {"error": "not_found"})
@@ -566,78 +539,6 @@ class Handler(BaseHTTPRequestHandler):
                 conn.close()
         self._send_json(HTTPStatus.OK, {"ok": True})
 
-    def _api_get_file(self, file_id):
-        if not FILE_ID_RE.match(file_id):
-            return self._send_json(HTTPStatus.BAD_REQUEST, {"error": "invalid_file_id"})
-        path = os.path.join(FILES_DIR, file_id)
-        if not os.path.isfile(path):
-            return self._send_json(HTTPStatus.NOT_FOUND, {"error": "not_found"})
-        size = os.path.getsize(path)
-        # MIME is tracked client-side (in report attachment metadata); the raw
-        # bytes are returned generically and re-wrapped in a typed Blob there.
-        self.send_response(HTTPStatus.OK)
-        self.send_header("Content-Type", "application/octet-stream")
-        self.send_header("Content-Length", str(size))
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        with open(path, "rb") as f:
-            while True:
-                chunk = f.read(CHUNK)
-                if not chunk:
-                    break
-                self.wfile.write(chunk)
-
-    def _api_post_file(self, file_id):
-        if not FILE_ID_RE.match(file_id):
-            return self._send_json(HTTPStatus.BAD_REQUEST, {"error": "invalid_file_id"})
-        try:
-            length = int(self.headers.get("Content-Length", "0") or 0)
-        except ValueError:
-            length = 0
-        if length <= 0 or length > MAX_FILE_BYTES:
-            return self._send_json(HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
-                                   {"error": "payload_too_large_or_empty"})
-        os.makedirs(FILES_DIR, exist_ok=True)
-        final = os.path.join(FILES_DIR, file_id)
-        tmp = final + ".tmp"
-        remaining = length
-        try:
-            with open(tmp, "wb") as f:
-                while remaining > 0:
-                    chunk = self.rfile.read(min(CHUNK, remaining))
-                    if not chunk:
-                        break
-                    f.write(chunk)
-                    remaining -= len(chunk)
-            if remaining != 0:
-                try:
-                    os.remove(tmp)
-                except OSError:
-                    pass
-                return self._send_json(HTTPStatus.BAD_REQUEST,
-                                       {"error": "incomplete_upload"})
-            os.replace(tmp, final)
-        except OSError as e:
-            try:
-                os.remove(tmp)
-            except OSError:
-                pass
-            return self._send_json(HTTPStatus.INTERNAL_SERVER_ERROR,
-                                   {"error": "write_failed", "detail": str(e)})
-        self._send_json(HTTPStatus.OK, {"ok": True, "sizeBytes": length})
-
-    def _api_delete_file(self, file_id):
-        if not FILE_ID_RE.match(file_id):
-            return self._send_json(HTTPStatus.BAD_REQUEST, {"error": "invalid_file_id"})
-        path = os.path.join(FILES_DIR, file_id)
-        try:
-            if os.path.isfile(path):
-                os.remove(path)
-        except OSError as e:
-            return self._send_json(HTTPStatus.INTERNAL_SERVER_ERROR,
-                                   {"error": "delete_failed", "detail": str(e)})
-        self._send_json(HTTPStatus.OK, {"ok": True})
-
     def _serve_static(self, url_path):
         full = safe_static_path(url_path)
         if not full:
@@ -666,7 +567,6 @@ def main():
     httpd = ThreadingHTTPServer((HOST, PORT), Handler)
     print(f"Habit Tracker server listening on http://{HOST}:{PORT}")
     print(f"  data.db: {DB_PATH}")
-    print(f"  files/:  {FILES_DIR}")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

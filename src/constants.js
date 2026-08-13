@@ -29,9 +29,6 @@ export const IDB_NAME = "habitTracker_store_v1";
 export const IDB_VERSION = 1;
 export const IDB_KV_STORE = "kv";
 export const IDB_LOGS_STORE = "logs";
-// Attachment blobs. Still named "pdfs" on disk (it began life as the book PDF
-// store); renaming it would strand every blob already written under that key.
-export const IDB_BLOB_STORE = "pdfs";
 
 export const ANALYTICS_DISPLAY_MODE_KEY = "habitTracker_analyticsDisplayMode_v1";
 export const MAX_LOG_RECORDS = 1000;

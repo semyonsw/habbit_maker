@@ -56,7 +56,3 @@ export const patchPrefs = (...a) => impl.patchPrefs(...a);
 export const getLogs = (...a) => impl.getLogs(...a);
 export const appendLog = (...a) => impl.appendLog(...a);
 export const clearLogs = (...a) => impl.clearLogs(...a);
-// Generic attachment blobs (any MIME type) -- used by the Report section.
-export const uploadFile = (...a) => impl.uploadFile(...a);
-export const getFileBlob = (...a) => impl.getFileBlob(...a);
-export const deleteFile = (...a) => impl.deleteFile(...a);

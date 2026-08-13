@@ -132,41 +132,6 @@
             </svg>
             <span>Analytics</span>
           </li>
-          <li class="nav-tab" data-view="report" title="Reports">
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-              <path d="M14 2v6h6" />
-              <path d="M8 13h8" />
-              <path d="M8 17h8" />
-              <path d="M8 9h2" />
-            </svg>
-            <span>Reports</span>
-          </li>
-          <li class="nav-tab" data-view="logs" title="Logs">
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <path d="M3 5h18" />
-              <path d="M3 12h18" />
-              <path d="M3 19h18" />
-              <circle cx="7" cy="5" r="1" fill="currentColor" />
-              <circle cx="7" cy="12" r="1" fill="currentColor" />
-              <circle cx="7" cy="19" r="1" fill="currentColor" />
-            </svg>
-            <span>Logs</span>
-          </li>
         </ul>
         <div class="sidebar-footer">
           <button class="btn-export" id="btnExport" title="Export Data">
@@ -515,77 +480,6 @@
           </div>
         </section>
 
-        <section class="view" id="view-logs">
-          <div class="manage-header">
-            <h2>Debug Logs</h2>
-          </div>
-
-          <div class="card logs-card">
-            <div class="logs-toolbar">
-              <select id="logsLevelFilter">
-                <option value="">All levels</option>
-                <option value="error">Errors</option>
-                <option value="warn">Warnings</option>
-                <option value="info">Info</option>
-                <option value="debug">Debug</option>
-              </select>
-              <input
-                id="logsComponentFilter"
-                type="text"
-                placeholder="Filter by component"
-              />
-              <input
-                id="logsTextFilter"
-                type="text"
-                placeholder="Search message/context"
-              />
-              <button
-                class="btn-secondary"
-                id="logsExportJsonBtn"
-                type="button"
-              >
-                Export JSON
-              </button>
-              <button class="btn-secondary" id="logsExportCsvBtn" type="button">
-                Export CSV
-              </button>
-              <button
-                class="btn-secondary"
-                id="logsLiveFileSelectBtn"
-                type="button"
-              >
-                Enable Live .log File
-              </button>
-              <button
-                class="btn-secondary"
-                id="logsLiveFileStopBtn"
-                type="button"
-              >
-                Stop Live .log
-              </button>
-              <button class="btn-danger" id="logsClearBtn" type="button">
-                Clear Logs
-              </button>
-              <p class="logs-live-status inactive" id="logsLiveFileStatus">
-                Live file logging: OFF.
-              </p>
-            </div>
-            <div id="logsTable" class="logs-table"></div>
-          </div>
-        </section>
-
-        <section class="view" id="view-report">
-          <div class="books-header">
-            <h2>Reports</h2>
-            <p>Write notes and attach files. Optionally link a report to a habit.</p>
-          </div>
-          <div class="manage-header">
-            <button class="btn-add" id="btnAddReport" type="button">
-              + New Report
-            </button>
-          </div>
-          <div id="reportsList" class="reports-list"></div>
-        </section>
       </main>
       <nav class="bottom-nav" aria-label="Primary">
         <button type="button" class="bottom-nav-btn active" data-view="dashboard">
@@ -605,16 +499,6 @@
             <path d="M17 16v-6" />
           </svg>
           <span>Stats</span>
-        </button>
-        <button type="button" class="bottom-nav-btn" data-view="report">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-            <path d="M14 2v6h6" />
-            <path d="M8 13h8" />
-            <path d="M8 17h8" />
-            <path d="M8 9h2" />
-          </svg>
-          <span>Reports</span>
         </button>
         <!-- data-sheet, NOT data-view: switchView() has no fallback for an
              unknown view id -- it would strip .active from every section and
@@ -1004,13 +888,6 @@
             <button
               type="button"
               class="more-sheet-item"
-              data-more-view="logs"
-            >
-              <span aria-hidden="true">📋</span> Debug logs
-            </button>
-            <button
-              type="button"
-              class="more-sheet-item"
               id="moreSheetSettings"
             >
               <span aria-hidden="true">🛠️</span> Settings
@@ -1060,46 +937,6 @@
         <div class="modal-footer">
           <button class="btn-secondary" id="noteModalCancel">Cancel</button>
           <button class="btn-primary" id="noteModalSave">Save</button>
-        </div>
-      </div>
-    </div>
-    <div class="modal-overlay" id="reportModal">
-      <div class="modal">
-        <div class="modal-header">
-          <h3 id="reportModalTitle">New Report</h3>
-          <button class="modal-close" id="reportModalClose">&times;</button>
-        </div>
-        <div class="modal-body">
-          <div class="form-group">
-            <label for="reportTitle">Title</label>
-            <input
-              type="text"
-              id="reportTitle"
-              maxlength="120"
-              placeholder="e.g., Weekly review"
-            />
-          </div>
-          <div class="form-group">
-            <label for="reportHabit">Linked habit (optional)</label>
-            <select id="reportHabit"></select>
-          </div>
-          <div class="form-group">
-            <label for="reportNote">Notes</label>
-            <textarea
-              id="reportNote"
-              rows="6"
-              placeholder="Write your notes here..."
-            ></textarea>
-          </div>
-          <div class="form-group">
-            <label for="reportAttachInput">Attachments</label>
-            <input type="file" id="reportAttachInput" multiple />
-            <div id="reportAttachmentsList" class="report-attachments"></div>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn-secondary" id="reportModalCancel">Cancel</button>
-          <button class="btn-primary" id="reportModalSave">Save</button>
         </div>
       </div>
     </div>
@@ -1236,7 +1073,7 @@
           }
           node.querySelector(".boot-error-text").textContent = DEBUG
             ? text
-            : "Something went wrong. See Logs for details.";
+            : "Something went wrong. Please try again.";
           // append, not prepend: prepending displaces #globalLoadingOverlay.
           if (!node.isConnected) document.body.appendChild(node);
 

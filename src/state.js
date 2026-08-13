@@ -17,7 +17,6 @@ export const globals = {
   editingCategoryId: null,
   topClockTimer: null,
   lastAutoScrolledMonthKey: null,
-  logAutoDownloadBlockedUntil: 0,
   // Day selected in the mobile day-focus card, 1..31. null means "resolve to
   // today if we are viewing the current month, else day 1" -- see
   // render-day-focus.js getSelectedDay(). Deliberately not persisted: loadState()
@@ -26,12 +25,6 @@ export const globals = {
 };
 
 export const noteModalState = { habitId: null, day: null };
-export const reportModalState = {
-  reportId: null,
-  attachments: [],
-  pendingFiles: [],
-  removedFileIds: [],
-};
 export let idbPromise = null;
 export function setIdbPromise(p) {
   idbPromise = p;
@@ -49,14 +42,6 @@ export function setAppLogs(logs) {
   appLogs = logs;
 }
 
-export const liveLogFileState = {
-  enabled: false,
-  handle: null,
-  writeQueue: Promise.resolve(),
-  sessionId: "",
-  writeCount: 0,
-  lastError: "",
-};
 
 export const analyticsState = {
   displayMode: "percent",

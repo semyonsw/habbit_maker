@@ -9,20 +9,19 @@
 // signatures, and return shapes -- so none of the ~25 modules that import from
 // here need to change.
 //
-// Storage layout (one database, three stores):
+// Storage layout (one database, two stores):
 //   kv   {key, value}            -- __state__ blob, prefs, meta flags
 //   logs {id, timestamp, ...}    -- app log records (index: by_timestamp)
-//   pdfs {fileId, blob, ...}     -- attachment blobs, stored natively. The
-//                                   store keeps its original name so blobs
-//                                   written before the books feature was
-//                                   removed stay reachable.
+//
+// A database created by an older build may still carry a "pdfs" blob store
+// from the removed books/reports features. It is simply never opened; the
+// version is unchanged so nothing is destroyed.
 
 import {
   IDB_NAME,
   IDB_VERSION,
   IDB_KV_STORE,
   IDB_LOGS_STORE,
-  IDB_BLOB_STORE,
   MAX_LOG_RECORDS,
 } from "./constants.js";
 
@@ -32,7 +31,6 @@ const PUT_STATE_DEBOUNCE_MS = 150;
 // by getPrefs / never written by patchPrefs), mirroring the old server rules.
 const STATE_KEY = "__state__";
 const META_PREFIX = "__meta__:";
-const BLOB_FILE_ID_RE = /^[A-Za-z0-9_\-]{1,128}$/;
 
 // ---------------------------------------------------------------------------
 // IndexedDB plumbing
@@ -58,9 +56,6 @@ function openDB() {
       if (!d.objectStoreNames.contains(IDB_LOGS_STORE)) {
         const s = d.createObjectStore(IDB_LOGS_STORE, { keyPath: "id" });
         s.createIndex("by_timestamp", "timestamp", { unique: false });
-      }
-      if (!d.objectStoreNames.contains(IDB_BLOB_STORE)) {
-        d.createObjectStore(IDB_BLOB_STORE, { keyPath: "fileId" });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -324,42 +319,4 @@ export async function clearLogs() {
   tx.objectStore(IDB_LOGS_STORE).clear();
   await txDone(tx);
   return { ok: true };
-}
-
-// ---------------------------------------------------------------------------
-// Generic attachment blobs (any MIME type), keyed by a unique fileId.
-// ---------------------------------------------------------------------------
-
-export async function uploadFile(fileId, blob) {
-  if (!BLOB_FILE_ID_RE.test(fileId)) {
-    throw new Error(`Invalid blob fileId: ${fileId}`);
-  }
-  const sizeBytes = blob && typeof blob.size === "number" ? blob.size : 0;
-  const db = await openDB();
-  const tx = db.transaction(IDB_BLOB_STORE, "readwrite");
-  tx.objectStore(IDB_BLOB_STORE).put({
-    fileId,
-    blob,
-    sizeBytes,
-    updatedAt: new Date().toISOString(),
-  });
-  await txDone(tx);
-  return { ok: true, sizeBytes };
-}
-
-export async function getFileBlob(fileId) {
-  if (!BLOB_FILE_ID_RE.test(fileId)) return null;
-  const db = await openDB();
-  const tx = db.transaction(IDB_BLOB_STORE, "readonly");
-  const rec = await reqToPromise(tx.objectStore(IDB_BLOB_STORE).get(fileId));
-  return rec ? rec.blob : null;
-}
-
-export async function deleteFile(fileId) {
-  if (!BLOB_FILE_ID_RE.test(fileId)) return true;
-  const db = await openDB();
-  const tx = db.transaction(IDB_BLOB_STORE, "readwrite");
-  tx.objectStore(IDB_BLOB_STORE).delete(fileId);
-  await txDone(tx);
-  return true;
 }

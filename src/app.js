@@ -19,10 +19,7 @@ import { deleteHabit, deleteCategory, moveDailyHabit } from "./habits.js";
 import {
   openHabitModal,
   openCategoryModal,
-  openReportModal,
-  deleteReport,
 } from "./modals.js";
-import { openReportAttachment } from "./render-report.js";
 import {
   setGlobalLoaderMessage,
   hideGlobalLoader,
@@ -39,8 +36,6 @@ import { initRouter } from "./router.js";
 import "./render-dashboard.js";
 import "./render-day-focus.js";
 import "./render-analytics.js";
-import "./render-logs.js";
-import "./render-report.js";
 
 window.HabitApp = {
   editHabit(id) {
@@ -54,11 +49,6 @@ window.HabitApp = {
     openCategoryModal(id);
   },
   deleteCategory,
-  editReport(reportId) {
-    openReportModal(reportId);
-  },
-  deleteReport,
-  openReportAttachment,
 };
 
 // ---- Legacy bundle collection (one-shot, runs only on first launch) ------
@@ -219,7 +209,6 @@ async function init() {
     setGlobalLoaderMessage("Loading Dashboard...");
     await waitForNextPaint();
     callRenderer("renderAll");
-    callRenderer("renderLogsView");
 
     // After the reader early-return above (reader mode is a ?reader=1 query, so
     // the hash is free) and after the first render, so switching to a

@@ -49,8 +49,6 @@ const PRECACHE = [
   "src/render-day-focus.js",
   "src/render-books.js",
   "src/render-dashboard.js",
-  "src/render-logs.js",
-  "src/render-report.js",
   "src/render-registry.js",
   "src/state.js",
   "src/utils.js",

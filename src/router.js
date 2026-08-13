@@ -21,8 +21,6 @@ const VIEWS = new Set([
   "books",
   "manage",
   "analytics",
-  "logs",
-  "report",
 ]);
 
 function toHash(view) {

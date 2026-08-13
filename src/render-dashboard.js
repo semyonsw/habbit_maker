@@ -255,23 +255,8 @@ export async function switchView(viewId) {
 
   document.querySelector(".sidebar").classList.remove("open");
 
-  if (viewId === "books") {
-    callRenderer("renderBooksView");
-    return;
-  }
-
   if (viewId === "analytics") {
     callRenderer("renderAnalyticsView");
-    return;
-  }
-
-  if (viewId === "logs") {
-    callRenderer("renderLogsView");
-    return;
-  }
-
-  if (viewId === "report") {
-    callRenderer("renderReportView");
     return;
   }
 

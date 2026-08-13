@@ -10,7 +10,6 @@ import { state, setState } from "./state.js";
 import {
   uid,
   monthKey,
-  nowIso,
   isPlainObject,
   normalizeWeekdayArray,
   normalizeMonthDayArray,
@@ -61,7 +60,6 @@ export function getDefaultState() {
     months: {
       [key]: getDefaultMonthData(),
     },
-    reports: [],
     meta: {
       schemaVersion: SCHEMA_VERSION,
     },
@@ -70,39 +68,6 @@ export function getDefaultState() {
 
 // Coerce one stored report entry into the canonical shape. Blobs live in the
 // file store; only lightweight attachment metadata is kept in state.
-function normalizeReport(input) {
-  const report = isPlainObject(input) ? input : {};
-  const attachments = Array.isArray(report.attachments)
-    ? report.attachments
-        .filter(isPlainObject)
-        .map((att) => ({
-          fileId: String(att.fileId || ""),
-          fileName: String(att.fileName || "file"),
-          fileSize: Math.max(0, parseInt(att.fileSize, 10) || 0),
-          mimeType: String(att.mimeType || ""),
-        }))
-        .filter((att) => att.fileId)
-    : [];
-  const createdAt = report.createdAt ? String(report.createdAt) : nowIso();
-  return {
-    id: String(report.id || uid("report")),
-    title: String(report.title || ""),
-    note: String(report.note || ""),
-    habitId: String(report.habitId || ""),
-    createdAt,
-    updatedAt: report.updatedAt ? String(report.updatedAt) : createdAt,
-    attachments,
-  };
-}
-
-export function ensureReportsShape(input) {
-  if (!Array.isArray(input.reports)) {
-    input.reports = [];
-    return;
-  }
-  input.reports = input.reports.map((report) => normalizeReport(report));
-}
-
 export function migrateState() {
   if (!isPlainObject(state)) {
     setState(getDefaultState());
@@ -226,7 +191,6 @@ export function migrateState() {
     h.order = idx;
   });
 
-  ensureReportsShape(state);
 
   if (!isPlainObject(state.meta)) {
     state.meta = {};

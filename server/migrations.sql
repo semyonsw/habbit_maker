@@ -72,17 +72,6 @@ CREATE TABLE IF NOT EXISTS monthly_review (
   focus TEXT NOT NULL DEFAULT ''
 );
 
-CREATE TABLE IF NOT EXISTS reports (
-  id TEXT PRIMARY KEY,
-  title TEXT NOT NULL DEFAULT '',
-  note TEXT NOT NULL DEFAULT '',
-  habit_id TEXT,
-  attachments TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(attachments)),
-  created_at TEXT NOT NULL DEFAULT '',
-  updated_at TEXT NOT NULL DEFAULT ''
-);
-CREATE INDEX IF NOT EXISTS idx_reports_created ON reports(created_at DESC);
-
 CREATE TABLE IF NOT EXISTS app_logs (
   id TEXT PRIMARY KEY,
   timestamp TEXT NOT NULL,
