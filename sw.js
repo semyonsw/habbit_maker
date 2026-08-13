@@ -9,12 +9,12 @@
  */
 "use strict";
 
-const CACHE_VERSION = "v9";
+const CACHE_VERSION = "v10";
 const CACHE_NAME = `habit-shell-${CACHE_VERSION}`;
 
 // Core shell precached on install. The woff2 font binaries are intentionally
-// NOT listed here — they are runtime-cached on first
-// load by the fetch handler below, which keeps install fast and resilient.
+// NOT listed here — they are runtime-cached on first load by the fetch handler
+// below, which keeps install fast and resilient.
 const PRECACHE = [
   "./",
   "index.html",
@@ -26,34 +26,30 @@ const PRECACHE = [
   "icons/icon-maskable-512.png",
   // ES modules
   "src/app.js",
-  "src/books.js",
   "src/constants.js",
   "src/data-io.js",
-  "src/db.js",
-  "src/db-rest.js",
   "src/db-idb.js",
+  "src/db-rest.js",
+  "src/db.js",
   "src/events.js",
   "src/habits.js",
-  "src/idb.js",
-  "src/layout.js",
   "src/loading-ui.js",
   "src/logging.js",
   "src/modals.js",
   "src/native.js",
   "src/persistence.js",
-  "src/preferences.js",
+  "src/render-analytics.js",
+  "src/render-detail.js",
+  "src/render-registry.js",
+  "src/render-settings.js",
+  "src/render-shell.js",
+  "src/render-today.js",
   "src/router.js",
   "src/sheet.js",
-  "src/ui-prefs.js",
-  "src/render-analytics.js",
-  "src/render-day-focus.js",
-  "src/render-books.js",
-  "src/render-dashboard.js",
-  "src/render-registry.js",
   "src/state.js",
+  "src/ui-prefs.js",
   "src/utils.js",
   // Vendored libraries
-  "vendor/chartjs/chart.umd.min.js",
   "vendor/fonts/fonts.css",
 ];
 

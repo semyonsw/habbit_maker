@@ -1,9 +1,9 @@
 "use strict";
 
-import { ALL_WEEKDAYS, WEEKDAY_LABELS } from "./constants.js";
-import { state, globals } from "./state.js";
+import { ALL_WEEKDAYS } from "./constants.js";
+import { state } from "./state.js";
 import {
-  sanitize,
+  monthKey,
   daysInMonth,
   daysBetweenDates,
   parseDateKey,
@@ -12,7 +12,7 @@ import {
   normalizeSequenceLength,
   normalizeSequencePositions,
 } from "./utils.js?v=2";
-import { saveState, ensureMonthData } from "./persistence.js";
+import { saveState, getCurrentMonthData } from "./persistence.js";
 import { callRenderer } from "./render-registry.js";
 
 export function getHabitScheduleMode(habit) {
@@ -75,17 +75,6 @@ export function isHabitTrackedOnDate(habit, year, month, day) {
   return true;
 }
 
-export function getPossibleActiveDaysInMonth(habit, year, month) {
-  const totalDays = daysInMonth(year, month);
-  let activeDays = 0;
-  for (let day = 1; day <= totalDays; day += 1) {
-    if (isHabitTrackedOnDate(habit, year, month, day)) {
-      activeDays += 1;
-    }
-  }
-  return activeDays;
-}
-
 export function getSortedDailyHabits() {
   return [...state.habits.daily].sort(
     (a, b) => (a.order || 0) - (b.order || 0),
@@ -99,179 +88,164 @@ export function updateHabitOrder() {
   });
 }
 
-export function moveDailyHabit(habitId, direction) {
-  const habits = getSortedDailyHabits();
-  const fromIndex = habits.findIndex((h) => h.id === habitId);
-  if (fromIndex < 0) return;
-
-  const offset = direction === "up" ? -1 : 1;
-  const targetIndex = fromIndex + offset;
-  if (targetIndex < 0 || targetIndex >= habits.length) return;
-
-  const moved = habits.splice(fromIndex, 1)[0];
-  habits.splice(targetIndex, 0, moved);
-  habits.forEach((habit, idx) => {
-    habit.order = idx;
-  });
-
-  state.habits.daily = habits;
-  saveState();
-  callRenderer("renderAll");
-}
-
-export function navigateMonth(delta) {
-  state.currentMonth += delta;
-  if (state.currentMonth > 11) {
-    state.currentMonth = 0;
-    state.currentYear += 1;
-  } else if (state.currentMonth < 0) {
-    state.currentMonth = 11;
-    state.currentYear -= 1;
-  }
-  ensureMonthData();
-  // Drop the day-focus selection so it re-resolves for the new month (today if
-  // we landed on the current month, else day 1). Carrying the day number across
-  // would silently clamp Jan 31 -> Feb 28.
-  globals.dayFocusDay = null;
-  saveState();
-  callRenderer("renderAll");
-}
-
 export function deleteHabit(id) {
   const habit = state.habits.daily.find((h) => h.id === id);
   if (!habit) return;
 
-  callRenderer("openConfirm", "Delete Habit", `Delete \"${habit.name}\"?`, () => {
-    state.habits.daily = state.habits.daily.filter((h) => h.id !== id);
-    updateHabitOrder();
-    Object.values(state.months).forEach((monthData) => {
-      delete monthData.dailyCompletions[id];
-      if (monthData.dailyNotes) {
-        delete monthData.dailyNotes[id];
+  callRenderer(
+    "openConfirm",
+    "Delete habit",
+    `Delete "${habit.name}"? Its history goes with it.`,
+    () => {
+      state.habits.daily = state.habits.daily.filter((h) => h.id !== id);
+      updateHabitOrder();
+      Object.values(state.months).forEach((monthData) => {
+        delete monthData.dailyCompletions[id];
+        if (monthData.dailyNotes) {
+          delete monthData.dailyNotes[id];
+        }
+      });
+      saveState();
+      callRenderer("closeHabitSheet");
+      window.location.hash = "#/today";
+      callRenderer("renderAll");
+    },
+  );
+}
+
+/* ==========================================================================
+   Completion values and statistics
+   --------------------------------------------------------------------------
+   A checkbox habit stores `true`/`false` for a day. A count habit stores a
+   number. Everything reads through these two helpers so the two shapes never
+   have to be handled at a call site -- and so an existing boolean written by
+   an older build still reads correctly.
+   ========================================================================== */
+
+export function getHabitTarget(habit) {
+  return habit && habit.trackType === "count"
+    ? Math.max(2, parseInt(habit.countTarget, 10) || 2)
+    : 1;
+}
+
+export function getDayValue(monthData, habitId, day) {
+  const row = monthData && monthData.dailyCompletions[habitId];
+  const raw = row ? row[day] : undefined;
+  if (typeof raw === "number") return raw;
+  return raw ? 1 : 0;
+}
+
+export function isHabitDoneOn(habit, monthData, day) {
+  return getDayValue(monthData, habit.id, day) >= getHabitTarget(habit);
+}
+
+// The single write path for a completion, so every surface stays in step.
+export function setHabitDayValue(habitId, day, value) {
+  const habit = state.habits.daily.find((h) => h.id === habitId);
+  if (!habit) return;
+  const monthData = getCurrentMonthData();
+  if (!monthData.dailyCompletions[habitId]) {
+    monthData.dailyCompletions[habitId] = {};
+  }
+  const target = getHabitTarget(habit);
+  const next = Math.max(0, Math.min(target, Number(value) || 0));
+  // Checkbox habits keep storing booleans, so a downgrade to an older build
+  // (or an export read by one) still sees the shape it expects.
+  monthData.dailyCompletions[habitId][day] =
+    habit.trackType === "count" ? next : next >= 1;
+  saveState();
+  callRenderer("renderAll");
+}
+
+// Tap behaviour from the design: a checkbox toggles; a counter increments and
+// wraps back to zero once it is past its target.
+export function advanceHabitDay(habitId, day) {
+  const habit = state.habits.daily.find((h) => h.id === habitId);
+  if (!habit) return;
+  const monthData = getCurrentMonthData();
+  const value = getDayValue(monthData, habitId, day);
+  const target = getHabitTarget(habit);
+  setHabitDayValue(habitId, day, value >= target ? 0 : value + 1);
+}
+
+export function getScheduledHabits(year, month, day) {
+  return getSortedDailyHabits().filter((h) =>
+    isHabitTrackedOnDate(h, year, month, day),
+  );
+}
+
+export function getDayCounts(day) {
+  const monthData = getCurrentMonthData();
+  const habits = getScheduledHabits(state.currentYear, state.currentMonth, day);
+  const done = habits.filter((h) => isHabitDoneOn(h, monthData, day)).length;
+  return { done, total: habits.length };
+}
+
+// Current and best run of consecutive scheduled days, walked over every month
+// on record. An unfinished *today* does not break the current run -- you have
+// not missed it yet.
+export function computeHabitStreak(habitId) {
+  const habit = state.habits.daily.find((h) => h.id === habitId);
+  if (!habit) return { current: 0, best: 0 };
+
+  const days = [];
+  Object.keys(state.months)
+    .sort()
+    .forEach((key) => {
+      const [y, m] = key.split("-").map((n) => parseInt(n, 10));
+      const month = m - 1;
+      const total = daysInMonth(y, month);
+      for (let day = 1; day <= total; day += 1) {
+        if (!isHabitTrackedOnDate(habit, y, month, day)) continue;
+        days.push({
+          y,
+          m: month,
+          day,
+          done: isHabitDoneOn(habit, state.months[key], day),
+        });
       }
     });
-    saveState();
-    callRenderer("renderAll");
+
+  let best = 0;
+  let chain = 0;
+  days.forEach((d) => {
+    chain = d.done ? chain + 1 : 0;
+    best = Math.max(best, chain);
   });
-}
 
-export function deleteCategory(id) {
-  const cat = state.categories.find((c) => c.id === id);
-  if (!cat) return;
+  const now = new Date();
+  const isFuture = (d) =>
+    d.y > now.getFullYear() ||
+    (d.y === now.getFullYear() && d.m > now.getMonth()) ||
+    (d.y === now.getFullYear() && d.m === now.getMonth() && d.day > now.getDate());
+  const isToday = (d) =>
+    d.y === now.getFullYear() && d.m === now.getMonth() && d.day === now.getDate();
 
-  callRenderer("openConfirm", "Delete Category", `Delete \"${cat.name}\"?`, () => {
-    state.categories = state.categories.filter((c) => c.id !== id);
-    state.habits.daily.forEach((h) => {
-      if (h.categoryId === id) h.categoryId = "";
-    });
-    saveState();
-    callRenderer("renderAll");
-  });
-}
-
-function buildScheduleCheckboxes(
-  containerId,
-  values,
-  labelBuilder,
-  selectedValues,
-) {
-  const container = document.getElementById(containerId);
-  if (!container) return;
-  const selected = new Set(
-    Array.isArray(selectedValues) ? selectedValues : [],
-  );
-  container.innerHTML = values
-    .map((value) => {
-      const checked = selected.has(value) ? "checked" : "";
-      const inputId = `${containerId}_${value}`;
-      return `<label class='schedule-day-option' for='${inputId}'><input id='${inputId}' type='checkbox' value='${value}' ${checked}><span>${sanitize(labelBuilder(value))}</span></label>`;
-    })
-    .join("");
-}
-
-export function getCheckedValuesFromContainer(containerId) {
-  const container = document.getElementById(containerId);
-  if (!container) return [];
-  return Array.from(
-    container.querySelectorAll("input[type='checkbox']:checked"),
-  )
-    .map((input) => parseInt(input.value, 10))
-    .filter((value) => Number.isInteger(value));
-}
-
-export function renderHabitScheduleSelectors(habit) {
-  const mode = getHabitScheduleMode(habit || {});
-  const weekdays = normalizeWeekdayArray(
-    habit && Array.isArray(habit.activeWeekdays)
-      ? habit.activeWeekdays
-      : ALL_WEEKDAYS,
-  );
-  const monthDays = normalizeMonthDayArray(
-    habit && Array.isArray(habit.activeMonthDays)
-      ? habit.activeMonthDays
-      : [1],
-  );
-
-  buildScheduleCheckboxes(
-    "habitActiveWeekdays",
-    ALL_WEEKDAYS,
-    (value) => WEEKDAY_LABELS[value],
-    weekdays,
-  );
-  buildScheduleCheckboxes(
-    "habitActiveMonthDays",
-    Array.from({ length: 31 }, (_, idx) => idx + 1),
-    (value) => String(value),
-    monthDays,
-  );
-
-  const seqLength = normalizeSequenceLength(
-    habit && habit.sequenceLength != null ? habit.sequenceLength : 2,
-  );
-  const seqActive =
-    habit && Array.isArray(habit.sequenceActive) ? habit.sequenceActive : [0];
-  const lengthInput = document.getElementById("habitSequenceLength");
-  if (lengthInput) lengthInput.value = String(seqLength);
-  const anchorInput = document.getElementById("habitSequenceAnchor");
-  if (anchorInput) anchorInput.value = (habit && habit.sequenceAnchor) || "";
-  renderSequenceCheckboxes(seqLength, seqActive);
-
-  updateHabitScheduleTypeUI(mode);
-}
-
-export function renderSequenceCheckboxes(length, selectedPositions) {
-  const safeLength = normalizeSequenceLength(length);
-  const positions = Array.from({ length: safeLength }, (_, idx) => idx);
-  const selected = normalizeSequencePositions(selectedPositions, safeLength);
-  buildScheduleCheckboxes(
-    "habitSequenceActive",
-    positions,
-    (value) => `Day ${value + 1}`,
-    selected,
-  );
-}
-
-export function updateHabitScheduleTypeUI(scheduleMode) {
-  const mode =
-    scheduleMode === "specific_month_days"
-      ? "specific_month_days"
-      : scheduleMode === "specific_weekdays"
-        ? "specific_weekdays"
-        : scheduleMode === "custom_sequence"
-          ? "custom_sequence"
-          : "fixed";
-  const weekdaysGroup = document.getElementById("habitWeekdaysGroup");
-  const monthDaysGroup = document.getElementById("habitMonthDaysGroup");
-  const sequenceGroup = document.getElementById("habitSequenceGroup");
-  if (weekdaysGroup) {
-    weekdaysGroup.style.display =
-      mode === "specific_weekdays" ? "block" : "none";
+  let current = 0;
+  const past = days.filter((d) => !isFuture(d));
+  for (let i = past.length - 1; i >= 0; i -= 1) {
+    const d = past[i];
+    if (!d.done) {
+      if (isToday(d)) continue; // still open, not yet a miss
+      break;
+    }
+    current += 1;
   }
-  if (monthDaysGroup) {
-    monthDaysGroup.style.display =
-      mode === "specific_month_days" ? "block" : "none";
-  }
-  if (sequenceGroup) {
-    sequenceGroup.style.display = mode === "custom_sequence" ? "block" : "none";
-  }
+
+  return { current, best };
 }
+
+// How many of a habit's scheduled days this month are complete.
+export function countHabitMonthDone(habit, year, month) {
+  const key = monthKey(year, month);
+  const monthData = state.months[key];
+  if (!monthData) return 0;
+  const total = daysInMonth(year, month);
+  let done = 0;
+  for (let day = 1; day <= total; day += 1) {
+    if (!isHabitTrackedOnDate(habit, year, month, day)) continue;
+    if (isHabitDoneOn(habit, monthData, day)) done += 1;
+  }
+  return done;
+}
+

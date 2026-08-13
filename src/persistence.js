@@ -2,6 +2,7 @@
 
 import {
   SCHEMA_VERSION,
+  REMINDER_REPEATS,
   ALL_WEEKDAYS,
   DEFAULT_CATEGORIES,
   DEFAULT_DAILY_HABITS,
@@ -20,6 +21,18 @@ import {
 } from "./utils.js?v=2";
 import { appendLogEntry } from "./logging.js";
 import * as db from "./db.js";
+
+// Two-letter mark shown in place of the old emoji tile: the initials of the
+// first two words, or the first two letters of a single-word name.
+export function deriveHabitMark(name) {
+  const words = String(name || "")
+    .replace(/[^A-Za-z\u0400-\u04FF ]/g, "")
+    .split(" ")
+    .filter(Boolean);
+  if (!words.length) return "HB";
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (words[0][0] + words[1][0]).toUpperCase();
+}
 
 export function getDefaultMonthData() {
   return {
@@ -183,8 +196,35 @@ export function migrateState() {
     habit.scheduleMode = mode;
     habit.type = mode;
     delete habit.excludedDays;
-    habit.emoji = String(habit.emoji || "\uD83D\uDCCC");
     habit.order = Number.isInteger(habit.order) ? habit.order : idx;
+
+    // --- schema 6: tracking type, count target, per-habit reminder ---------
+    // Added in place. A habit stored by schema 5 has none of these, so it
+    // becomes a checkbox habit with no reminder -- exactly how it behaved
+    // before. Nothing here reads or rewrites a completion.
+    habit.trackType = habit.trackType === "count" ? "count" : "check";
+    const target = parseInt(habit.countTarget, 10);
+    habit.countTarget =
+      habit.trackType === "count"
+        ? Math.min(50, Math.max(2, Number.isFinite(target) ? target : 3))
+        : 1;
+
+    if (!isPlainObject(habit.reminder)) habit.reminder = {};
+    habit.reminder.enabled = habit.reminder.enabled === true;
+    habit.reminder.repeat = REMINDER_REPEATS.includes(habit.reminder.repeat)
+      ? habit.reminder.repeat
+      : "daily";
+    habit.reminder.days = normalizeWeekdayArray(
+      Array.isArray(habit.reminder.days) ? habit.reminder.days : [],
+    );
+    habit.reminder.time = /^\d{2}:\d{2}$/.test(habit.reminder.time)
+      ? habit.reminder.time
+      : "08:00";
+
+    // The design drops emoji: a habit is identified by a two-letter mark
+    // derived from its name. `emoji` is left on the record rather than
+    // deleted, so nothing is lost if it is ever wanted back.
+    habit.mark = deriveHabitMark(habit.name);
   });
   state.habits.daily.sort((a, b) => a.order - b.order);
   state.habits.daily.forEach((h, idx) => {
@@ -245,7 +285,12 @@ export async function loadState() {
     });
   }
 
+  // First launch. The defaults go through migrateState() too, so the seeded
+  // habits pick up the same normalised shape (trackType, reminder, mark) as a
+  // restored one -- without this they render with every field missing.
   setState(getDefaultState());
+  migrateState();
+  ensureMonthData();
   saveState();
 }
 

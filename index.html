@@ -15,11 +15,11 @@
       content="habit tracker, productivity, routine, goals, local-first, javascript"
     />
     <meta name="author" content="Semyon" />
-    <meta name="theme-color" content="#050914" />
+    <meta name="theme-color" content="#0d0f14" />
     <!-- Installed-app behaviour. "black-translucent" is load-bearing: together with
          viewport-fit=cover it is what makes env(safe-area-inset-top) report a real
-         value in iOS standalone. Without it every calc(... + env(safe-area-inset-*))
-         in styles.css silently collapses to its base value. -->
+         value in iOS standalone. Without it every calc(... + var(--safe-*)) in
+         styles.css silently collapses to its base value. -->
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta
@@ -27,9 +27,7 @@
       content="black-translucent"
     />
     <meta name="apple-mobile-web-app-title" content="Habits" />
-    <!-- Dark-only app: tell the browser so native selects, date pickers and
-         scrollbars render dark instead of white-on-dark. -->
-    <meta name="color-scheme" content="dark" />
+    <meta name="color-scheme" content="dark light" />
     <meta name="format-detection" content="telephone=no" />
     <meta property="og:title" content="Habit Maker" />
     <meta
@@ -38,9 +36,6 @@
     />
     <meta property="og:type" content="website" />
     <title>Habit Maker | Local-First Habit Tracker</title>
-    <!-- Self-hosted (offline) fonts, math styles, and charts. -->
-    <link rel="stylesheet" href="vendor/fonts/fonts.css" />
-    <script defer src="vendor/chartjs/chart.umd.min.js"></script>
     <link rel="stylesheet" href="styles.css" />
     <link
       rel="icon"
@@ -49,6 +44,27 @@
     <!-- PWA: installable app shell. -->
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="apple-touch-icon" sizes="180x180" href="icons/icon-192.png" />
+    <script>
+      // Paint the stored theme before first paint so a Light-theme user never
+      // sees a dark flash. Mirrors resolveTheme() in src/ui-prefs.js; the real
+      // preference is read back out of IndexedDB once the app boots.
+      (function () {
+        try {
+          var t = localStorage.getItem("hm.theme") || "dark";
+          var dark =
+            t === "dark" ||
+            (t === "auto" &&
+              window.matchMedia &&
+              window.matchMedia("(prefers-color-scheme: dark)").matches);
+          document.documentElement.setAttribute(
+            "data-theme",
+            dark ? "dark" : "light",
+          );
+        } catch (_) {
+          document.documentElement.setAttribute("data-theme", "dark");
+        }
+      })();
+    </script>
   </head>
   <body>
     <div
@@ -67,956 +83,163 @@
         </p>
       </div>
     </div>
+
     <div id="app" style="display: none">
-      <nav class="sidebar">
-        <div class="sidebar-logo">
-          <button
-            class="sidebar-collapse-toggle"
-            id="sidebarCollapseToggle"
-            type="button"
-            aria-label="Collapse sidebar"
-            aria-expanded="true"
-            title="Collapse sidebar"
+      <main class="app-main">
+        <!-- 1. Today ------------------------------------------------------ -->
+        <section class="view active" id="view-today" aria-label="Today">
+          <div class="today-head">
+            <div>
+              <div class="eyebrow" id="todayWeekday"></div>
+              <div class="today-date" id="todayDate"></div>
+            </div>
+            <div class="today-figure">
+              <div class="today-pct" id="todayPct">0%</div>
+              <div class="today-count" id="todayCount">0 of 0 done</div>
+            </div>
+          </div>
+          <div
+            class="today-progress"
+            id="todayProgress"
+            role="progressbar"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            aria-valuenow="0"
+            aria-label="Habits completed"
           >
-            <span aria-hidden="true">&laquo;</span>
-          </button>
-          <span class="logo-icon">✦</span>
-          <h1>Habit<br />Tracker</h1>
-        </div>
-        <ul class="nav-tabs">
-          <li class="nav-tab active" data-view="dashboard" title="Dashboard">
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <rect x="3" y="3" width="7" height="7" rx="1" />
-              <rect x="14" y="3" width="7" height="7" rx="1" />
-              <rect x="3" y="14" width="7" height="7" rx="1" />
-              <rect x="14" y="14" width="7" height="7" rx="1" />
-            </svg>
-            <span>Dashboard</span>
-          </li>
-          <li class="nav-tab" data-view="manage" title="Manage">
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <circle cx="12" cy="12" r="3" />
-              <path
-                d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
-              />
-            </svg>
-            <span>Manage</span>
-          </li>
-          <li class="nav-tab" data-view="analytics" title="Analytics">
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <path d="M4 19h16" />
-              <path d="M7 16V8" />
-              <path d="M12 16V5" />
-              <path d="M17 16v-6" />
-            </svg>
-            <span>Analytics</span>
-          </li>
-        </ul>
-        <div class="sidebar-footer">
-          <button class="btn-export" id="btnExport" title="Export Data">
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <polyline points="7 10 12 15 17 10" />
-              <line x1="12" y1="15" x2="12" y2="3" />
-            </svg>
-            <span>Export</span>
-          </button>
-          <button class="btn-import" id="btnImport" title="Import Data">
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <polyline points="17 8 12 3 7 8" />
-              <line x1="12" y1="3" x2="12" y2="15" />
-            </svg>
-            <span>Import</span>
-          </button>
-          <button
-            class="btn-secondary btn-settings"
-            id="btnOpenSettings"
-            title="Settings"
-            type="button"
-          >
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <circle cx="12" cy="12" r="3" />
-              <path
-                d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
-              />
-            </svg>
-            <span>Settings</span>
-          </button>
-          <p class="backup-status" id="backupStatus" aria-live="polite"></p>
-          <input
-            type="file"
-            id="importFile"
-            accept=".json"
-            style="display: none"
-          />
-        </div>
-      </nav>
-      <main class="main-content">
-        <section class="top-clock-wrap" aria-label="Current date and time">
-          <div class="top-clock-card">
-            <p class="top-clock-label">Now</p>
-            <h2 id="topDateTime">March 10, 13:00</h2>
-          </div>
-        </section>
-        <section class="view active" id="view-dashboard">
-          <div class="month-header">
-            <button class="month-nav" id="prevMonth">
-              <svg
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-              >
-                <polyline points="15 18 9 12 15 6" />
-              </svg>
-            </button>
-            <div class="month-title">
-              <h2 id="monthName">March</h2>
-              <p class="month-subtitle">— HABIT TRACKER —</p>
-            </div>
-            <button class="month-nav" id="nextMonth">
-              <svg
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-              >
-                <polyline points="9 18 15 12 9 6" />
-              </svg>
-            </button>
-          </div>
-          <!-- Rendered by src/render-day-focus.js. Replaces the month grid as
-               the primary check-in surface in the mobile layout. -->
-          <section
-            class="day-focus"
-            id="dayFocus"
-            aria-label="Daily check-in"
-          ></section>
-          <div class="summary-row">
-            <div class="summary-card summary-main">
-              <h3>Summary</h3>
-              <div class="summary-main-content">
-                <canvas id="summaryDonut" width="120" height="120"></canvas>
-                <div class="summary-numbers">
-                  <div class="summary-stat">
-                    <span class="stat-value" id="totalCompleted">0</span>
-                    <span class="stat-label">COMPLETED</span>
-                  </div>
-                  <div class="summary-stat">
-                    <span class="stat-value" id="totalGoal">0</span>
-                    <span class="stat-label">GOAL</span>
-                  </div>
-                  <div class="summary-stat">
-                    <span class="stat-value combo-value" id="comboStreakValue"
-                      >0d</span
-                    >
-                    <span class="stat-label">COMBO</span>
-                    <span
-                      class="stat-sublabel combo-best"
-                      id="comboStreakBest"
-                    ></span>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div class="weekly-summary-cards" id="weeklySummaryCards"></div>
-          </div>
-          <div class="habits-section">
-            <div class="habits-header">
-              <h3>Daily Habits</h3>
-              <button class="btn-add" id="btnAddDailyHabit">
-                <svg
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
-                  <line x1="12" y1="5" x2="12" y2="19" />
-                  <line x1="5" y1="12" x2="19" y2="12" />
-                </svg>
-                Add Habit
-              </button>
-            </div>
-            <div class="habits-grid-wrapper">
-              <table class="habits-grid" id="dailyHabitsGrid"></table>
-            </div>
-            <div class="chart-card habit-mountains-card">
-              <div class="habit-mountains-header">
-                <div>
-                  <h3>Daily Completion Mountains</h3>
-                  <p>
-                    Higher peaks mean a higher completion rate for that day.
-                  </p>
-                </div>
-              </div>
-              <div class="habit-mountains-frame">
-                <canvas
-                  id="dailyCompletionMountainChart"
-                  aria-label="Daily completion mountains chart"
-                ></canvas>
-              </div>
-            </div>
-          </div>
-        </section>
-        <section class="view" id="view-manage">
-          <div class="manage-header">
-            <h2>Manage Habits & Categories</h2>
-          </div>
-          <div class="manage-section">
-            <div class="manage-section-header">
-              <h3>Categories</h3>
-              <button class="btn-add" id="btnAddCategory">
-                <svg
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
-                  <line x1="12" y1="5" x2="12" y2="19" />
-                  <line x1="5" y1="12" x2="19" y2="12" />
-                </svg>
-                Add Category
-              </button>
-            </div>
-            <div class="manage-list" id="categoriesList"></div>
-          </div>
-          <div class="manage-section">
-            <div class="manage-section-header">
-              <h3>Daily Habits</h3>
-              <button class="btn-add" id="btnAddDailyManage">
-                <svg
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
-                  <line x1="12" y1="5" x2="12" y2="19" />
-                  <line x1="5" y1="12" x2="19" y2="12" />
-                </svg>
-                Add Daily Habit
-              </button>
-            </div>
-            <div class="manage-list" id="dailyHabitsList"></div>
-          </div>
-          <div class="manage-section">
-            <div class="manage-section-header">
-              <h3>Data Management</h3>
-            </div>
-            <div class="data-actions">
-              <button class="btn-secondary" id="btnResetMonth">
-                <svg
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
-                  <polyline points="1 4 1 10 7 10" />
-                  <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
-                </svg>
-                Reset Current Month
-              </button>
-              <button class="btn-danger" id="btnClearAll">
-                <svg
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
-                  <polyline points="3 6 5 6 21 6" />
-                  <path
-                    d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"
-                  />
-                </svg>
-                Clear All Data
-              </button>
-            </div>
-          </div>
-        </section>
-        <section class="view" id="view-analytics">
-          <div class="manage-header">
-            <h2>Weekly & Monthly Analytics</h2>
+            <span style="width: 0%"></span>
           </div>
 
-          <div class="analytics-mode-row">
-            <div class="analytics-mode-card">
-              <h3>Display Mode</h3>
-              <div class="analytics-mode-controls">
-                <label for="analyticsDisplayModeAnalytics"
-                  >Show values as</label
-                >
-                <select id="analyticsDisplayModeAnalytics">
-                  <option value="percent">Percentages</option>
-                  <option value="raw">Raw counts</option>
-                </select>
-              </div>
-            </div>
+          <div class="today-listhead">
+            <div class="eyebrow" id="todayListLabel">Today</div>
+            <div class="today-scheduled" id="todayScheduled"></div>
           </div>
 
-          <div class="charts-row charts-row-analytics">
-            <div class="chart-card">
-              <h3>Weekly Completion Trend</h3>
-              <!-- .chart-frame gives Chart.js an explicitly sized parent, which
-                   it needs because the configs use maintainAspectRatio:false. -->
-              <div class="chart-frame">
-                <canvas id="analyticsWeeklyTrendChart"></canvas>
-              </div>
-            </div>
-            <div class="chart-card">
-              <h3>Weekly Heatmap</h3>
-              <div
-                class="weekly-heatmap weekly-heatmap-large"
-                id="analyticsWeeklyHeatmap"
-              ></div>
-            </div>
-          </div>
+          <div class="day-strip" id="dayStrip" role="group" aria-label="Pick a day"></div>
+          <div class="habit-list" id="todayList"></div>
 
-          <div class="charts-row charts-row-analytics">
-            <div class="chart-card">
-              <h3>Monthly Trend (12 Months)</h3>
-              <div class="chart-frame">
-                <canvas id="analyticsMonthlyTrendChart"></canvas>
-              </div>
-            </div>
-            <div class="chart-card">
-              <h3>Monthly Streak Leaderboard</h3>
-              <!-- Height is set from the row count by renderMonthlyStreakChart:
-                   this is a horizontal bar chart with up to 14 rows. -->
-              <div class="chart-frame" id="analyticsMonthlyStreakFrame">
-                <canvas id="analyticsMonthlyStreakChart"></canvas>
-              </div>
-            </div>
-          </div>
-
-          <div class="monthly-review-card">
-            <div class="monthly-review-header">
-              <h3>Monthly Review</h3>
-              <button class="btn-primary" id="monthlyReviewSave" type="button">
-                Save Review
-              </button>
-            </div>
-            <div class="monthly-review-grid">
-              <div class="form-group">
-                <label for="monthlyWins">Wins</label>
-                <textarea
-                  id="monthlyWins"
-                  rows="3"
-                  placeholder="What went well this month?"
-                ></textarea>
-              </div>
-              <div class="form-group">
-                <label for="monthlyBlockers">Blockers</label>
-                <textarea
-                  id="monthlyBlockers"
-                  rows="3"
-                  placeholder="What got in your way?"
-                ></textarea>
-              </div>
-              <div class="form-group">
-                <label for="monthlyFocus">Focus for next month</label>
-                <textarea
-                  id="monthlyFocus"
-                  rows="3"
-                  placeholder="Where will you focus next?"
-                ></textarea>
-              </div>
-            </div>
-          </div>
+          <button type="button" class="add-habit-btn" id="btnAddHabit">
+            Add habit
+          </button>
         </section>
 
+        <!-- 2. Habit detail ------------------------------------------------ -->
+        <section class="view" id="view-detail" aria-label="Habit detail">
+          <div id="detailBody"></div>
+        </section>
+
+        <!-- 3. Analytics --------------------------------------------------- -->
+        <section class="view" id="view-analytics" aria-label="Analytics">
+          <div class="screen-title">Analytics</div>
+          <div class="analytics-sub" id="analyticsSub"></div>
+          <div id="analyticsBody"></div>
+        </section>
+
+        <!-- 4. Settings ---------------------------------------------------- -->
+        <section class="view" id="view-settings" aria-label="Settings">
+          <div class="screen-title">Settings</div>
+          <div id="settingsBody"></div>
+        </section>
       </main>
+
       <nav class="bottom-nav" aria-label="Primary">
-        <button type="button" class="bottom-nav-btn active" data-view="dashboard">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="3" y="3" width="7" height="7" rx="1" />
-            <rect x="14" y="3" width="7" height="7" rx="1" />
-            <rect x="3" y="14" width="7" height="7" rx="1" />
-            <rect x="14" y="14" width="7" height="7" rx="1" />
+        <button type="button" class="nav-btn is-active" data-view="today">
+          <svg
+            width="21"
+            height="21"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <rect x="3.5" y="4.5" width="17" height="16" rx="3.5" />
+            <path d="M8 9.5l2.6 2.6L16 6.8" />
           </svg>
           <span>Today</span>
         </button>
-        <button type="button" class="bottom-nav-btn" data-view="analytics">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M4 19h16" />
-            <path d="M7 16V8" />
-            <path d="M12 16V5" />
-            <path d="M17 16v-6" />
+        <button type="button" class="nav-btn" data-view="analytics">
+          <svg
+            width="21"
+            height="21"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            aria-hidden="true"
+          >
+            <path d="M5 20V12" />
+            <path d="M12 20V5" />
+            <path d="M19 20v-6" />
           </svg>
-          <span>Stats</span>
+          <span>Analytics</span>
         </button>
-        <!-- data-sheet, NOT data-view: switchView() has no fallback for an
-             unknown view id -- it would strip .active from every section and
-             add it back to nothing, blanking the app. -->
-        <button type="button" class="bottom-nav-btn" data-sheet="more">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="5" cy="12" r="1.6" fill="currentColor" />
-            <circle cx="12" cy="12" r="1.6" fill="currentColor" />
-            <circle cx="19" cy="12" r="1.6" fill="currentColor" />
+        <button type="button" class="nav-btn" data-view="settings">
+          <svg
+            width="21"
+            height="21"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            aria-hidden="true"
+          >
+            <path d="M4 8h10" />
+            <path d="M18 8h2" />
+            <path d="M4 16h4" />
+            <path d="M12 16h8" />
+            <circle cx="16" cy="8" r="2.2" />
+            <circle cx="10" cy="16" r="2.2" />
           </svg>
-          <span>More</span>
+          <span>Settings</span>
         </button>
       </nav>
-    </div>
-    <div class="modal-overlay" id="habitModal">
-      <div class="modal">
-        <div class="modal-header">
-          <h3 id="habitModalTitle">Add Habit</h3>
-          <button class="modal-close" id="habitModalClose">&times;</button>
-        </div>
-        <div class="modal-body">
-          <div class="form-group">
-            <label for="habitName">Habit Name</label>
-            <input
-              type="text"
-              id="habitName"
-              placeholder="e.g., Drink 8 glasses of water"
-              maxlength="50"
-            />
-          </div>
-          <div class="form-group">
-            <label for="habitCategory">Category</label>
-            <select id="habitCategory"></select>
-          </div>
-          <div class="form-group" id="habitEmojiGroup">
-            <label for="habitEmoji">Habit Emoji</label>
-            <div class="emoji-picker">
-              <input
-                type="text"
-                id="habitEmoji"
-                maxlength="2"
-                value="📌"
-                class="emoji-input"
-              />
-              <div class="emoji-suggestions">
-                <span
-                  class="emoji-option"
-                  data-target="habitEmoji"
-                  data-emoji="✅"
-                  >✅</span
-                >
-                <span
-                  class="emoji-option"
-                  data-target="habitEmoji"
-                  data-emoji="💧"
-                  >💧</span
-                >
-                <span
-                  class="emoji-option"
-                  data-target="habitEmoji"
-                  data-emoji="🏃"
-                  >🏃</span
-                >
-                <span
-                  class="emoji-option"
-                  data-target="habitEmoji"
-                  data-emoji="🏋️"
-                  >🏋️</span
-                >
-                <span
-                  class="emoji-option"
-                  data-target="habitEmoji"
-                  data-emoji="📚"
-                  >📚</span
-                >
-                <span
-                  class="emoji-option"
-                  data-target="habitEmoji"
-                  data-emoji="🧘"
-                  >🧘</span
-                >
-                <span
-                  class="emoji-option"
-                  data-target="habitEmoji"
-                  data-emoji="🥗"
-                  >🥗</span
-                >
-                <span
-                  class="emoji-option"
-                  data-target="habitEmoji"
-                  data-emoji="😴"
-                  >😴</span
-                >
-                <span
-                  class="emoji-option"
-                  data-target="habitEmoji"
-                  data-emoji="📝"
-                  >📝</span
-                >
-                <span
-                  class="emoji-option"
-                  data-target="habitEmoji"
-                  data-emoji="🎯"
-                  >🎯</span
-                >
-                <span
-                  class="emoji-option"
-                  data-target="habitEmoji"
-                  data-emoji="🔥"
-                  >🔥</span
-                >
-                <span
-                  class="emoji-option"
-                  data-target="habitEmoji"
-                  data-emoji="⭐"
-                  >⭐</span
-                >
-              </div>
-            </div>
-          </div>
-          <div class="form-group" id="habitTypeGroup">
-            <label for="habitType">Type</label>
-            <select id="habitType">
-              <option value="daily">Daily</option>
-            </select>
-          </div>
-          <div class="form-group" id="habitScheduleTypeGroup">
-            <label for="habitScheduleType">Daily Task Type</label>
-            <select id="habitScheduleType">
-              <option value="fixed">Fixed (track every day)</option>
-              <option value="specific_weekdays">
-                Specific weekdays (active days)
-              </option>
-              <option value="specific_month_days">
-                Specific month days (active days)
-              </option>
-              <option value="custom_sequence">
-                Custom sequence (repeating cycle)
-              </option>
-            </select>
-          </div>
-          <div class="form-group" id="habitSequenceGroup" style="display: none">
-            <label for="habitSequenceLength">Cycle length (days)</label>
-            <input
-              type="number"
-              id="habitSequenceLength"
-              min="1"
-              max="60"
-              value="2"
-            />
-            <label for="habitSequenceAnchor" class="form-sublabel"
-              >Start date (cycle counts from here)</label
-            >
-            <input type="date" id="habitSequenceAnchor" />
-            <label class="form-sublabel">Active days within the cycle</label>
-            <div id="habitSequenceActive" class="schedule-days-grid"></div>
-            <p class="form-hint">
-              Tick which days of the cycle are active. Example: cycle length 5,
-              tick Day 1 &amp; Day 2 = 2 days on, 3 days off, repeating.
-            </p>
-          </div>
-          <div class="form-group" id="habitWeekdaysGroup" style="display: none">
-            <label>Active weekdays</label>
-            <div id="habitActiveWeekdays" class="schedule-days-grid"></div>
-          </div>
-          <div
-            class="form-group"
-            id="habitMonthDaysGroup"
-            style="display: none"
-          >
-            <label>Active month days</label>
-            <div
-              id="habitActiveMonthDays"
-              class="schedule-days-grid month-days-grid"
-            ></div>
-          </div>
-          <div class="form-group" id="habitGoalGroup">
-            <label for="habitGoal">Monthly Goal (days)</label>
-            <input type="number" id="habitGoal" min="1" max="31" value="20" />
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn-secondary" id="habitModalCancel">Cancel</button>
-          <button class="btn-primary" id="habitModalSave">Save</button>
-        </div>
-      </div>
-    </div>
-    <div class="modal-overlay" id="categoryModal">
-      <div class="modal">
-        <div class="modal-header">
-          <h3 id="categoryModalTitle">Add Category</h3>
-          <button class="modal-close" id="categoryModalClose">&times;</button>
-        </div>
-        <div class="modal-body">
-          <div class="form-group">
-            <label for="categoryName">Category Name</label>
-            <input
-              type="text"
-              id="categoryName"
-              placeholder="e.g., Health"
-              maxlength="20"
-            />
-          </div>
-          <div class="form-group">
-            <label for="categoryEmoji">Emoji</label>
-            <div class="emoji-picker">
-              <input
-                type="text"
-                id="categoryEmoji"
-                maxlength="2"
-                value="⭐"
-                class="emoji-input"
-              />
-              <div class="emoji-suggestions">
-                <span
-                  class="emoji-option"
-                  data-target="categoryEmoji"
-                  data-emoji="❤️"
-                  >❤️</span
-                >
-                <span
-                  class="emoji-option"
-                  data-target="categoryEmoji"
-                  data-emoji="💪"
-                  >💪</span
-                >
-                <span
-                  class="emoji-option"
-                  data-target="categoryEmoji"
-                  data-emoji="🧠"
-                  >🧠</span
-                >
-                <span
-                  class="emoji-option"
-                  data-target="categoryEmoji"
-                  data-emoji="👨‍👩‍👧‍👦"
-                  >👨‍👩‍👧‍👦</span
-                >
-                <span
-                  class="emoji-option"
-                  data-target="categoryEmoji"
-                  data-emoji="😴"
-                  >😴</span
-                >
-                <span
-                  class="emoji-option"
-                  data-target="categoryEmoji"
-                  data-emoji="📚"
-                  >📚</span
-                >
-                <span
-                  class="emoji-option"
-                  data-target="categoryEmoji"
-                  data-emoji="🥗"
-                  >🥗</span
-                >
-                <span
-                  class="emoji-option"
-                  data-target="categoryEmoji"
-                  data-emoji="💼"
-                  >💼</span
-                >
-                <span
-                  class="emoji-option"
-                  data-target="categoryEmoji"
-                  data-emoji="🎵"
-                  >🎵</span
-                >
-                <span
-                  class="emoji-option"
-                  data-target="categoryEmoji"
-                  data-emoji="🏃"
-                  >🏃</span
-                >
-                <span
-                  class="emoji-option"
-                  data-target="categoryEmoji"
-                  data-emoji="🧘"
-                  >🧘</span
-                >
-                <span
-                  class="emoji-option"
-                  data-target="categoryEmoji"
-                  data-emoji="💰"
-                  >💰</span
-                >
-                <span
-                  class="emoji-option"
-                  data-target="categoryEmoji"
-                  data-emoji="🎨"
-                  >🎨</span
-                >
-                <span
-                  class="emoji-option"
-                  data-target="categoryEmoji"
-                  data-emoji="🌱"
-                  >🌱</span
-                >
-                <span
-                  class="emoji-option"
-                  data-target="categoryEmoji"
-                  data-emoji="📝"
-                  >📝</span
-                >
-                <span
-                  class="emoji-option"
-                  data-target="categoryEmoji"
-                  data-emoji="🎯"
-                  >🎯</span
-                >
-                <span
-                  class="emoji-option"
-                  data-target="categoryEmoji"
-                  data-emoji="⭐"
-                  >⭐</span
-                >
-                <span
-                  class="emoji-option"
-                  data-target="categoryEmoji"
-                  data-emoji="🔥"
-                  >🔥</span
-                >
-              </div>
-            </div>
-          </div>
-          <div class="form-group">
-            <label for="categoryColor">Color</label>
-            <div class="color-picker">
-              <input type="color" id="categoryColor" value="#0F1042" />
-              <div class="color-presets">
-                <span
-                  class="color-option"
-                  data-color="#05081C"
-                  style="background: #05081c"
-                ></span>
-                <span
-                  class="color-option"
-                  data-color="#0A0D36"
-                  style="background: #0a0d36"
-                ></span>
-                <span
-                  class="color-option"
-                  data-color="#0F1042"
-                  style="background: #0f1042"
-                ></span>
-                <span
-                  class="color-option"
-                  data-color="#0E1D3E"
-                  style="background: #0e1d3e"
-                ></span>
-                <span
-                  class="color-option"
-                  data-color="#000000"
-                  style="background: #000000"
-                ></span>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn-secondary" id="categoryModalCancel">Cancel</button>
-          <button class="btn-primary" id="categoryModalSave">Save</button>
-        </div>
-      </div>
-    </div>
-    <!-- Overflow menu for the mobile bottom nav. Authored as a .modal-overlay
-         so it inherits the bottom-sheet styling and all the sheet mechanics
-         (scroll lock, focus trap, drag-to-dismiss) for free. Settings has no
-         other mobile entry point besides the drawer. -->
-    <div class="modal-overlay" id="moreSheet">
-      <div class="modal modal-sm">
-        <div class="modal-header">
-          <h3>More</h3>
-          <button class="modal-close" id="moreSheetClose" type="button">
-            &times;
-          </button>
-        </div>
-        <div class="modal-body">
-          <div class="more-sheet-list">
-            <button
-              type="button"
-              class="more-sheet-item"
-              data-more-view="manage"
-            >
-              <span aria-hidden="true">⚙️</span> Manage habits &amp; categories
-            </button>
-            <button
-              type="button"
-              class="more-sheet-item"
-              id="moreSheetSettings"
-            >
-              <span aria-hidden="true">🛠️</span> Settings
-            </button>
-            <button type="button" class="more-sheet-item" id="moreSheetExport">
-              <span aria-hidden="true">⬇️</span> Export data
-            </button>
-            <button type="button" class="more-sheet-item" id="moreSheetImport">
-              <span aria-hidden="true">⬆️</span> Import data
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
 
-    <div class="modal-overlay" id="confirmModal">
-      <div class="modal modal-sm">
-        <div class="modal-header">
-          <h3 id="confirmTitle">Confirm</h3>
-          <button class="modal-close" id="confirmModalClose">&times;</button>
-        </div>
-        <div class="modal-body">
-          <p id="confirmMessage">Are you sure?</p>
-        </div>
-        <div class="modal-footer">
-          <button class="btn-secondary" id="confirmCancel">Cancel</button>
-          <button class="btn-danger" id="confirmOk">Delete</button>
-        </div>
-      </div>
-    </div>
-    <div class="modal-overlay" id="noteModal">
-      <div class="modal modal-sm">
-        <div class="modal-header">
-          <h3 id="noteModalTitle">Daily Note</h3>
-          <button class="modal-close" id="noteModalClose">&times;</button>
-        </div>
-        <div class="modal-body">
-          <div class="form-group">
-            <label for="noteText">Note</label>
-            <textarea
-              id="noteText"
-              rows="6"
-              placeholder="Write a quick note for this day..."
-            ></textarea>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn-secondary" id="noteModalCancel">Cancel</button>
-          <button class="btn-primary" id="noteModalSave">Save</button>
-        </div>
-      </div>
-    </div>
-    <div class="modal-overlay" id="settingsModal">
-      <div class="modal">
-        <div class="modal-header">
-          <h3>Settings</h3>
-          <button class="modal-close" id="settingsModalClose">&times;</button>
-        </div>
-        <div class="modal-body">
-          <section class="settings-section ui-appearance-section">
-            <h4>Version</h4>
-            <p class="settings-help-text">
-              Choose how the app looks. <strong>Auto</strong> uses the
-              comfortable mobile layout on phones and the classic desktop
-              layout on computers. <strong>Mobile</strong> and
-              <strong>Desktop</strong> force one layout everywhere. Changes
-              apply instantly — no reload.
-            </p>
-            <div class="form-group ui-pref-row">
-              <label>Layout</label>
-              <div class="segmented" role="radiogroup" aria-label="App layout version">
-                <label class="seg-option"><input type="radio" name="uiMode" value="auto" /><span>Auto</span></label>
-                <label class="seg-option"><input type="radio" name="uiMode" value="mobile" /><span>Mobile</span></label>
-                <label class="seg-option"><input type="radio" name="uiMode" value="desktop" /><span>Desktop</span></label>
-              </div>
-            </div>
-          </section>
-        </div>
-        <div class="modal-footer">
-          <button class="btn-secondary" id="settingsModalCancel">
-            Close
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <button class="mobile-menu-toggle" id="mobileMenuToggle" aria-label="Open menu">
-      <svg
-        width="24"
-        height="24"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
+      <!-- Add / edit habit sheet ------------------------------------------ -->
+      <div
+        class="sheet-overlay"
+        id="habitSheet"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="habitSheetTitle"
       >
-        <line x1="3" y1="12" x2="21" y2="12" />
-        <line x1="3" y1="6" x2="21" y2="6" />
-        <line x1="3" y1="18" x2="21" y2="18" />
-      </svg>
-    </button>
-    <button class="mobile-menu-close" id="mobileMenuClose" aria-label="Close menu">
-      <svg
-        width="24"
-        height="24"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-      >
-        <line x1="18" y1="6" x2="6" y2="18" />
-        <line x1="6" y1="6" x2="18" y2="18" />
-      </svg>
-    </button>
-
-
-    <div class="undo-toast" id="undoToast" role="status" aria-live="polite">
-      <span id="undoToastMessage">Action completed.</span>
-      <div class="undo-toast-actions">
-        <button type="button" class="undo-toast-btn" id="undoToastButton">
-          Undo
-        </button>
         <button
           type="button"
-          class="undo-toast-close"
-          id="undoToastClose"
+          class="sheet-scrim"
+          id="habitSheetScrim"
           aria-label="Close"
-        >
-          &times;
-        </button>
+        ></button>
+        <div class="sheet" id="habitSheetPanel">
+          <div class="sheet-handle" aria-hidden="true"></div>
+          <div class="sheet-title" id="habitSheetTitle">New habit</div>
+          <div id="habitSheetBody"></div>
+        </div>
+      </div>
+
+      <!-- Confirm dialog --------------------------------------------------- -->
+      <div
+        class="dialog-overlay"
+        id="confirmDialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="confirmTitle"
+      >
+        <div class="dialog">
+          <div class="dialog-title" id="confirmTitle">Are you sure?</div>
+          <p class="dialog-body" id="confirmMessage"></p>
+          <div class="dialog-actions">
+            <button type="button" class="btn btn-ghost" id="confirmCancel">
+              Cancel
+            </button>
+            <button type="button" class="btn btn-primary" id="confirmOk">
+              Confirm
+            </button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1138,7 +361,9 @@
               // sw.js calls skipWaiting(), so a new worker takes over while the
               // page is still running the previously cached JS. Reload to get a
               // matched set -- but not while the user is mid-task.
-              var busy = document.querySelector(".modal-overlay.open");
+              var busy = document.querySelector(
+                ".sheet-overlay.open, .dialog-overlay.open",
+              );
               if (busy) {
                 document.addEventListener("visibilitychange", function once() {
                   if (document.visibilityState === "hidden") {

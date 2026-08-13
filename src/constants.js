@@ -3,8 +3,24 @@
 export const STORAGE_KEY = "habitTracker_v1";
 export const LOGS_STORAGE_KEY = "habitTracker_logs_v1";
 export const SIDEBAR_COLLAPSE_KEY = "habitTracker_sidebarCollapsed_v1";
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 export const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+// Monday-first, matching the design's day-toggle row and "Week starts on".
+export const FULL_WEEKDAYS = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+];
+// Monday-first, matching the design's day-toggle row and "Week starts on".
+export const WEEKDAY_ORDER_MON = [1, 2, 3, 4, 5, 6, 0];
+export const REMINDER_REPEATS = ["daily", "weekdays", "custom"];
+export const THEMES = ["light", "dark", "auto"];
+export const WEEK_STARTS = ["monday", "sunday"];
+export const DAILY_REMINDER_DEFAULT_TIME = "21:00";
 export const ALL_WEEKDAYS = [0, 1, 2, 3, 4, 5, 6];
 export const MONTH_NAMES = [
   "January",
@@ -61,7 +77,8 @@ export const DEFAULT_DAILY_HABITS = [
     scheduleMode: "fixed",
     activeWeekdays: [0, 1, 2, 3, 4, 5, 6],
     activeMonthDays: [],
-    emoji: "\uD83D\uDCD6",
+    trackType: "check",
+    countTarget: 1,
     order: 0,
   },
   {
@@ -72,7 +89,8 @@ export const DEFAULT_DAILY_HABITS = [
     scheduleMode: "fixed",
     activeWeekdays: [0, 1, 2, 3, 4, 5, 6],
     activeMonthDays: [],
-    emoji: "\uD83D\uDCBC",
+    trackType: "check",
+    countTarget: 1,
     order: 1,
   },
 ];

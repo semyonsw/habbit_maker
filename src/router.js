@@ -9,19 +9,14 @@
 // base-path-free and never touches the network.
 //
 // The point is the Android back button: without this, back exits the installed
-// PWA from any view, and a reload always dumps you on the dashboard.
+// PWA from any view, and a reload always dumps you on Today.
 //
 // navigateTo() is the cause, switchView() is the effect. Nav handlers call
 // navigateTo; only the hashchange listener calls switchView.
 
 import { callRenderer } from "./render-registry.js";
 
-const VIEWS = new Set([
-  "dashboard",
-  "books",
-  "manage",
-  "analytics",
-]);
+const VIEWS = new Set(["today", "detail", "analytics", "settings"]);
 
 function toHash(view) {
   return `#/${view}`;
@@ -52,9 +47,9 @@ export function initRouter() {
   if (!start) {
     // replaceState, not assignment: keep exactly one history entry for the
     // initial view so the first back press leaves the app rather than
-    // bouncing between "no hash" and "#/dashboard".
-    window.history.replaceState(null, "", toHash("dashboard"));
-  } else if (start !== "dashboard") {
+    // bouncing between "no hash" and "#/today".
+    window.history.replaceState(null, "", toHash("today"));
+  } else if (start !== "today") {
     callRenderer("switchView", start);
   }
 }

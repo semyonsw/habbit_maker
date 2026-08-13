@@ -1,20 +1,18 @@
 "use strict";
 
-// Cross-cutting mechanics for the app's dialogs.
+// Cross-cutting mechanics for the app's overlays.
 //
-// Every dialog is a <div class="modal-overlay"><div class="modal">, toggled by
-// an .open class (see modals.js). In the mobile layout CSS turns them into
-// bottom sheets. This module supplies the behaviour that CSS cannot:
+// The add/edit habit sheet is <div class="sheet-overlay"><div class="sheet">,
+// toggled by an .open class (see modals.js). This module supplies the
+// behaviour that CSS cannot:
 //
 //   - body scroll lock, so the page behind a sheet does not scroll
 //   - a focus trap, via `inert` on everything outside the open dialog
-//   - drag-down-to-dismiss on the sheet header
+//   - drag-down-to-dismiss on the sheet's grab handle
 //   - a --kb-inset custom property tracking the on-screen keyboard, so a
 //     sheet's footer is never hidden behind it on iOS
 //
 // modals.js is the only caller; nothing else should import this directly.
-
-import { isMobileLayout } from "./ui-prefs.js";
 
 /* -------------------------------------------------------------- scroll lock */
 
@@ -27,12 +25,10 @@ export function lockBodyScroll() {
 
   savedScrollY = window.scrollY || window.pageYOffset || 0;
   document.body.classList.add("is-modal-open");
-  if (isMobileLayout()) {
-    // position:fixed is the only thing that reliably holds on iOS Safari;
-    // overflow:hidden alone still allows rubber-band scrolling of the page.
-    document.body.style.top = `-${savedScrollY}px`;
-    document.body.classList.add("is-modal-open-fixed");
-  }
+  // position:fixed is the only thing that reliably holds on iOS Safari;
+  // overflow:hidden alone still allows rubber-band scrolling of the page.
+  document.body.style.top = `-${savedScrollY}px`;
+  document.body.classList.add("is-modal-open-fixed");
 }
 
 export function unlockBodyScroll() {
@@ -143,7 +139,7 @@ export function bindSheetGestures(onDismiss) {
   const reset = (animate) => {
     if (sheet) {
       sheet.style.transition = animate
-        ? "transform var(--motion-base) var(--ease-emphasized)"
+        ? "transform 0.22s cubic-bezier(0.2, 0.9, 0.3, 1)"
         : "";
       sheet.style.transform = "";
       const el = sheet;
@@ -158,14 +154,12 @@ export function bindSheetGestures(onDismiss) {
   };
 
   document.addEventListener("pointerdown", (e) => {
-    if (!isMobileLayout()) return;
-    const header = e.target.closest(".modal-header");
-    if (!header) return;
-    // The close button is a button; let it do its own job.
-    if (e.target.closest(".modal-close")) return;
-    const candidate = header.closest(".modal");
+    // Only the grab handle starts a drag; the rest of the sheet scrolls.
+    const handle = e.target.closest(".sheet-handle");
+    if (!handle) return;
+    const candidate = handle.closest(".sheet");
     if (!candidate) return;
-    const parentOverlay = candidate.closest(".modal-overlay.open");
+    const parentOverlay = candidate.closest(".sheet-overlay.open");
     if (!parentOverlay) return;
 
     sheet = candidate;

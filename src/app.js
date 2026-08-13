@@ -10,16 +10,10 @@ import {
 } from "./constants.js";
 import { loadLogs, appendLogEntry } from "./logging.js";
 import { loadState } from "./persistence.js";
-import { loadAnalyticsPreferences } from "./preferences.js";
-import { initSidebarCollapse, initTopClock } from "./layout.js";
 import { initUiPrefs } from "./ui-prefs.js";
 import { bindEvents } from "./events.js";
 import { callRenderer } from "./render-registry.js";
-import { deleteHabit, deleteCategory, moveDailyHabit } from "./habits.js";
-import {
-  openHabitModal,
-  openCategoryModal,
-} from "./modals.js";
+import { deleteHabit } from "./habits.js";
 import {
   setGlobalLoaderMessage,
   hideGlobalLoader,
@@ -28,27 +22,21 @@ import {
 import * as db from "./db.js";
 
 import { bindSheetGestures, initKeyboardInset } from "./sheet.js";
-import { closeModal } from "./modals.js";
+import { closeTopOverlay } from "./modals.js";
 import { hideNativeSplash } from "./native.js";
 import { initRouter } from "./router.js";
 
 // Import render modules so they register themselves
-import "./render-dashboard.js";
-import "./render-day-focus.js";
+import "./render-shell.js";
+import "./render-today.js";
+import "./render-detail.js";
 import "./render-analytics.js";
+import "./render-settings.js";
 
+// Kept for inline onclick handlers in rendered markup. Only habit deletion
+// still needs one; everything else is delegated inside its own screen module.
 window.HabitApp = {
-  editHabit(id) {
-    openHabitModal(id);
-  },
-  moveHabit(id, direction) {
-    moveDailyHabit(id, direction);
-  },
   deleteHabit,
-  editCategory(id) {
-    openCategoryModal(id);
-  },
-  deleteCategory,
 };
 
 // ---- Legacy bundle collection (one-shot, runs only on first launch) ------
@@ -195,24 +183,18 @@ async function init() {
 
     await loadLogs();
     await loadState();
-    await loadAnalyticsPreferences();
     await initUiPrefs();
     bindEvents();
     // Bottom-sheet mechanics: drag-to-dismiss and on-screen-keyboard tracking.
     // Delegated/global, so they only need binding once.
-    bindSheetGestures((id) => closeModal(id));
+    bindSheetGestures(() => closeTopOverlay());
     initKeyboardInset();
-    await initSidebarCollapse();
 
-    initTopClock();
-
-    setGlobalLoaderMessage("Loading Dashboard...");
+    setGlobalLoaderMessage("Loading habits...");
     await waitForNextPaint();
     callRenderer("renderAll");
 
-    // After the reader early-return above (reader mode is a ?reader=1 query, so
-    // the hash is free) and after the first render, so switching to a
-    // deep-linked view has something to switch to.
+    // After the first render, so a deep-linked view has something to switch to.
     initRouter();
 
     if (appRoot) appRoot.style.display = "";
