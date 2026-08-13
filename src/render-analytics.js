@@ -1,586 +1,134 @@
 "use strict";
 
-import { state } from "./state.js";
-import { chartInstances } from "./state.js";
+// Analytics: two KPI tiles, a seven-day bar chart and a per-habit progress
+// list.
+//
+// The charts are plain CSS boxes, as drawn in the design. That is also why
+// Chart.js is no longer vendored: nothing on this screen needs a canvas.
+
 import { MONTH_NAMES } from "./constants.js";
-import { isMobileLayout } from "./ui-prefs.js";
+import { state } from "./state.js";
+import { sanitize, daysInMonth } from "./utils.js?v=2";
 import {
-  daysInMonth,
-  monthKey,
-  getValueColor,
-  getHeatColor,
-  getMonthCalendarWeekLayout,
-  formatIsoWeekRangeLabel,
-  isPlainObject,
-} from "./utils.js?v=2";
-import {
-  getCurrentMonthData,
-  getDefaultMonthData,
-  ensureMonthDataShape,
-  getHabitEmoji,
-} from "./persistence.js";
-import { getSortedDailyHabits, isHabitTrackedOnDate } from "./habits.js";
-import {
-  getMetricValue,
-  getMetricLabel,
-  getMetricAxisLabel,
-  syncAnalyticsModeControls,
-  getAnalyticsDisplayMode,
-} from "./preferences.js";
-import { getCategoryById } from "./persistence.js";
-import { registerRenderer, callRenderer } from "./render-registry.js";
+  countHabitMonthDone,
+  getDayCounts,
+  getSortedDailyHabits,
+} from "./habits.js";
+import { registerRenderer } from "./render-registry.js";
 
-export function safeMonthData(year, month) {
-  const key = monthKey(year, month);
-  const monthData = state.months[key];
-  if (!isPlainObject(monthData)) {
-    return getDefaultMonthData();
-  }
-  return ensureMonthDataShape(monthData);
-}
-
-export function buildMonthTotals(year, month) {
-  const monthData = safeMonthData(year, month);
-  const habits = getSortedDailyHabits();
-  const totalDays = daysInMonth(year, month);
-  let done = 0;
-  let possible = 0;
-
-  for (let day = 1; day <= totalDays; day++) {
-    habits.forEach((habit) => {
-      if (!isHabitTrackedOnDate(habit, year, month, day)) return;
-      possible += 1;
-      if (
-        monthData.dailyCompletions[habit.id] &&
-        monthData.dailyCompletions[habit.id][day]
-      ) {
-        done += 1;
-      }
-    });
-  }
-
-  return { done, possible, totalDays, monthData, habits };
-}
-
-export function buildWeeklyAnalytics(year, month) {
-  const totals = buildMonthTotals(year, month);
-  const { weeks, dayToWeek } = getMonthCalendarWeekLayout(year, month);
-  const maxWeek = Math.max(1, weeks.length);
-  const createMetricBucket = () => ({ done: 0, possible: 0 });
-  const ensureCategoryWeekBucket = (categoryId, weekIndex) => {
-    if (!Array.isArray(categoryWeek[categoryId])) {
-      categoryWeek[categoryId] = [];
-    }
-    if (!categoryWeek[categoryId][weekIndex]) {
-      categoryWeek[categoryId][weekIndex] = createMetricBucket();
-    }
-    return categoryWeek[categoryId][weekIndex];
-  };
-
-  const isoWeekToIndex = {};
-  weeks.forEach((w, idx) => {
-    isoWeekToIndex[w.week] = idx;
-  });
-
-  const weekBuckets = weeks.length
-    ? weeks.map((w) => ({
-        isoWeek: w.week,
-        label: `W${w.week}`,
-        rangeLabel: formatIsoWeekRangeLabel(w.fullStart, w.fullEnd),
-        done: 0,
-        possible: 0,
-        weekdays: Array.from({ length: 7 }, createMetricBucket),
-      }))
-    : [
-        {
-          isoWeek: 0,
-          label: "W?",
-          rangeLabel: "",
-          done: 0,
-          possible: 0,
-          weekdays: Array.from({ length: 7 }, createMetricBucket),
-        },
-      ];
-
-  const categoryWeek = {};
-  state.categories.forEach((category) => {
-    categoryWeek[category.id] = Array.from(
-      { length: maxWeek },
-      createMetricBucket,
-    );
-  });
-
-  for (let day = 1; day <= totals.totalDays; day++) {
-    const week = dayToWeek[day];
-    if (!week) continue;
-    const weekIndex = isoWeekToIndex[week];
-    if (weekIndex == null || !weekBuckets[weekIndex]) continue;
-    const weekday = new Date(year, month, day).getDay();
-
-    totals.habits.forEach((habit) => {
-      if (!isHabitTrackedOnDate(habit, year, month, day)) return;
-
-      const bucket = weekBuckets[weekIndex];
-      if (!bucket) return;
-      if (!Array.isArray(bucket.weekdays)) {
-        bucket.weekdays = Array.from({ length: 7 }, createMetricBucket);
-      }
-      if (!bucket.weekdays[weekday]) {
-        bucket.weekdays[weekday] = createMetricBucket();
-      }
-      const weekdayBucket = bucket.weekdays[weekday];
-
-      bucket.possible += 1;
-      if (weekdayBucket) weekdayBucket.possible += 1;
-
-      const categoryBucket = ensureCategoryWeekBucket(
-        habit.categoryId,
-        weekIndex,
-      );
-      if (categoryBucket) categoryBucket.possible += 1;
-
-      const done = !!(
-        totals.monthData.dailyCompletions[habit.id] &&
-        totals.monthData.dailyCompletions[habit.id][day]
-      );
-
-      if (done) {
-        bucket.done += 1;
-        if (weekdayBucket) weekdayBucket.done += 1;
-        if (categoryBucket) categoryBucket.done += 1;
-      }
-    });
-  }
-
-  return { weekBuckets, categoryWeek };
-}
-
-export function buildMonthlyTimeline(monthCount = 12) {
-  const timeline = [];
-  for (let offset = monthCount - 1; offset >= 0; offset--) {
-    const dt = new Date(state.currentYear, state.currentMonth - offset, 1);
-    const year = dt.getFullYear();
-    const month = dt.getMonth();
-    const totals = buildMonthTotals(year, month);
-
-    const byCategory = {};
-    state.categories.forEach((category) => {
-      byCategory[category.id] = { done: 0, possible: 0 };
-    });
-
-    for (let day = 1; day <= totals.totalDays; day++) {
-      totals.habits.forEach((habit) => {
-        if (!isHabitTrackedOnDate(habit, year, month, day)) return;
-        if (!byCategory[habit.categoryId]) {
-          byCategory[habit.categoryId] = { done: 0, possible: 0 };
-        }
-        byCategory[habit.categoryId].possible += 1;
-        if (
-          totals.monthData.dailyCompletions[habit.id] &&
-          totals.monthData.dailyCompletions[habit.id][day]
-        ) {
-          byCategory[habit.categoryId].done += 1;
-        }
-      });
-    }
-
-    timeline.push({
-      label: `${MONTH_NAMES[month].slice(0, 3)} ${String(year).slice(-2)}`,
-      done: totals.done,
-      possible: totals.possible,
-      byCategory,
-    });
-  }
-  return timeline;
-}
-
-export function getMonthStreakLeaderboard(limit = 10) {
-  const totalDays = daysInMonth(state.currentYear, state.currentMonth);
-  const monthData = getCurrentMonthData();
+// Days of the viewed month that have actually happened. A past month counts
+// in full; a future month counts as zero.
+function elapsedDays() {
   const now = new Date();
-  const isCurrentMonth =
-    now.getFullYear() === state.currentYear &&
-    now.getMonth() === state.currentMonth;
-  const endDay = isCurrentMonth ? now.getDate() : totalDays;
+  const total = daysInMonth(state.currentYear, state.currentMonth);
+  if (
+    state.currentYear > now.getFullYear() ||
+    (state.currentYear === now.getFullYear() &&
+      state.currentMonth > now.getMonth())
+  ) {
+    return 0;
+  }
+  if (
+    state.currentYear === now.getFullYear() &&
+    state.currentMonth === now.getMonth()
+  ) {
+    return now.getDate();
+  }
+  return total;
+}
 
-  const rows = getSortedDailyHabits().map((habit) => {
-    let streak = 0;
-    let trackedDays = 0;
-    for (let day = 1; day <= endDay; day++) {
-      if (
-        isHabitTrackedOnDate(habit, state.currentYear, state.currentMonth, day)
-      ) {
-        trackedDays += 1;
-      }
-    }
+function monthTotals() {
+  const days = elapsedDays();
+  let slots = 0;
+  let done = 0;
+  let perfect = 0;
+  for (let day = 1; day <= days; day += 1) {
+    const counts = getDayCounts(day);
+    slots += counts.total;
+    done += counts.done;
+    if (counts.total > 0 && counts.done === counts.total) perfect += 1;
+  }
+  return { days, slots, done, perfect };
+}
 
-    for (let day = endDay; day >= 1; day--) {
-      if (
-        !isHabitTrackedOnDate(habit, state.currentYear, state.currentMonth, day)
-      ) {
-        continue;
-      }
-      const done = !!(
-        monthData.dailyCompletions[habit.id] &&
-        monthData.dailyCompletions[habit.id][day]
+function trendBarsHtml() {
+  const days = elapsedDays();
+  const last = days > 0 ? days : daysInMonth(state.currentYear, state.currentMonth);
+  const from = Math.max(1, last - 6);
+
+  let html = "";
+  for (let day = from; day <= last; day += 1) {
+    const { done, total } = getDayCounts(day);
+    const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+    const cls = pct >= 100 ? "is-full" : pct >= 50 ? "is-mid" : "";
+    // 1.06 keeps a full day just under the 112px track, matching the design.
+    const height = Math.max(6, Math.round(pct * 1.06));
+    html +=
+      '<div class="bar-col">' +
+      `<div class="bar ${cls}" style="height:${height}px" title="${done} of ${total} done"></div>` +
+      `<div class="bar-label">${day}</div>` +
+      "</div>";
+  }
+  return html;
+}
+
+function goalRowsHtml() {
+  const habits = getSortedDailyHabits();
+  if (!habits.length) {
+    return "<div class='empty-state'><p>No habits yet.</p></div>";
+  }
+  return habits
+    .map((habit) => {
+      const done = countHabitMonthDone(
+        habit,
+        state.currentYear,
+        state.currentMonth,
       );
-      if (!done) break;
-      streak += 1;
-    }
-
-    const cat = getCategoryById(habit.categoryId);
-    return {
-      label: `${getHabitEmoji(habit)} ${habit.name}`,
-      done: streak,
-      possible: Math.max(1, trackedDays),
-      color: cat ? cat.color : "#58a5d1",
-    };
-  });
-
-  return rows
-    .sort((a, b) => b.done - a.done)
-    .slice(0, limit)
-    .filter((row) => row.possible > 0);
+      const goal = Math.max(1, parseInt(habit.monthGoal, 10) || 20);
+      const pct = Math.min(100, Math.round((done / goal) * 100));
+      return (
+        '<div class="goal-row">' +
+        '<div class="goal-head">' +
+        `<div class="goal-name">${sanitize(habit.name)}</div>` +
+        `<div class="goal-figure">${done} / ${goal}</div>` +
+        "</div>" +
+        '<div class="goal-track">' +
+        `<div class="goal-fill${pct >= 100 ? " is-full" : ""}" style="width:${pct}%"></div>` +
+        "</div></div>"
+      );
+    })
+    .join("");
 }
 
-export function destroyChart(chartKey) {
-  if (!chartInstances[chartKey]) return;
-  chartInstances[chartKey].destroy();
-  delete chartInstances[chartKey];
-}
+export function renderAnalytics() {
+  const body = document.getElementById("analyticsBody");
+  if (!body) return;
 
-// On a phone the two axis titles alone eat ~48px of a ~240px tall chart, and a
-// full tick set turns into unreadable overlapping labels. Applied centrally so
-// the individual chart configs stay declarative.
-function compactChartConfig(config) {
-  if (!isMobileLayout()) return config;
-  const scales = config.options && config.options.scales;
-  if (!scales) return config;
-  Object.values(scales).forEach((axis) => {
-    if (!axis || typeof axis !== "object") return;
-    if (axis.title) axis.title.display = false;
-    axis.ticks = { ...(axis.ticks || {}), autoSkip: true, maxTicksLimit: 6 };
-  });
-  if (config.data && Array.isArray(config.data.datasets)) {
-    config.data.datasets.forEach((ds) => {
-      if (ds.pointRadius !== undefined) ds.pointRadius = 2;
-    });
-  }
-  return config;
-}
+  const { days, slots, done, perfect } = monthTotals();
+  const pct = slots > 0 ? Math.round((done / slots) * 100) : 0;
 
-export function renderChart(chartKey, canvasId, config) {
-  if (typeof Chart === "undefined") return;
-  const canvas = document.getElementById(canvasId);
-  if (!canvas) {
-    destroyChart(chartKey);
-    return;
-  }
-  destroyChart(chartKey);
-  chartInstances[chartKey] = new Chart(
-    canvas.getContext("2d"),
-    compactChartConfig(config),
-  );
-}
-
-export function renderWeeklyTrendChart(canvasId, chartKey, weeklyData) {
-  const values = weeklyData.weekBuckets.map((bucket) =>
-    getMetricValue(bucket.done, bucket.possible),
-  );
-  const maxScale =
-    getAnalyticsDisplayMode() === "percent" ? 100 : Math.max(1, ...values);
-  const avgValue = values.length
-    ? values.reduce((sum, value) => sum + value, 0) / values.length
-    : 0;
-
-  renderChart(chartKey, canvasId, {
-    type: "line",
-    data: {
-      labels: weeklyData.weekBuckets.map((bucket) => bucket.label),
-      datasets: [
-        {
-          label: getMetricAxisLabel(),
-          data: values,
-          borderColor: getValueColor(avgValue, maxScale, 0.95),
-          backgroundColor: getValueColor(avgValue, maxScale, 0.2),
-          borderWidth: 3,
-          fill: true,
-          tension: 0.34,
-          pointRadius: 4,
-          pointBackgroundColor: values.map((value) =>
-            getValueColor(value, maxScale, 0.95),
-          ),
-          pointBorderColor: values.map((value) =>
-            getValueColor(value, maxScale, 1),
-          ),
-          segment: {
-            borderColor(context) {
-              const midpoint =
-                ((context.p0?.parsed?.y || 0) + (context.p1?.parsed?.y || 0)) /
-                2;
-              return getValueColor(midpoint, maxScale, 0.95);
-            },
-          },
-        },
-      ],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      aspectRatio: 1.8,
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          callbacks: {
-            title(items) {
-              const bucket = weeklyData.weekBuckets[items[0].dataIndex];
-              return bucket && bucket.rangeLabel
-                ? `${bucket.label} · ${bucket.rangeLabel}`
-                : (bucket && bucket.label) || "";
-            },
-            label(context) {
-              const bucket = weeklyData.weekBuckets[context.dataIndex];
-              const done = bucket ? bucket.done : 0;
-              const possible = bucket ? bucket.possible : 0;
-              return `${getMetricLabel(context.parsed.y)} · ${done}/${possible}`;
-            },
-          },
-        },
-      },
-      scales: {
-        x: {
-          grid: { display: false },
-          title: { display: true, text: "Week" },
-        },
-        y: {
-          beginAtZero: true,
-          max: getAnalyticsDisplayMode() === "percent" ? 100 : undefined,
-          grid: { color: "rgba(255,255,255,0.06)" },
-          title: { display: true, text: getMetricAxisLabel() },
-          ticks: {
-            callback(value) {
-              return getAnalyticsDisplayMode() === "percent"
-                ? `${Math.round(value)}%`
-                : value;
-            },
-          },
-        },
-      },
-    },
-  });
-}
-
-export function renderMonthlyTrendChart(canvasId, chartKey, timeline) {
-  const values = timeline.map((item) =>
-    getMetricValue(item.done, item.possible),
-  );
-  const maxScale =
-    getAnalyticsDisplayMode() === "percent" ? 100 : Math.max(1, ...values);
-  const avgValue = values.length
-    ? values.reduce((sum, value) => sum + value, 0) / values.length
-    : 0;
-  renderChart(chartKey, canvasId, {
-    type: "line",
-    data: {
-      labels: timeline.map((item) => item.label),
-      datasets: [
-        {
-          data: values,
-          borderColor: getValueColor(avgValue, maxScale, 0.95),
-          backgroundColor: getValueColor(avgValue, maxScale, 0.18),
-          borderWidth: 3,
-          fill: true,
-          tension: 0.26,
-          pointRadius: 3,
-          pointBackgroundColor: values.map((value) =>
-            getValueColor(value, maxScale, 0.95),
-          ),
-          pointBorderColor: values.map((value) =>
-            getValueColor(value, maxScale, 1),
-          ),
-          segment: {
-            borderColor(context) {
-              const midpoint =
-                ((context.p0?.parsed?.y || 0) + (context.p1?.parsed?.y || 0)) /
-                2;
-              return getValueColor(midpoint, maxScale, 0.95);
-            },
-          },
-        },
-      ],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      aspectRatio: 1.8,
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          callbacks: {
-            label(context) {
-              const item = timeline[context.dataIndex] || {
-                done: 0,
-                possible: 0,
-              };
-              return `${getMetricLabel(context.parsed.y)} · ${item.done}/${item.possible}`;
-            },
-          },
-        },
-      },
-      scales: {
-        x: {
-          grid: { display: false },
-          title: { display: true, text: "Month" },
-        },
-        y: {
-          beginAtZero: true,
-          max: getAnalyticsDisplayMode() === "percent" ? 100 : undefined,
-          grid: { color: "rgba(255,255,255,0.06)" },
-          title: { display: true, text: getMetricAxisLabel() },
-          ticks: {
-            callback(value) {
-              return getAnalyticsDisplayMode() === "percent"
-                ? `${Math.round(value)}%`
-                : value;
-            },
-          },
-        },
-      },
-    },
-  });
-}
-
-export function renderMonthlyStreakChart(canvasId, chartKey, rows) {
-  // Horizontal bars: the frame has to grow with the row count, otherwise a
-  // dozen habits are squeezed into a fixed-height box.
-  const frame = document.getElementById("analyticsMonthlyStreakFrame");
-  if (frame) {
-    frame.style.height = `${Math.max(220, rows.length * 26 + 40)}px`;
+  const sub = document.getElementById("analyticsSub");
+  if (sub) {
+    sub.textContent = `${MONTH_NAMES[state.currentMonth]} ${state.currentYear} · ${days} day${days === 1 ? "" : "s"} in`;
   }
 
-  const values = rows.map((row) => getMetricValue(row.done, row.possible));
-  const maxScale =
-    getAnalyticsDisplayMode() === "percent" ? 100 : Math.max(1, ...values);
-
-  renderChart(chartKey, canvasId, {
-    type: "bar",
-    data: {
-      labels: rows.map((row) => row.label),
-      datasets: [
-        {
-          data: values,
-          backgroundColor: values.map((value) =>
-            getValueColor(value, maxScale, 0.88),
-          ),
-          borderRadius: 6,
-          maxBarThickness: 18,
-        },
-      ],
-    },
-    options: {
-      indexAxis: "y",
-      responsive: true,
-      maintainAspectRatio: false,
-      aspectRatio: 1.8,
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          callbacks: {
-            label(context) {
-              const row = rows[context.dataIndex] || { done: 0, possible: 0 };
-              return `${getMetricLabel(context.parsed.x)} · ${row.done}/${row.possible} days`;
-            },
-          },
-        },
-      },
-      scales: {
-        x: {
-          beginAtZero: true,
-          max: getAnalyticsDisplayMode() === "percent" ? 100 : undefined,
-          grid: { color: "rgba(255,255,255,0.06)" },
-          title: { display: true, text: "Current streak (days)" },
-          ticks: {
-            callback(value) {
-              return getAnalyticsDisplayMode() === "percent"
-                ? `${Math.round(value)}%`
-                : value;
-            },
-          },
-        },
-        y: {
-          grid: { display: false },
-        },
-      },
-    },
-  });
+  body.innerHTML =
+    '<div class="kpi-grid">' +
+    '<div class="kpi">' +
+    `<div class="kpi-value is-accent">${pct}%</div>` +
+    '<div class="kpi-caption">Month completion</div></div>' +
+    '<div class="kpi">' +
+    `<div class="kpi-value">${perfect}</div>` +
+    '<div class="kpi-caption">Perfect days</div></div>' +
+    "</div>" +
+    '<div class="chart-card">' +
+    '<div class="chart-title">Last 7 days</div>' +
+    `<div class="bars">${trendBarsHtml()}</div>` +
+    "</div>" +
+    '<div class="chart-card">' +
+    '<div class="chart-title">Progress to goal</div>' +
+    goalRowsHtml() +
+    "</div>";
 }
 
-export function renderWeeklyHeatmap(containerId, weeklyData) {
-  const container = document.getElementById(containerId);
-  if (!container) return;
-
-  const dayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const cells = [];
-  weeklyData.weekBuckets.forEach((week) => {
-    week.weekdays.forEach((entry) => {
-      cells.push(getMetricValue(entry.done, entry.possible));
-    });
-  });
-  const maxValue = Math.max(1, ...cells);
-
-  let html = "<div></div>";
-  dayLabels.forEach((label) => {
-    html += `<div class='heatmap-head'>${label}</div>`;
-  });
-
-  weeklyData.weekBuckets.forEach((week) => {
-    const weekLabel = week.label || `W${week.isoWeek || "?"}`;
-    const rangeTitle = week.rangeLabel
-      ? `Week ${week.isoWeek} (${week.rangeLabel})`
-      : weekLabel;
-    html += `<div class='heatmap-week-label' title='${rangeTitle}'>${weekLabel}</div>`;
-    week.weekdays.forEach((entry) => {
-      const value = getMetricValue(entry.done, entry.possible);
-      const scaleMax = getAnalyticsDisplayMode() === "percent" ? 100 : maxValue;
-      const ratio = scaleMax > 0 ? value / scaleMax : 0;
-      // The value is wrapped so the mobile layout can hide the text and let
-      // colour alone carry the reading -- at ~30px wide a "83%" label just
-      // clips. title/aria-label keep the numbers available either way.
-      const cellTitle = `${rangeTitle} · Done ${entry.done} / ${entry.possible}`;
-      html += `<div class='heatmap-cell' style='background:${getHeatColor(ratio)}' title='${cellTitle}' aria-label='${cellTitle}'><span class='heatmap-cell-value'>${getMetricLabel(value)}</span></div>`;
-    });
-  });
-
-  container.innerHTML = html;
-}
-
-export function renderAnalyticsView() {
-  syncAnalyticsModeControls();
-  const weeklyData = buildWeeklyAnalytics(
-    state.currentYear,
-    state.currentMonth,
-  );
-  const timeline = buildMonthlyTimeline(12);
-  const streakRows = getMonthStreakLeaderboard(14);
-
-  renderWeeklyTrendChart(
-    "analyticsWeeklyTrendChart",
-    "analyticsWeeklyTrendChart",
-    weeklyData,
-  );
-  renderMonthlyTrendChart(
-    "analyticsMonthlyTrendChart",
-    "analyticsMonthlyTrendChart",
-    timeline,
-  );
-  renderMonthlyStreakChart(
-    "analyticsMonthlyStreakChart",
-    "analyticsMonthlyStreakChart",
-    streakRows,
-  );
-  renderWeeklyHeatmap("analyticsWeeklyHeatmap", weeklyData);
-  callRenderer("renderMonthlyReview");
-}
-
-registerRenderer("renderAnalyticsView", renderAnalyticsView);
-registerRenderer("renderChart", renderChart);
+registerRenderer("renderAnalytics", renderAnalytics);
