@@ -1,16 +1,11 @@
 "use strict";
 
-import { EMBEDDED_EXPORT_SIZE_WARN_BYTES } from "./constants.js";
 import { state, setState } from "./state.js";
 import {
   isPlainObject,
-  toBase64,
-  fromBase64,
   monthKey,
-  formatByteSize,
 } from "./utils.js?v=2";
 import { appendLogEntry } from "./logging.js";
-import { idbGetPdfBlob, idbSavePdfBlob } from "./idb.js";
 import { migrateState, ensureMonthData, saveState } from "./persistence.js";
 import { callRenderer } from "./render-registry.js";
 import { saveBlobNatively } from "./native.js";
@@ -25,118 +20,11 @@ export function setBackupStatus(text, tone) {
   }
 }
 
-export function shouldExportIncludePdfs() {
-  const checkbox = document.getElementById("exportIncludePdfs");
-  return !!(checkbox && checkbox.checked);
-}
-
-export async function collectEmbeddedPdfPayload() {
-  const pdfBlobs = {};
-  const books =
-    isPlainObject(state.books) && Array.isArray(state.books.items)
-      ? state.books.items
-      : [];
-  let embeddedCount = 0;
-  let missingCount = 0;
-  let failedCount = 0;
-  let totalBytes = 0;
-
-  for (const book of books) {
-    if (!isPlainObject(book) || typeof book.fileId !== "string") continue;
-    const fileId = book.fileId.trim();
-    if (!fileId) continue;
-
-    try {
-      const blob = await idbGetPdfBlob(fileId);
-      if (!blob) {
-        missingCount += 1;
-        continue;
-      }
-
-      const buffer = await blob.arrayBuffer();
-      const bytes = new Uint8Array(buffer);
-      pdfBlobs[fileId] = toBase64(bytes);
-      embeddedCount += 1;
-      totalBytes += Number.isFinite(Number(blob.size))
-        ? Number(blob.size)
-        : bytes.length;
-    } catch (error) {
-      failedCount += 1;
-      appendLogEntry({
-        level: "warn",
-        component: "backup",
-        operation: "collectEmbeddedPdfPayload",
-        message: "Skipping PDF while building export payload.",
-        error,
-        context: { fileId },
-      });
-    }
-  }
-
-  return { pdfBlobs, embeddedCount, missingCount, failedCount, totalBytes };
-}
-
-export async function restoreEmbeddedPdfPayload(pdfBlobs) {
-  if (!isPlainObject(pdfBlobs)) {
-    return { restoredCount: 0, failedCount: 0 };
-  }
-
-  let restoredCount = 0;
-  let failedCount = 0;
-
-  for (const [fileIdRaw, encoded] of Object.entries(pdfBlobs)) {
-    const fileId = String(fileIdRaw || "").trim();
-    if (!fileId || typeof encoded !== "string" || !encoded.trim()) {
-      failedCount += 1;
-      continue;
-    }
-
-    try {
-      const bytes = fromBase64(encoded);
-      const blob = new Blob([bytes], { type: "application/pdf" });
-      await idbSavePdfBlob(fileId, blob);
-      restoredCount += 1;
-    } catch (error) {
-      failedCount += 1;
-      appendLogEntry({
-        level: "warn",
-        component: "backup",
-        operation: "restoreEmbeddedPdfPayload",
-        message: "Restoring embedded PDF failed.",
-        error,
-        context: { fileId },
-      });
-    }
-  }
-
-  return { restoredCount, failedCount };
-}
-
 export async function exportData() {
-  const includePdfs = shouldExportIncludePdfs();
-  setBackupStatus(
-    includePdfs
-      ? "Preparing backup with embedded PDFs..."
-      : "Preparing metadata backup...",
-    "pending",
-  );
+  setBackupStatus("Preparing backup...", "pending");
 
   try {
     const exportedState = JSON.parse(JSON.stringify(state));
-    let payloadStats = {
-      pdfBlobs: {},
-      embeddedCount: 0,
-      missingCount: 0,
-      failedCount: 0,
-      totalBytes: 0,
-    };
-
-    if (includePdfs) {
-      payloadStats = await collectEmbeddedPdfPayload();
-      if (Object.keys(payloadStats.pdfBlobs).length > 0) {
-        exportedState.pdfBlobs = payloadStats.pdfBlobs;
-      }
-    }
 
     const blob = new Blob([JSON.stringify(exportedState, null, 2)], {
       type: "application/json",
@@ -154,28 +42,7 @@ export async function exportData() {
       URL.revokeObjectURL(url);
     }
 
-    if (!includePdfs) {
-      setBackupStatus(
-        "Metadata backup exported. Enable Include PDFs for full backup.",
-        "success",
-      );
-      return;
-    }
-
-    const estimatedJsonBytes = Math.round(payloadStats.totalBytes * 1.34);
-    const info = `Embedded ${payloadStats.embeddedCount} PDF${payloadStats.embeddedCount === 1 ? "" : "s"} (~${formatByteSize(estimatedJsonBytes)}).`;
-    if (
-      estimatedJsonBytes >= EMBEDDED_EXPORT_SIZE_WARN_BYTES ||
-      payloadStats.failedCount > 0 ||
-      payloadStats.missingCount > 0
-    ) {
-      setBackupStatus(
-        `${info} ${payloadStats.missingCount ? `${payloadStats.missingCount} missing in IndexedDB.` : ""} ${payloadStats.failedCount ? `${payloadStats.failedCount} failed to embed.` : ""}`.trim(),
-        "warn",
-      );
-    } else {
-      setBackupStatus(`Full backup exported. ${info}`, "success");
-    }
+    setBackupStatus("Backup exported.", "success");
   } catch (error) {
     appendLogEntry({
       level: "error",
@@ -301,11 +168,13 @@ export function importData(file) {
         return;
       }
 
-      const embeddedPdfPayload =
-        imported.pdfBlobs !== undefined ? imported.pdfBlobs : null;
-      if (imported.pdfBlobs !== undefined) {
-        delete imported.pdfBlobs;
-      }
+      // Older backups may embed base64 PDFs for the removed books feature.
+      // There is nowhere to put them now, so they are skipped; every habit,
+      // note, completion and report in the file is imported untouched.
+      const hadEmbeddedPdfs =
+        imported.pdfBlobs !== undefined &&
+        Object.keys(imported.pdfBlobs || {}).length > 0;
+      delete imported.pdfBlobs;
 
       setState(imported);
       migrateState();
@@ -313,23 +182,14 @@ export function importData(file) {
       saveState();
       callRenderer("renderAll");
 
-      const restoreStats = await restoreEmbeddedPdfPayload(embeddedPdfPayload);
-      await callRenderer("refreshBookBlobStatus");
-      await callRenderer("renderBooksView");
       callRenderer("renderReportView");
 
-      if (restoreStats.restoredCount > 0) {
-        const tone = restoreStats.failedCount > 0 ? "warn" : "success";
-        setBackupStatus(
-          `Import completed. Restored ${restoreStats.restoredCount} embedded PDF${restoreStats.restoredCount === 1 ? "" : "s"}${restoreStats.failedCount ? `, ${restoreStats.failedCount} failed.` : "."}`,
-          tone,
-        );
-      } else {
-        setBackupStatus(
-          "Import completed. No embedded PDFs found; re-upload PDFs if needed.",
-          embeddedPdfPayload ? "warn" : "success",
-        );
-      }
+      setBackupStatus(
+        hadEmbeddedPdfs
+          ? "Import completed. Embedded PDFs were skipped."
+          : "Import completed.",
+        hadEmbeddedPdfs ? "warn" : "success",
+      );
     } catch (err) {
       appendLogEntry({
         level: "error",

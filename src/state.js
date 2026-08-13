@@ -18,7 +18,6 @@ export const globals = {
   topClockTimer: null,
   lastAutoScrolledMonthKey: null,
   logAutoDownloadBlockedUntil: 0,
-  legacyPlaintextApiKeyForMigration: "",
   // Day selected in the mobile day-focus card, 1..31. null means "resolve to
   // today if we are viewing the current month, else day 1" -- see
   // render-day-focus.js getSelectedDay(). Deliberately not persisted: loadState()
@@ -33,30 +32,9 @@ export const reportModalState = {
   pendingFiles: [],
   removedFileIds: [],
 };
-export const bookModalState = { editingBookId: null };
-export const bookmarkModalState = {
-  editingBookId: null,
-  editingBookmarkId: null,
-};
-export const historyEventModalState = {
-  editingBookId: null,
-  editingBookmarkId: null,
-  editingEventId: null,
-};
-export const bookOpenModalState = {
-  bookId: null,
-  page: 1,
-  bookmarkId: null,
-};
-
 export let idbPromise = null;
 export function setIdbPromise(p) {
   idbPromise = p;
-}
-
-export let booksBlobStatus = {};
-export function setBooksBlobStatus(s) {
-  booksBlobStatus = s;
 }
 
 export const linkedHoverState = {

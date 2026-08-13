@@ -3,11 +3,10 @@
 import {
   SCHEMA_VERSION,
   ALL_WEEKDAYS,
-  MAX_BOOKMARK_HISTORY,
   DEFAULT_CATEGORIES,
   DEFAULT_DAILY_HABITS,
 } from "./constants.js";
-import { state, setState, globals } from "./state.js";
+import { state, setState } from "./state.js";
 import {
   uid,
   monthKey,
@@ -49,152 +48,6 @@ export function ensureMonthDataShape(monthData) {
   return monthData;
 }
 
-export function ensureBooksShape(input) {
-  if (!isPlainObject(input.books)) {
-    input.books = { items: [], activeBookId: null };
-  }
-  if (!Array.isArray(input.books.items)) {
-    input.books.items = [];
-  }
-  if (typeof input.books.activeBookId !== "string") {
-    input.books.activeBookId = null;
-  }
-
-  input.books.items = input.books.items
-    .filter((book) => isPlainObject(book) && typeof book.bookId === "string")
-    .map((book) => {
-      const createdAt = String(book.createdAt || nowIso());
-      const updatedAt = String(book.updatedAt || createdAt);
-      const cleanBook = {
-        bookId: String(book.bookId),
-        title: String(book.title || "Untitled Book").trim() || "Untitled Book",
-        author: book.author ? String(book.author) : "",
-        fileId: String(book.fileId || uid("file")),
-        fileName: String(book.fileName || "unknown.pdf"),
-        fileSize: Number.isFinite(book.fileSize)
-          ? Math.max(0, book.fileSize)
-          : 0,
-        createdAt,
-        updatedAt,
-        bookmarks: [],
-      };
-
-      const rawBookmarks = Array.isArray(book.bookmarks) ? book.bookmarks : [];
-      cleanBook.bookmarks = rawBookmarks
-        .filter(
-          (bm) =>
-            isPlainObject(bm) &&
-            typeof bm.bookmarkId === "string" &&
-            Number.isFinite(Number(bm.pdfPage)),
-        )
-        .map((bm) => {
-          const bmCreatedAt = String(bm.createdAt || nowIso());
-          const bmUpdatedAt = String(bm.updatedAt || bmCreatedAt);
-          const history = Array.isArray(bm.history) ? bm.history : [];
-          const bookmarkPage = Math.max(1, parseInt(bm.pdfPage, 10) || 1);
-          const summaries = Array.isArray(bm.summaries) ? bm.summaries : [];
-          return {
-            bookmarkId: String(bm.bookmarkId),
-            label: String(bm.label || "Bookmark").trim() || "Bookmark",
-            pdfPage: bookmarkPage,
-            realPage: (() => {
-              const parsed = parseInt(bm.realPage, 10);
-              return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-            })(),
-            note: String(bm.note || ""),
-            createdAt: bmCreatedAt,
-            updatedAt: bmUpdatedAt,
-            history: history
-              .filter((h) => isPlainObject(h))
-              .map((h) => ({
-                eventId: String(h.eventId || uid("hist")),
-                type: String(h.type || "updated"),
-                at: String(h.at || bmUpdatedAt),
-                note: String(h.note || ""),
-              }))
-              .sort((a, b) => (a.at < b.at ? 1 : -1))
-              .slice(0, MAX_BOOKMARK_HISTORY),
-            summaries: summaries
-              .filter((s) => isPlainObject(s))
-              .map((s) => {
-                const sCreatedAt = String(s.createdAt || nowIso());
-                const sUpdatedAt = String(s.updatedAt || sCreatedAt);
-                const fallbackStart =
-                  s.isIncremental === true
-                    ? Math.max(1, parseInt(s.startPage, 10) || 1)
-                    : 1;
-                const startPage = Math.max(
-                  1,
-                  parseInt(s.startPage, 10) || fallbackStart,
-                );
-                const endPage = Math.max(
-                  startPage,
-                  parseInt(s.endPage, 10) || bookmarkPage,
-                );
-                const status = ["ready", "failed", "running"].includes(
-                  String(s.status || ""),
-                )
-                  ? String(s.status)
-                  : String(s.content || "").trim().length
-                    ? "ready"
-                    : "failed";
-                const basedOnSummaryId =
-                  typeof s.basedOnSummaryId === "string" &&
-                  s.basedOnSummaryId.trim()
-                    ? s.basedOnSummaryId
-                    : null;
-                const durationMs = Number.isFinite(Number(s.durationMs))
-                  ? Math.max(0, Number(s.durationMs))
-                  : null;
-                return {
-                  summaryId: String(s.summaryId || uid("sum")),
-                  model: String(s.model || ""),
-                  startPage,
-                  endPage,
-                  isIncremental: s.isIncremental === true,
-                  basedOnSummaryId,
-                  createdAt: sCreatedAt,
-                  updatedAt: sUpdatedAt,
-                  status,
-                  content: String(s.content || ""),
-                  chunkMeta: isPlainObject(s.chunkMeta) ? s.chunkMeta : {},
-                  durationMs,
-                  error: String(s.error || ""),
-                };
-              })
-              .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)),
-          };
-        })
-        .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
-
-      return cleanBook;
-    });
-
-  if (!isPlainObject(input.books.helper)) {
-    input.books.helper = {};
-  }
-  input.books.helper.selectedBookId =
-    typeof input.books.helper.selectedBookId === "string"
-      ? input.books.helper.selectedBookId
-      : "";
-  input.books.helper.targetDate =
-    typeof input.books.helper.targetDate === "string"
-      ? input.books.helper.targetDate
-      : "";
-  input.books.helper.startPage = Number.isFinite(
-    parseInt(input.books.helper.startPage, 10),
-  )
-    ? Math.max(1, parseInt(input.books.helper.startPage, 10))
-    : null;
-  const rawWeekdays = Array.isArray(input.books.helper.weekdays)
-    ? input.books.helper.weekdays
-    : [...ALL_WEEKDAYS];
-  input.books.helper.weekdays = [...new Set(rawWeekdays)]
-    .map((value) => parseInt(value, 10))
-    .filter((value) => Number.isInteger(value) && value >= 0 && value <= 6)
-    .sort((a, b) => a - b);
-}
-
 export function getDefaultState() {
   const now = new Date();
   const key = monthKey(now.getFullYear(), now.getMonth());
@@ -207,25 +60,6 @@ export function getDefaultState() {
     },
     months: {
       [key]: getDefaultMonthData(),
-    },
-    books: {
-      items: [],
-      activeBookId: null,
-      helper: {
-        selectedBookId: "",
-        targetDate: "",
-        startPage: null,
-        weekdays: [...ALL_WEEKDAYS],
-      },
-      ai: {
-        apiKey: "",
-        apiKeyMode: "encrypted",
-        apiKeySaved: false,
-        apiKeyLastUpdated: "",
-        model: "gemini-2.5-flash",
-        summaryLanguage: "English",
-        consolidateMode: true,
-      },
     },
     reports: [],
     meta: {
@@ -392,7 +226,6 @@ export function migrateState() {
     h.order = idx;
   });
 
-  ensureBooksShape(state);
   ensureReportsShape(state);
 
   if (!isPlainObject(state.meta)) {
@@ -435,22 +268,6 @@ export async function loadState() {
       state.currentYear = now.getFullYear();
       state.currentMonth = now.getMonth();
       ensureMonthData();
-      if (
-        isPlainObject(state.books) &&
-        isPlainObject(state.books.ai) &&
-        typeof state.books.ai.apiKey === "string" &&
-        state.books.ai.apiKey.trim().length
-      ) {
-        globals.legacyPlaintextApiKeyForMigration =
-          state.books.ai.apiKey.trim();
-        appendLogEntry({
-          level: "warn",
-          component: "secure-settings",
-          operation: "loadState",
-          message: "Legacy plaintext API key detected; scrubbing from state.",
-        });
-        state.books.ai.apiKey = "";
-      }
       saveState();
       return;
     }

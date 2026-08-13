@@ -10,16 +10,19 @@
 // here need to change.
 //
 // Storage layout (one database, three stores):
-//   kv   {key, value}            -- __state__ blob, prefs, secure settings, meta
+//   kv   {key, value}            -- __state__ blob, prefs, meta flags
 //   logs {id, timestamp, ...}    -- app log records (index: by_timestamp)
-//   pdfs {fileId, blob, ...}     -- PDF blobs, stored natively (no base64)
+//   pdfs {fileId, blob, ...}     -- attachment blobs, stored natively. The
+//                                   store keeps its original name so blobs
+//                                   written before the books feature was
+//                                   removed stay reachable.
 
 import {
   IDB_NAME,
   IDB_VERSION,
   IDB_KV_STORE,
   IDB_LOGS_STORE,
-  IDB_PDF_STORE,
+  IDB_BLOB_STORE,
   MAX_LOG_RECORDS,
 } from "./constants.js";
 
@@ -29,7 +32,7 @@ const PUT_STATE_DEBOUNCE_MS = 150;
 // by getPrefs / never written by patchPrefs), mirroring the old server rules.
 const STATE_KEY = "__state__";
 const META_PREFIX = "__meta__:";
-const PDF_FILE_ID_RE = /^[A-Za-z0-9_\-]{1,128}$/;
+const BLOB_FILE_ID_RE = /^[A-Za-z0-9_\-]{1,128}$/;
 
 // ---------------------------------------------------------------------------
 // IndexedDB plumbing
@@ -56,8 +59,8 @@ function openDB() {
         const s = d.createObjectStore(IDB_LOGS_STORE, { keyPath: "id" });
         s.createIndex("by_timestamp", "timestamp", { unique: false });
       }
-      if (!d.objectStoreNames.contains(IDB_PDF_STORE)) {
-        d.createObjectStore(IDB_PDF_STORE, { keyPath: "fileId" });
+      if (!d.objectStoreNames.contains(IDB_BLOB_STORE)) {
+        d.createObjectStore(IDB_BLOB_STORE, { keyPath: "fileId" });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -129,8 +132,8 @@ export async function importLegacy(bundle) {
   const kv = tx.objectStore(IDB_KV_STORE);
   const logsStore = tx.objectStore(IDB_LOGS_STORE);
 
-  // Full reset of kv + logs (PDF blobs are uploaded separately by the caller,
-  // exactly as the old server kept the books/ directory out of import_legacy).
+  // Full reset of kv + logs. Attachment blobs live in their own store and are
+  // not part of a legacy import.
   kv.clear();
   logsStore.clear();
 
@@ -324,18 +327,17 @@ export async function clearLogs() {
 }
 
 // ---------------------------------------------------------------------------
-// PDF blobs
+// Generic attachment blobs (any MIME type), keyed by a unique fileId.
 // ---------------------------------------------------------------------------
 
-export async function uploadPdf(fileId, blob) {
-  if (!PDF_FILE_ID_RE.test(fileId)) {
-    throw new Error(`Invalid PDF fileId: ${fileId}`);
+export async function uploadFile(fileId, blob) {
+  if (!BLOB_FILE_ID_RE.test(fileId)) {
+    throw new Error(`Invalid blob fileId: ${fileId}`);
   }
-  const sizeBytes =
-    blob && typeof blob.size === "number" ? blob.size : 0;
+  const sizeBytes = blob && typeof blob.size === "number" ? blob.size : 0;
   const db = await openDB();
-  const tx = db.transaction(IDB_PDF_STORE, "readwrite");
-  tx.objectStore(IDB_PDF_STORE).put({
+  const tx = db.transaction(IDB_BLOB_STORE, "readwrite");
+  tx.objectStore(IDB_BLOB_STORE).put({
     fileId,
     blob,
     sizeBytes,
@@ -345,36 +347,19 @@ export async function uploadPdf(fileId, blob) {
   return { ok: true, sizeBytes };
 }
 
-export async function getPdfBlob(fileId) {
-  if (!PDF_FILE_ID_RE.test(fileId)) return null;
+export async function getFileBlob(fileId) {
+  if (!BLOB_FILE_ID_RE.test(fileId)) return null;
   const db = await openDB();
-  const tx = db.transaction(IDB_PDF_STORE, "readonly");
-  const rec = await reqToPromise(tx.objectStore(IDB_PDF_STORE).get(fileId));
+  const tx = db.transaction(IDB_BLOB_STORE, "readonly");
+  const rec = await reqToPromise(tx.objectStore(IDB_BLOB_STORE).get(fileId));
   return rec ? rec.blob : null;
 }
 
-export async function deletePdf(fileId) {
-  if (!PDF_FILE_ID_RE.test(fileId)) return true;
+export async function deleteFile(fileId) {
+  if (!BLOB_FILE_ID_RE.test(fileId)) return true;
   const db = await openDB();
-  const tx = db.transaction(IDB_PDF_STORE, "readwrite");
-  tx.objectStore(IDB_PDF_STORE).delete(fileId);
+  const tx = db.transaction(IDB_BLOB_STORE, "readwrite");
+  tx.objectStore(IDB_BLOB_STORE).delete(fileId);
   await txDone(tx);
   return true;
-}
-
-// ---------------------------------------------------------------------------
-// Generic attachment blobs (any MIME type). The blob store is content-type
-// agnostic, so report attachments reuse it -- keyed by their own unique fileId.
-// ---------------------------------------------------------------------------
-
-export async function uploadFile(fileId, blob) {
-  return uploadPdf(fileId, blob);
-}
-
-export async function getFileBlob(fileId) {
-  return getPdfBlob(fileId);
-}
-
-export async function deleteFile(fileId) {
-  return deletePdf(fileId);
 }

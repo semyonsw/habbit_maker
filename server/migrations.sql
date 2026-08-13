@@ -72,57 +72,6 @@ CREATE TABLE IF NOT EXISTS monthly_review (
   focus TEXT NOT NULL DEFAULT ''
 );
 
-CREATE TABLE IF NOT EXISTS books (
-  book_id TEXT PRIMARY KEY,
-  title TEXT NOT NULL,
-  author TEXT NOT NULL DEFAULT '',
-  file_id TEXT NOT NULL UNIQUE,
-  file_name TEXT NOT NULL DEFAULT '',
-  file_size INTEGER NOT NULL DEFAULT 0 CHECK (file_size >= 0),
-  created_at TEXT NOT NULL DEFAULT '',
-  updated_at TEXT NOT NULL DEFAULT ''
-);
-
-CREATE TABLE IF NOT EXISTS bookmarks (
-  bookmark_id TEXT PRIMARY KEY,
-  book_id TEXT NOT NULL REFERENCES books(book_id) ON DELETE CASCADE,
-  label TEXT NOT NULL DEFAULT 'Bookmark',
-  pdf_page INTEGER NOT NULL DEFAULT 1 CHECK (pdf_page >= 1),
-  real_page INTEGER CHECK (real_page IS NULL OR real_page >= 1),
-  note TEXT NOT NULL DEFAULT '',
-  created_at TEXT NOT NULL DEFAULT '',
-  updated_at TEXT NOT NULL DEFAULT ''
-);
-CREATE INDEX IF NOT EXISTS idx_bookmarks_book ON bookmarks(book_id);
-
-CREATE TABLE IF NOT EXISTS bookmark_history (
-  event_id TEXT PRIMARY KEY,
-  bookmark_id TEXT NOT NULL REFERENCES bookmarks(bookmark_id) ON DELETE CASCADE,
-  type TEXT NOT NULL DEFAULT 'updated',
-  at TEXT NOT NULL DEFAULT '',
-  note TEXT NOT NULL DEFAULT ''
-);
-CREATE INDEX IF NOT EXISTS idx_history_bookmark ON bookmark_history(bookmark_id, at DESC);
-
-CREATE TABLE IF NOT EXISTS summaries (
-  summary_id TEXT PRIMARY KEY,
-  bookmark_id TEXT NOT NULL REFERENCES bookmarks(bookmark_id) ON DELETE CASCADE,
-  model TEXT NOT NULL DEFAULT '',
-  start_page INTEGER NOT NULL DEFAULT 1 CHECK (start_page >= 1),
-  end_page INTEGER NOT NULL DEFAULT 1 CHECK (end_page >= 1),
-  is_incremental INTEGER NOT NULL DEFAULT 0 CHECK (is_incremental IN (0, 1)),
-  based_on_summary_id TEXT,
-  status TEXT NOT NULL DEFAULT 'ready'
-    CHECK (status IN ('ready', 'running', 'failed')),
-  content TEXT NOT NULL DEFAULT '',
-  chunk_meta TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(chunk_meta)),
-  duration_ms INTEGER,
-  error TEXT NOT NULL DEFAULT '',
-  created_at TEXT NOT NULL DEFAULT '',
-  updated_at TEXT NOT NULL DEFAULT ''
-);
-CREATE INDEX IF NOT EXISTS idx_summaries_bookmark ON summaries(bookmark_id, created_at DESC);
-
 CREATE TABLE IF NOT EXISTS reports (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL DEFAULT '',

@@ -137,40 +137,6 @@ export async function clearLogs() {
   return jsonFetch(`${API_BASE}/logs`, { method: "DELETE" });
 }
 
-export async function uploadPdf(fileId, blob) {
-  const resp = await fetch(`${API_BASE}/pdf/${encodeURIComponent(fileId)}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/pdf" },
-    body: blob,
-  });
-  if (!resp.ok) {
-    const text = await resp.text().catch(() => "");
-    throw new Error(
-      `PDF upload failed: HTTP ${resp.status} ${resp.statusText} ${text.slice(0, 200)}`,
-    );
-  }
-  return resp.json();
-}
-
-export async function getPdfBlob(fileId) {
-  const resp = await fetch(`${API_BASE}/pdf/${encodeURIComponent(fileId)}`);
-  if (resp.status === 404) return null;
-  if (!resp.ok) {
-    throw new Error(`PDF fetch failed: HTTP ${resp.status} ${resp.statusText}`);
-  }
-  return resp.blob();
-}
-
-export async function deletePdf(fileId) {
-  const resp = await fetch(`${API_BASE}/pdf/${encodeURIComponent(fileId)}`, {
-    method: "DELETE",
-  });
-  if (!resp.ok && resp.status !== 404) {
-    throw new Error(`PDF delete failed: HTTP ${resp.status} ${resp.statusText}`);
-  }
-  return true;
-}
-
 // Generic attachment blobs (any MIME type). The server stores raw bytes; the
 // MIME type is tracked in report metadata and re-applied to the fetched Blob.
 export async function uploadFile(fileId, blob) {

@@ -171,24 +171,6 @@ body::after {
   );
 }
 
-button,
-input,
-select,
-textarea,
-.nav-tab,
-.manage-btn,
-.books-item,
-.bookmark-item {
-  transition:
-    background-color var(--transition-fast),
-    color var(--transition-fast),
-    border-color var(--transition-fast),
-    box-shadow var(--transition-fast),
-    transform var(--transition-fast),
-    opacity var(--transition-fast),
-    filter var(--transition-fast);
-}
-
 button:focus-visible,
 input:focus-visible,
 select:focus-visible,
@@ -800,56 +782,6 @@ body.is-modal-open-fixed {
   color: rgba(201, 231, 250, 0.9);
   margin-bottom: 16px;
   font-weight: 600;
-  position: relative;
-  z-index: 1;
-}
-
-.books-card,
-.chart-card,
-.analytics-mode-card,
-.logs-card,
-.monthly-review-card,
-.manage-list {
-  position: relative;
-  overflow: hidden;
-  background:
-    linear-gradient(
-      142deg,
-      rgba(145, 221, 255, 0.16) 0%,
-      rgba(60, 130, 178, 0.11) 42%,
-      rgba(10, 25, 44, 0.56) 100%
-    ),
-    var(--glass-surface-soft);
-  border-radius: var(--radius-bubble);
-  border: 1px solid var(--glass-border);
-  box-shadow: var(--glass-shadow-lg);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
-}
-
-.books-card::before,
-.chart-card::before,
-.analytics-mode-card::before,
-.logs-card::before,
-.monthly-review-card::before,
-.manage-list::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: linear-gradient(
-    140deg,
-    rgba(226, 245, 255, 0.15) 0%,
-    rgba(226, 245, 255, 0) 45%
-  );
-}
-
-.books-card > *,
-.chart-card > *,
-.analytics-mode-card > *,
-.logs-card > *,
-.monthly-review-card > *,
-.manage-list > * {
   position: relative;
   z-index: 1;
 }
@@ -2031,207 +1963,10 @@ body.is-modal-open-fixed {
   color: var(--gray-600);
 }
 
-.books-layout {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
-  gap: 16px;
-}
-
-.books-card {
-  padding: 22px;
-  /* No min-height: 250px of empty glass is dead weight on a narrow screen. */
-  min-height: 0;
-}
-
-.books-card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-.books-card-header h3 {
-  font-family: var(--font-display);
-  color: var(--gray-900);
-  font-size: 1.2rem;
-}
-
-.books-help-text {
-  margin-top: 8px;
-  font-size: 0.8rem;
-  color: var(--gray-500);
-}
-
-.books-upload-status {
-  margin-top: 10px;
-  margin-bottom: 0;
-  border-radius: 10px;
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  background: rgba(15, 23, 42, 0.35);
-  color: var(--gray-400);
-  padding: 8px 10px;
-  font-size: 0.82rem;
-  line-height: 1.35;
-}
-
-.books-upload-status.pending {
-  border-color: rgba(245, 158, 11, 0.45);
-  background: rgba(245, 158, 11, 0.12);
-  color: #fcd34d;
-}
-
-.books-upload-status.success {
-  border-color: rgba(34, 197, 94, 0.45);
-  background: rgba(34, 197, 94, 0.14);
-  color: #86efac;
-}
-
-.books-upload-status.error {
-  border-color: rgba(239, 68, 68, 0.5);
-  background: rgba(239, 68, 68, 0.12);
-  color: #fca5a5;
-}
-
-.books-list,
-#bookmarksPanel {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.books-item,
-.bookmark-item {
-  background: var(--purple-50);
-  border: 1px solid var(--gray-100);
-  border-radius: var(--radius-md);
-  padding: 10px;
-}
-
-.books-item {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 102px;
-  grid-template-areas: "main cover";
-  gap: 12px;
-  align-items: stretch;
-  position: relative;
-  overflow: hidden;
-}
-
-.books-item-main {
-  grid-area: main;
-  min-width: 0;
-}
-
-.books-item-cover {
-  grid-area: cover;
-  width: 102px;
-  min-height: 142px;
-  border-radius: 12px;
-  border: 1px solid rgba(88, 165, 209, 0.35);
-  background:
-    linear-gradient(160deg, rgba(88, 165, 209, 0.2), rgba(31, 74, 119, 0.15)),
-    rgba(11, 24, 44, 0.45);
-  box-shadow: 0 8px 18px rgba(2, 8, 23, 0.35);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  position: relative;
-}
-
-.books-item-cover-image {
-  width: 100%;
-  height: 100%;
-  display: block;
-  object-fit: cover;
-  transform: scale(1.01);
-}
-
-.books-item-cover-fallback {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background:
-    radial-gradient(
-      circle at 20% 20%,
-      rgba(88, 165, 209, 0.35),
-      transparent 55%
-    ),
-    radial-gradient(
-      circle at 80% 80%,
-      rgba(62, 133, 181, 0.24),
-      transparent 55%
-    ),
-    rgba(10, 20, 39, 0.85);
-}
-
-.books-item-cover-fallback span {
-  font-family: var(--font-display);
-  color: var(--gray-900);
-  font-size: 2rem;
-  letter-spacing: 0.5px;
-  text-shadow: 0 2px 8px rgba(2, 8, 23, 0.7);
-}
-
-.books-item-cover.is-loading::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    110deg,
-    rgba(255, 255, 255, 0) 18%,
-    rgba(148, 197, 226, 0.18) 46%,
-    rgba(255, 255, 255, 0) 72%
-  );
-  transform: translateX(-120%);
-  animation: coverShimmer 1.2s linear infinite;
-}
-
-.books-item-cover.failed {
-  border-color: rgba(148, 163, 184, 0.3);
-  opacity: 0.78;
-}
-
-.books-item:hover,
-.bookmark-item:hover {
-  border-color: rgba(88, 165, 209, 0.56);
-  box-shadow: 0 8px 20px rgba(2, 8, 23, 0.22);
-  transform: translateY(-1px);
-}
-
 @keyframes coverShimmer {
   to {
     transform: translateX(120%);
   }
-}
-
-.books-item.active {
-  border-color: var(--purple-400);
-  box-shadow: inset 0 0 0 1px rgba(88, 165, 209, 0.35);
-}
-
-.books-item-main h4,
-.bookmark-main h4 {
-  color: var(--gray-900);
-  margin-bottom: 4px;
-  overflow-wrap: anywhere;
-}
-
-.books-item-main p,
-.bookmark-main p {
-  font-size: 0.84rem;
-  color: var(--gray-600);
-  margin-bottom: 4px;
-  overflow-wrap: anywhere;
-}
-
-.books-file-meta,
-.bookmark-updated {
-  color: var(--gray-500);
-  font-size: 0.78rem;
 }
 
 .logs-card {
@@ -2380,79 +2115,6 @@ body.is-modal-open-fixed {
   overscroll-behavior-x: contain;
 }
 
-.books-warning {
-  color: #f59e0b;
-}
-
-.books-item-actions,
-.bookmark-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-top: 8px;
-}
-
-.books-item-actions .btn-secondary,
-.books-item-actions .btn-danger {
-  padding: 9px 18px;
-}
-
-.bookmark-history {
-  margin-top: 8px;
-  list-style: none;
-  padding: 8px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--gray-100);
-  background: rgba(15, 29, 62, 0.35);
-}
-
-.bookmark-history li {
-  font-size: 0.76rem;
-  color: var(--gray-600);
-  margin-bottom: 3px;
-}
-
-.bookmark-history-row {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.bookmark-history-actions {
-  display: inline-flex;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-.bookmark-history-btn {
-  border: 1px solid var(--gray-300);
-  background: var(--purple-100);
-  color: var(--gray-700);
-  font-size: 0.72rem;
-  line-height: 1;
-  padding: 5px 7px;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: all var(--transition);
-}
-
-.bookmark-history-btn:hover {
-  color: var(--gray-900);
-  border-color: var(--purple-300);
-}
-
-.bookmark-history-btn.danger {
-  border-color: rgba(239, 68, 68, 0.35);
-  color: #fca5a5;
-}
-
-.bookmark-history-btn.danger:hover {
-  background: var(--danger-light);
-  border-color: rgba(239, 68, 68, 0.55);
-  color: #fecaca;
-}
-
 #readerCanvas {
   display: block;
   margin: 0 auto;
@@ -2512,12 +2174,6 @@ body.is-modal-open-fixed {
   align-items: center;
   gap: 12px;
   min-width: 0;
-}
-
-.manage-item-name,
-.books-item-main h4,
-.bookmark-main h4 {
-  overflow-wrap: anywhere;
 }
 
 .manage-item-emoji {
@@ -2657,8 +2313,7 @@ body.is-modal-open-fixed {
 .btn-danger:active,
 .btn-export:active,
 .btn-import:active,
-.manage-btn:active,
-.bookmark-history-btn:active {
+.manage-btn:active {
   transform: translateY(0) scale(0.98);
 }
 
@@ -2666,8 +2321,7 @@ body.is-modal-open-fixed {
 .btn-secondary:focus-visible,
 .btn-danger:focus-visible,
 .btn-export:focus-visible,
-.btn-import:focus-visible,
-.bookmark-history-btn:focus-visible {
+.btn-import:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
 }
@@ -2838,33 +2492,6 @@ body.is-modal-open-fixed {
   .habit-check:checked,
   .habits-grid th.day-col.linked-day-active .day-col-day::after {
     animation: none;
-  }
-
-  .books-item-cover.is-loading::after,
-  .btn-primary.is-loading::after,
-  .btn-secondary.is-loading::after,
-  .btn-danger.is-loading::after,
-  .modal-overlay.open .modal-footer > button {
-    animation: none;
-  }
-
-  .books-item:hover,
-  .bookmark-item:hover,
-  .btn-primary:hover,
-  .btn-secondary:hover,
-  .btn-danger:hover,
-  .nav-tab:hover,
-  .week-card:hover,
-  .week-mini-bar:hover,
-  .month-nav:hover,
-  .btn-add:hover,
-  .habit-check:hover,
-  .note-btn:hover,
-  .combo-value:hover,
-  .sidebar-collapse-toggle:hover,
-  .btn-export:hover,
-  .btn-import:hover {
-    transform: none;
   }
 
   .week-card,
@@ -3367,7 +2994,6 @@ html[data-ui-mode="mobile"] .sidebar.open ~ .mobile-menu-toggle {
   .btn-settings,
   .modal-close,
   .manage-btn,
-  .bookmark-history-btn,
   .month-nav,
   .nav-tab,
   .bottom-nav-btn,
@@ -3416,47 +3042,12 @@ html[data-ui-mode="mobile"] .sidebar.open ~ .mobile-menu-toggle {
   }
 }
 
-@media (hover: none) {
-  /* On touch, :hover latches after a tap and leaves the element stuck in its
-     lifted state until you tap elsewhere. */
-  .books-item:hover,
-  .bookmark-item:hover,
-  .btn-primary:hover,
-  .btn-secondary:hover,
-  .btn-danger:hover,
-  .btn-add:hover,
-  .btn-export:hover,
-  .btn-import:hover,
-  .nav-tab:hover,
-  .week-card:hover,
-  .week-mini-bar:hover,
-  .month-nav:hover,
-  .habit-check:hover,
-  .note-btn:hover,
-  .combo-value:hover,
-  .heatmap-cell:hover,
-  .emoji-option:hover,
-  .color-option:hover,
-  .manage-btn:hover,
-  .report-attach-chip:hover {
-    transform: none;
-  }
-}
-
 /* ---- Tablet middle ground: desktop layout, roomier spacing ----
    Everything structural is already handled by the auto-fit grids above; this
    is only breathing room. Touch sizing comes from (pointer: coarse). */
 @media (min-width: 769px) and (max-width: 1024px) {
   .main-content {
     padding: 24px 20px;
-  }
-
-  .books-card,
-  .chart-card,
-  .monthly-review-card,
-  .logs-card,
-  .analytics-mode-card {
-    padding: 18px;
   }
 
   /* Stay a centred dialog, not a full-bleed sheet. */
@@ -4429,56 +4020,6 @@ html[data-ui-mode="mobile"] .main-content {
   font-size: 1.15rem;
 }
 
-/* ---- Books ---- */
-/* Reading matters more than uploading on a phone, so re-order the three cards
-   rather than making the user scroll past a big upload form every time. */
-html[data-ui-mode="mobile"] .books-layout {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-html[data-ui-mode="mobile"] .books-card--library {
-  order: 1;
-}
-html[data-ui-mode="mobile"] .books-card--bookmarks {
-  order: 2;
-}
-html[data-ui-mode="mobile"] .books-card--upload {
-  order: 3;
-}
-/* A 190px full-width cover banner pushes the title off screen; a side
-   thumbnail keeps the whole row readable at a glance. */
-html[data-ui-mode="mobile"] .books-item {
-  grid-template-columns: 72px minmax(0, 1fr);
-  grid-template-areas: "cover main";
-  gap: 12px;
-}
-html[data-ui-mode="mobile"] .books-item-cover {
-  width: 72px;
-  min-height: 102px;
-  max-height: 102px;
-}
-/* Five buttons in a row do not fit. Two columns, with the primary action
-   spanning the top. */
-html[data-ui-mode="mobile"] .bookmark-actions,
-html[data-ui-mode="mobile"] .books-item-actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-/* Lead with the primary action across the full width; the rest pair up. For
-   books that is "Select" (first child), for bookmarks "Open at Bookmark". This
-   also stops the destructive button being the lone item on its own row. */
-html[data-ui-mode="mobile"] .bookmark-actions .btn-primary,
-html[data-ui-mode="mobile"] .books-item-actions > :first-child {
-  grid-column: 1 / -1;
-}
-html[data-ui-mode="mobile"] .bookmark-history {
-  max-height: 190px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-}
-
 /* ---- Analytics ---- */
 html[data-ui-mode="mobile"] .chart-frame {
   height: 240px;
@@ -4707,57 +4248,6 @@ html[data-ui-mode="mobile"] #habitSequenceActive.schedule-days-grid {
   color: var(--gray-700);
   font-size: 0.92rem;
   line-height: 1.5;
-}
-
-/* A book whose PDF is not on this device -- the normal state after importing a
-   metadata-only backup. The fix sits inside the warning, not in a menu. */
-.books-missing-file {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin: 8px 0;
-  padding: 10px 12px;
-  border: 1px solid rgba(245, 158, 11, 0.4);
-  border-radius: var(--radius-sm);
-  background: rgba(245, 158, 11, 0.08);
-}
-
-.books-missing-file .books-warning {
-  margin: 0;
-  flex: 1 1 200px;
-  font-size: 0.84rem;
-}
-
-/* Edit Book dialog: the current file, and the button that changes it. */
-.book-file-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.book-file-name {
-  flex: 1 1 160px;
-  min-width: 0;
-  font-size: 0.85rem;
-  color: var(--gray-700);
-  overflow-wrap: anywhere;
-}
-
-.book-file-name.is-missing {
-  color: #f59e0b;
-}
-
-/* Phone: the books card header stacks, and the bookmark rows go full width so
-   their buttons stay tappable rather than squeezing onto one line. */
-html[data-ui-mode="mobile"] .books-card-header {
-  flex-wrap: wrap;
-}
-
-html[data-ui-mode="mobile"] .books-missing-file button {
-  width: 100%;
 }
 
 html[data-ui-mode="mobile"] #readerPrevPage::before {

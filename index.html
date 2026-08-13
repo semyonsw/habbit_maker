@@ -8,7 +8,7 @@
     />
     <meta
       name="description"
-      content="Habit Maker is a local-first tracker for daily routines and a personal books + PDF bookmark workspace."
+      content="Habit Maker is a local-first tracker for daily routines."
     />
     <meta
       name="keywords"
@@ -34,7 +34,7 @@
     <meta property="og:title" content="Habit Maker" />
     <meta
       property="og:description"
-      content="Track daily habits and manage books with PDF bookmarks in a clean, local-first web app."
+      content="Track daily habits in a clean, local-first web app."
     />
     <meta property="og:type" content="website" />
     <title>Habit Maker | Local-First Habit Tracker</title>
@@ -99,22 +99,6 @@
               <rect x="14" y="14" width="7" height="7" rx="1" />
             </svg>
             <span>Dashboard</span>
-          </li>
-          <li class="nav-tab" data-view="books" title="Books">
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <path d="M4 4h13a3 3 0 0 1 3 3v13H7a3 3 0 0 1-3-3z" />
-              <path d="M7 4v13" />
-              <path d="M10 9h7" />
-              <path d="M10 13h7" />
-            </svg>
-            <span>Books</span>
           </li>
           <li class="nav-tab" data-view="manage" title="Manage">
             <svg
@@ -200,10 +184,6 @@
             </svg>
             <span>Export</span>
           </button>
-          <label class="export-option" for="exportIncludePdfs">
-            <input type="checkbox" id="exportIncludePdfs" />
-            <span>Include PDFs in export</span>
-          </label>
           <button class="btn-import" id="btnImport" title="Import Data">
             <svg
               width="18"
@@ -360,89 +340,6 @@
                 ></canvas>
               </div>
             </div>
-          </div>
-        </section>
-        <section class="view" id="view-books">
-          <div class="books-header">
-            <h2>Books & PDF Bookmarks</h2>
-            <p>Upload PDFs, create bookmarks, and jump directly to pages.</p>
-          </div>
-
-          <div class="books-layout">
-            <!-- books-card--* drive the mobile source order: the library and
-                 bookmarks matter more on a phone than the upload form. -->
-            <section class="books-card books-card--upload">
-              <div class="books-card-header">
-                <h3>Add PDF Book</h3>
-                <button class="btn-primary" id="btnBookCreate" type="button">
-                  Add Metadata
-                </button>
-              </div>
-              <div class="books-upload-form">
-                <div class="form-group">
-                  <label for="bookTitleInput">Title</label>
-                  <input
-                    id="bookTitleInput"
-                    type="text"
-                    maxlength="120"
-                    placeholder="Book title"
-                  />
-                </div>
-                <div class="form-group">
-                  <label for="bookAuthorInput">Author (optional)</label>
-                  <input
-                    id="bookAuthorInput"
-                    type="text"
-                    maxlength="120"
-                    placeholder="Author"
-                  />
-                </div>
-                <div class="form-group">
-                  <label for="bookPdfInput">PDF File</label>
-                  <input
-                    id="bookPdfInput"
-                    type="file"
-                    accept="application/pdf,.pdf"
-                  />
-                </div>
-                <button class="btn-add" id="btnUploadBook" type="button">
-                  Upload PDF Book
-                </button>
-                <p class="books-upload-status" id="bookUploadStatus">
-                  No file uploaded yet.
-                </p>
-                <p class="books-help-text">Maximum PDF size: 70MB.</p>
-              </div>
-            </section>
-
-            <section class="books-card books-card--library">
-              <div class="books-card-header">
-                <h3>My Books</h3>
-              </div>
-              <div class="books-list" id="booksList"></div>
-              <!-- One shared picker for every "choose this book's file" button;
-                   books.js remembers which book asked for it. Kept in the
-                   markup rather than created on demand so the click that opens
-                   it is unambiguously the user's gesture in every WebView. -->
-              <input
-                id="bookFilePickerInput"
-                class="visually-hidden-input"
-                type="file"
-                accept="application/pdf,.pdf"
-                tabindex="-1"
-                aria-hidden="true"
-              />
-            </section>
-
-            <section class="books-card books-bookmarks books-card--bookmarks">
-              <div class="books-card-header">
-                <h3>Bookmarks</h3>
-                <button class="btn-primary" id="btnAddBookmark" type="button">
-                  Add Bookmark
-                </button>
-              </div>
-              <div id="bookmarksPanel"></div>
-            </section>
           </div>
         </section>
         <section class="view" id="view-manage">
@@ -699,15 +596,6 @@
             <rect x="14" y="14" width="7" height="7" rx="1" />
           </svg>
           <span>Today</span>
-        </button>
-        <button type="button" class="bottom-nav-btn" data-view="books">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M4 4h13a3 3 0 0 1 3 3v13H7a3 3 0 0 1-3-3z" />
-            <path d="M7 4v13" />
-            <path d="M10 9h7" />
-            <path d="M10 13h7" />
-          </svg>
-          <span>Books</span>
         </button>
         <button type="button" class="bottom-nav-btn" data-view="analytics">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1215,125 +1103,6 @@
         </div>
       </div>
     </div>
-    <div class="modal-overlay" id="bookModal">
-      <div class="modal modal-sm">
-        <div class="modal-header">
-          <h3 id="bookModalTitle">Add Book Metadata</h3>
-          <button class="modal-close" id="bookModalClose">&times;</button>
-        </div>
-        <div class="modal-body">
-          <div class="form-group">
-            <label for="bookModalTitleInput">Title</label>
-            <input id="bookModalTitleInput" type="text" maxlength="120" />
-          </div>
-          <div class="form-group">
-            <label for="bookModalAuthorInput">Author (optional)</label>
-            <input id="bookModalAuthorInput" type="text" maxlength="120" />
-          </div>
-          <div class="form-group" id="bookModalFileGroup">
-            <label>PDF file</label>
-            <div class="book-file-row">
-              <span class="book-file-name" id="bookModalFileName"></span>
-              <button class="btn-secondary" id="bookModalFileBtn" type="button">
-                Choose PDF file…
-              </button>
-            </div>
-            <p class="books-help-text" id="bookModalFileHint"></p>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn-secondary" id="bookModalCancel">Cancel</button>
-          <button class="btn-primary" id="bookModalSave">Save</button>
-        </div>
-      </div>
-    </div>
-    <div class="modal-overlay" id="bookmarkModal">
-      <div class="modal">
-        <div class="modal-header">
-          <h3 id="bookmarkModalTitle">Add Bookmark</h3>
-          <button class="modal-close" id="bookmarkModalClose">&times;</button>
-        </div>
-        <div class="modal-body">
-          <div class="form-group">
-            <label for="bookmarkLabel">Label</label>
-            <input
-              id="bookmarkLabel"
-              type="text"
-              maxlength="80"
-              placeholder="Chapter 1 intro"
-            />
-          </div>
-          <div class="form-group">
-            <label for="bookmarkPdfPage">PDF Page (required)</label>
-            <input
-              id="bookmarkPdfPage"
-              type="number"
-              min="1"
-              max="99999"
-              value="1"
-            />
-          </div>
-          <div class="form-group">
-            <label for="bookmarkRealPage">Real book page (optional)</label>
-            <input
-              id="bookmarkRealPage"
-              type="number"
-              min="1"
-              max="99999"
-              placeholder="N/A"
-            />
-          </div>
-          <div class="form-group">
-            <label for="bookmarkNote">Note</label>
-            <textarea
-              id="bookmarkNote"
-              rows="4"
-              placeholder="Optional context"
-            ></textarea>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn-secondary" id="bookmarkModalCancel">Cancel</button>
-          <button class="btn-primary" id="bookmarkModalSave">Save</button>
-        </div>
-      </div>
-    </div>
-    <div class="modal-overlay" id="historyEventModal">
-      <div class="modal modal-sm">
-        <div class="modal-header">
-          <h3>Edit History Event</h3>
-          <button class="modal-close" id="historyEventModalClose">
-            &times;
-          </button>
-        </div>
-        <div class="modal-body">
-          <div class="form-group">
-            <label for="historyEventType">History title</label>
-            <input
-              id="historyEventType"
-              type="text"
-              maxlength="40"
-              placeholder="reader-note"
-            />
-          </div>
-          <div class="form-group">
-            <label for="historyEventNote">Note</label>
-            <textarea
-              id="historyEventNote"
-              rows="4"
-              placeholder="Optional details"
-            ></textarea>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn-secondary" id="historyEventModalCancel">
-            Cancel
-          </button>
-          <button class="btn-primary" id="historyEventModalSave">Save</button>
-        </div>
-      </div>
-    </div>
-
     <div class="modal-overlay" id="settingsModal">
       <div class="modal">
         <div class="modal-header">

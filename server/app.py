@@ -1,8 +1,8 @@
 """Habit Tracker local server.
 
 Serves the static frontend (index.html, src/, styles.css, ...) AND a small
-JSON API backed by a real SQLite file (`data.db`) plus a `books/` directory
-for PDF blobs. Replaces the previous `py -m http.server 3000` launch.
+JSON API backed by a real SQLite file (`data.db`) plus a `files/` directory
+for attachment blobs. Replaces the previous `py -m http.server 3000` launch.
 
 Single-user, localhost only (binds 127.0.0.1). Stdlib only -- no pip install.
 """
@@ -20,17 +20,12 @@ from urllib.parse import unquote, urlparse
 
 HOST = os.environ.get("HABIT_HOST", "127.0.0.1")
 PORT = int(os.environ.get("HABIT_PORT", "3000"))
-MAX_PDF_BYTES = int(
-    os.environ.get("HABIT_MAX_PDF_BYTES", str(80 * 1024 * 1024))
-)  # 80 MiB; client cap is 70 MiB
-MAX_BOOKMARK_HISTORY = 200
 MAX_LOG_RECORDS = 1000
 CHUNK = 64 * 1024
-PDF_FILE_ID_RE = re.compile(r"^[A-Za-z0-9_\-]{1,128}$")
+FILE_ID_RE = re.compile(r"^[A-Za-z0-9_\-]{1,128}$")
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH = os.environ.get("HABIT_DB_PATH") or os.path.join(ROOT_DIR, "data.db")
-BOOKS_DIR = os.environ.get("HABIT_BOOKS_DIR") or os.path.join(ROOT_DIR, "books")
 # Generic attachment store (report attachments; any MIME type). Blobs are
 # stored raw with no extension; the client tracks the MIME type in state.
 FILES_DIR = os.environ.get("HABIT_FILES_DIR") or os.path.join(ROOT_DIR, "files")
@@ -50,7 +45,6 @@ def get_conn():
 
 
 def init_db():
-    os.makedirs(BOOKS_DIR, exist_ok=True)
     os.makedirs(FILES_DIR, exist_ok=True)
     with open(MIGRATIONS_PATH, "r", encoding="utf-8") as f:
         ddl = f.read()
@@ -60,7 +54,7 @@ def init_db():
     finally:
         conn.close()
     # Sweep stale .tmp files left over from a crashed upload.
-    for sweep_dir in (BOOKS_DIR, FILES_DIR):
+    for sweep_dir in (FILES_DIR,):
         for entry in os.listdir(sweep_dir):
             if entry.endswith(".tmp"):
                 try:
@@ -125,7 +119,6 @@ def import_legacy(conn, payload):
     try:
         # Wipe everything; we know nothing else has written yet.
         for table in (
-            "summaries", "bookmark_history", "bookmarks", "books",
             "monthly_review", "daily_notes", "daily_completions",
             "habits_daily", "categories", "app_logs", "prefs",
         ):
@@ -272,106 +265,6 @@ def _decompose_state_into_tables(conn, state):
                     ),
                 )
 
-    books = ((state.get("books") or {}).get("items") or [])
-    for book in books:
-        if not isinstance(book, dict) or not book.get("bookId"):
-            continue
-        conn.execute(
-            "INSERT OR REPLACE INTO books("
-            "book_id, title, author, file_id, file_name, file_size, "
-            "created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                str(book["bookId"]), str(book.get("title", "")),
-                str(book.get("author", "")), str(book.get("fileId", "")),
-                str(book.get("fileName", "")), int(book.get("fileSize", 0) or 0),
-                str(book.get("createdAt", "")), str(book.get("updatedAt", "")),
-            ),
-        )
-        for bm in (book.get("bookmarks") or []):
-            if not isinstance(bm, dict) or not bm.get("bookmarkId"):
-                continue
-            real_page = bm.get("realPage")
-            try:
-                real_page_val = int(real_page) if real_page not in (None, "") else None
-            except (TypeError, ValueError):
-                real_page_val = None
-            conn.execute(
-                "INSERT OR REPLACE INTO bookmarks("
-                "bookmark_id, book_id, label, pdf_page, real_page, note, "
-                "created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    str(bm["bookmarkId"]), str(book["bookId"]),
-                    str(bm.get("label", "Bookmark")),
-                    int(bm.get("pdfPage", 1) or 1),
-                    real_page_val,
-                    str(bm.get("note", "")),
-                    str(bm.get("createdAt", "")), str(bm.get("updatedAt", "")),
-                ),
-            )
-            for ev in (bm.get("history") or [])[:MAX_BOOKMARK_HISTORY]:
-                if not isinstance(ev, dict) or not ev.get("eventId"):
-                    continue
-                conn.execute(
-                    "INSERT OR REPLACE INTO bookmark_history("
-                    "event_id, bookmark_id, type, at, note) VALUES(?, ?, ?, ?, ?)",
-                    (
-                        str(ev["eventId"]), str(bm["bookmarkId"]),
-                        str(ev.get("type", "updated")),
-                        str(ev.get("at", "")), str(ev.get("note", "")),
-                    ),
-                )
-            for s in (bm.get("summaries") or []):
-                if not isinstance(s, dict) or not s.get("summaryId"):
-                    continue
-                duration_ms = s.get("durationMs")
-                try:
-                    duration_val = int(duration_ms) if duration_ms is not None else None
-                except (TypeError, ValueError):
-                    duration_val = None
-                conn.execute(
-                    "INSERT OR REPLACE INTO summaries("
-                    "summary_id, bookmark_id, model, start_page, end_page, "
-                    "is_incremental, based_on_summary_id, status, content, "
-                    "chunk_meta, duration_ms, error, created_at, updated_at) "
-                    "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (
-                        str(s["summaryId"]), str(bm["bookmarkId"]),
-                        str(s.get("model", "")),
-                        int(s.get("startPage", 1) or 1),
-                        int(s.get("endPage", 1) or 1),
-                        1 if s.get("isIncremental") else 0,
-                        s.get("basedOnSummaryId") or None,
-                        str(s.get("status", "ready")),
-                        str(s.get("content", "")),
-                        json.dumps(s.get("chunkMeta") or {}),
-                        duration_val,
-                        str(s.get("error", "")),
-                        str(s.get("createdAt", "")), str(s.get("updatedAt", "")),
-                    ),
-                )
-
-    reports = state.get("reports") or []
-    if isinstance(reports, list):
-        for r in reports:
-            if not isinstance(r, dict) or not r.get("id"):
-                continue
-            # Best-effort mirror (an old data.db has no reports table yet).
-            try:
-                conn.execute(
-                    "INSERT OR REPLACE INTO reports("
-                    "id, title, note, habit_id, attachments, "
-                    "created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?)",
-                    (
-                        str(r["id"]), str(r.get("title", "")),
-                        str(r.get("note", "")),
-                        str(r.get("habitId", "")) or None,
-                        json.dumps(r.get("attachments") or []),
-                        str(r.get("createdAt", "")), str(r.get("updatedAt", "")),
-                    ),
-                )
-            except sqlite3.Error:
-                pass
-
 
 def _insert_log(conn, entry):
     conn.execute(
@@ -495,10 +388,6 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/prefs":
             return self._api_get_prefs()
 
-        m = re.match(r"^/api/pdf/([^/]+)$", path)
-        if m:
-            return self._api_get_pdf(m.group(1))
-
         m = re.match(r"^/api/file/([^/]+)$", path)
         if m:
             return self._api_get_file(m.group(1))
@@ -522,9 +411,6 @@ class Handler(BaseHTTPRequestHandler):
             return self._api_import_legacy()
         if path == "/api/logs":
             return self._api_post_log()
-        m = re.match(r"^/api/pdf/([^/]+)$", path)
-        if m:
-            return self._api_post_pdf(m.group(1))
         m = re.match(r"^/api/file/([^/]+)$", path)
         if m:
             return self._api_post_file(m.group(1))
@@ -532,9 +418,6 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_DELETE(self):
         path = urlparse(self.path).path
-        m = re.match(r"^/api/pdf/([^/]+)$", path)
-        if m:
-            return self._api_delete_pdf(m.group(1))
         m = re.match(r"^/api/file/([^/]+)$", path)
         if m:
             return self._api_delete_file(m.group(1))
@@ -683,78 +566,8 @@ class Handler(BaseHTTPRequestHandler):
                 conn.close()
         self._send_json(HTTPStatus.OK, {"ok": True})
 
-    def _api_get_pdf(self, file_id):
-        if not PDF_FILE_ID_RE.match(file_id):
-            return self._send_json(HTTPStatus.BAD_REQUEST, {"error": "invalid_file_id"})
-        path = os.path.join(BOOKS_DIR, f"{file_id}.pdf")
-        if not os.path.isfile(path):
-            return self._send_json(HTTPStatus.NOT_FOUND, {"error": "not_found"})
-        size = os.path.getsize(path)
-        self.send_response(HTTPStatus.OK)
-        self.send_header("Content-Type", "application/pdf")
-        self.send_header("Content-Length", str(size))
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        with open(path, "rb") as f:
-            while True:
-                chunk = f.read(CHUNK)
-                if not chunk:
-                    break
-                self.wfile.write(chunk)
-
-    def _api_post_pdf(self, file_id):
-        if not PDF_FILE_ID_RE.match(file_id):
-            return self._send_json(HTTPStatus.BAD_REQUEST, {"error": "invalid_file_id"})
-        try:
-            length = int(self.headers.get("Content-Length", "0") or 0)
-        except ValueError:
-            length = 0
-        if length <= 0 or length > MAX_PDF_BYTES:
-            return self._send_json(HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
-                                   {"error": "payload_too_large_or_empty"})
-        os.makedirs(BOOKS_DIR, exist_ok=True)
-        final = os.path.join(BOOKS_DIR, f"{file_id}.pdf")
-        tmp = final + ".tmp"
-        remaining = length
-        try:
-            with open(tmp, "wb") as f:
-                while remaining > 0:
-                    chunk = self.rfile.read(min(CHUNK, remaining))
-                    if not chunk:
-                        break
-                    f.write(chunk)
-                    remaining -= len(chunk)
-            if remaining != 0:
-                try:
-                    os.remove(tmp)
-                except OSError:
-                    pass
-                return self._send_json(HTTPStatus.BAD_REQUEST,
-                                       {"error": "incomplete_upload"})
-            os.replace(tmp, final)
-        except OSError as e:
-            try:
-                os.remove(tmp)
-            except OSError:
-                pass
-            return self._send_json(HTTPStatus.INTERNAL_SERVER_ERROR,
-                                   {"error": "write_failed", "detail": str(e)})
-        self._send_json(HTTPStatus.OK, {"ok": True, "sizeBytes": length})
-
-    def _api_delete_pdf(self, file_id):
-        if not PDF_FILE_ID_RE.match(file_id):
-            return self._send_json(HTTPStatus.BAD_REQUEST, {"error": "invalid_file_id"})
-        path = os.path.join(BOOKS_DIR, f"{file_id}.pdf")
-        try:
-            if os.path.isfile(path):
-                os.remove(path)
-        except OSError as e:
-            return self._send_json(HTTPStatus.INTERNAL_SERVER_ERROR,
-                                   {"error": "delete_failed", "detail": str(e)})
-        self._send_json(HTTPStatus.OK, {"ok": True})
-
     def _api_get_file(self, file_id):
-        if not PDF_FILE_ID_RE.match(file_id):
+        if not FILE_ID_RE.match(file_id):
             return self._send_json(HTTPStatus.BAD_REQUEST, {"error": "invalid_file_id"})
         path = os.path.join(FILES_DIR, file_id)
         if not os.path.isfile(path):
@@ -775,7 +588,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.write(chunk)
 
     def _api_post_file(self, file_id):
-        if not PDF_FILE_ID_RE.match(file_id):
+        if not FILE_ID_RE.match(file_id):
             return self._send_json(HTTPStatus.BAD_REQUEST, {"error": "invalid_file_id"})
         try:
             length = int(self.headers.get("Content-Length", "0") or 0)
@@ -814,7 +627,7 @@ class Handler(BaseHTTPRequestHandler):
         self._send_json(HTTPStatus.OK, {"ok": True, "sizeBytes": length})
 
     def _api_delete_file(self, file_id):
-        if not PDF_FILE_ID_RE.match(file_id):
+        if not FILE_ID_RE.match(file_id):
             return self._send_json(HTTPStatus.BAD_REQUEST, {"error": "invalid_file_id"})
         path = os.path.join(FILES_DIR, file_id)
         try:
@@ -853,7 +666,7 @@ def main():
     httpd = ThreadingHTTPServer((HOST, PORT), Handler)
     print(f"Habit Tracker server listening on http://{HOST}:{PORT}")
     print(f"  data.db: {DB_PATH}")
-    print(f"  books/:  {BOOKS_DIR}")
+    print(f"  files/:  {FILES_DIR}")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

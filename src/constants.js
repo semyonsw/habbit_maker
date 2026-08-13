@@ -21,24 +21,17 @@ export const MONTH_NAMES = [
   "December",
 ];
 
-export const MAX_PDF_FILE_SIZE_MB = 70;
-export const MAX_PDF_FILE_SIZE_BYTES = MAX_PDF_FILE_SIZE_MB * 1024 * 1024;
 export const EMBEDDED_EXPORT_SIZE_WARN_BYTES = 50 * 1024 * 1024;
-export const MAX_BOOKMARK_HISTORY = 200;
-// Legacy browser PDF store (pre-server era). Kept so app.js's one-shot legacy
-// migration can still read PDFs out of the old IndexedDB database.
-export const PDF_DB_NAME = "habitTracker_books_pdf_v1";
-export const PDF_DB_VERSION = 1;
-export const PDF_STORE_NAME = "pdfFiles";
-
 // On-device persistence (replaces the Python/SQLite backend for the PWA build).
-// One database, three stores: a generic key-value store (app state blob, prefs,
-// secure settings, meta flags), an append-only logs store, and a PDF-blob store.
+// One database, two stores: a generic key-value store (app state blob, prefs,
+// meta flags) and an append-only logs store.
 export const IDB_NAME = "habitTracker_store_v1";
 export const IDB_VERSION = 1;
 export const IDB_KV_STORE = "kv";
 export const IDB_LOGS_STORE = "logs";
-export const IDB_PDF_STORE = "pdfs";
+// Attachment blobs. Still named "pdfs" on disk (it began life as the book PDF
+// store); renaming it would strand every blob already written under that key.
+export const IDB_BLOB_STORE = "pdfs";
 
 export const ANALYTICS_DISPLAY_MODE_KEY = "habitTracker_analyticsDisplayMode_v1";
 export const MAX_LOG_RECORDS = 1000;

@@ -7,9 +7,6 @@ import {
   LOGS_STORAGE_KEY,
   SIDEBAR_COLLAPSE_KEY,
   ANALYTICS_DISPLAY_MODE_KEY,
-  PDF_DB_NAME,
-  PDF_DB_VERSION,
-  PDF_STORE_NAME,
 } from "./constants.js";
 import { loadLogs, appendLogEntry } from "./logging.js";
 import { loadState } from "./persistence.js";
@@ -17,25 +14,13 @@ import { loadAnalyticsPreferences } from "./preferences.js";
 import { initSidebarCollapse, initTopClock } from "./layout.js";
 import { initUiPrefs } from "./ui-prefs.js";
 import { bindEvents } from "./events.js";
-import { setBookUploadStatus } from "./books.js";
 import { callRenderer } from "./render-registry.js";
 import { deleteHabit, deleteCategory, moveDailyHabit } from "./habits.js";
 import {
-  setActiveBook,
-  openBookmarkTarget,
-  chooseBookFile,
-} from "./books.js";
-import {
   openHabitModal,
   openCategoryModal,
-  openBookModal,
-  openBookmarkModal,
-  openHistoryEventModal,
   openReportModal,
   deleteReport,
-  deleteBook,
-  deleteBookmark,
-  deleteHistoryEvent,
 } from "./modals.js";
 import { openReportAttachment } from "./render-report.js";
 import {
@@ -54,7 +39,6 @@ import { initRouter } from "./router.js";
 import "./render-dashboard.js";
 import "./render-day-focus.js";
 import "./render-analytics.js";
-import "./render-books.js";
 import "./render-logs.js";
 import "./render-report.js";
 
@@ -70,28 +54,6 @@ window.HabitApp = {
     openCategoryModal(id);
   },
   deleteCategory,
-  setActiveBook,
-  editBook(bookId) {
-    openBookModal(bookId);
-  },
-  deleteBook(bookId) {
-    deleteBook(bookId);
-  },
-  editBookmark(bookId, bookmarkId) {
-    openBookmarkModal(bookId, bookmarkId);
-  },
-  deleteBookmark,
-  editHistoryEvent(bookId, bookmarkId, eventId) {
-    openHistoryEventModal(bookId, bookmarkId, eventId);
-  },
-  deleteHistoryEvent,
-  openBookmark(bookId, page) {
-    openBookmarkTarget(bookId, page);
-  },
-  chooseBookFile,
-  readBook(bookId) {
-    openBookmarkTarget(bookId, 1);
-  },
   editReport(reportId) {
     openReportModal(reportId);
   },
@@ -115,55 +77,6 @@ function readStringFromLocalStorage(key) {
   return localStorage.getItem(key);
 }
 
-function readAllPdfBlobsFromIndexedDB() {
-  return new Promise((resolve) => {
-    const result = [];
-    if (typeof indexedDB === "undefined") {
-      resolve(result);
-      return;
-    }
-    let openReq;
-    try {
-      openReq = indexedDB.open(PDF_DB_NAME, PDF_DB_VERSION);
-    } catch (_) {
-      resolve(result);
-      return;
-    }
-    openReq.onerror = () => resolve(result);
-    openReq.onupgradeneeded = () => {
-      // No store -> empty database, nothing to migrate.
-    };
-    openReq.onsuccess = () => {
-      const idb = openReq.result;
-      if (!idb.objectStoreNames.contains(PDF_STORE_NAME)) {
-        idb.close();
-        resolve(result);
-        return;
-      }
-      const tx = idb.transaction(PDF_STORE_NAME, "readonly");
-      const store = tx.objectStore(PDF_STORE_NAME);
-      const req = store.openCursor();
-      req.onerror = () => {
-        idb.close();
-        resolve(result);
-      };
-      req.onsuccess = (event) => {
-        const cursor = event.target.result;
-        if (!cursor) {
-          idb.close();
-          resolve(result);
-          return;
-        }
-        const value = cursor.value;
-        if (value && typeof value.fileId === "string" && value.blob) {
-          result.push({ fileId: value.fileId, blob: value.blob });
-        }
-        cursor.continue();
-      };
-    };
-  });
-}
-
 function collectLegacyPrefsBundle() {
   const out = {};
   const sidebar = readStringFromLocalStorage(SIDEBAR_COLLAPSE_KEY);
@@ -177,13 +90,8 @@ async function buildLegacyBundleFromBrowser() {
   const state = readJsonFromLocalStorage(STORAGE_KEY);
   const logs = readJsonFromLocalStorage(LOGS_STORAGE_KEY);
   const prefs = collectLegacyPrefsBundle();
-  const pdfs = await readAllPdfBlobsFromIndexedDB();
-  const isEmpty =
-    !state &&
-    !logs &&
-    Object.keys(prefs).length === 0 &&
-    pdfs.length === 0;
-  return { state, logs, prefs, pdfs, isEmpty };
+  const isEmpty = !state && !logs && Object.keys(prefs).length === 0;
+  return { state, logs, prefs, isEmpty };
 }
 
 async function tryFetchBackupBundle() {
@@ -203,21 +111,11 @@ async function runLegacyMigration() {
   if (bundle.isEmpty) {
     const backup = await tryFetchBackupBundle();
     if (backup) {
-      // The auto-restore JSON has the same shape as `state` and may carry
-      // base64-encoded PDFs under `pdfBlobs`.
-      const pdfBlobsRaw =
-        backup && typeof backup === "object" && backup.pdfBlobs
-          ? backup.pdfBlobs
-          : null;
-      if (pdfBlobsRaw && typeof pdfBlobsRaw === "object") {
-        delete backup.pdfBlobs;
-      }
+      // The auto-restore JSON has the same shape as `state`.
       bundle = {
         state: backup,
         logs: null,
         prefs: {},
-        pdfs: [],
-        backupBlobsBase64: pdfBlobsRaw,
         isEmpty: false,
       };
     }
@@ -233,45 +131,6 @@ async function runLegacyMigration() {
     prefs: bundle.prefs,
   };
   await db.importLegacy(payload);
-
-  // Upload PDFs (separate POSTs so JSON bundle stays small).
-  for (const { fileId, blob } of bundle.pdfs) {
-    try {
-      await db.uploadPdf(fileId, blob);
-    } catch (err) {
-      appendLogEntry({
-        level: "warn",
-        component: "migration",
-        operation: "uploadPdf",
-        message: "Failed to migrate PDF blob from IndexedDB.",
-        error: err,
-        context: { fileId },
-      });
-    }
-  }
-
-  // If the auto-restore JSON carried base64-encoded PDFs, decode and upload.
-  if (bundle.backupBlobsBase64) {
-    for (const [fileId, encoded] of Object.entries(bundle.backupBlobsBase64)) {
-      if (typeof encoded !== "string" || !encoded.trim()) continue;
-      try {
-        const binary = atob(encoded);
-        const bytes = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-        const blob = new Blob([bytes], { type: "application/pdf" });
-        await db.uploadPdf(fileId, blob);
-      } catch (err) {
-        appendLogEntry({
-          level: "warn",
-          component: "migration",
-          operation: "uploadPdf",
-          message: "Failed to migrate base64 PDF from backup file.",
-          error: err,
-          context: { fileId },
-        });
-      }
-    }
-  }
 
   return { migrated: true };
 }
@@ -360,9 +219,7 @@ async function init() {
     setGlobalLoaderMessage("Loading Dashboard...");
     await waitForNextPaint();
     callRenderer("renderAll");
-    callRenderer("renderBooksView");
     callRenderer("renderLogsView");
-    setBookUploadStatus("No file uploaded yet.", "");
 
     // After the reader early-return above (reader mode is a ?reader=1 query, so
     // the hash is free) and after the first render, so switching to a

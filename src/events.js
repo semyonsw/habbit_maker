@@ -13,26 +13,14 @@ import {
   openReportModal,
   saveReportModal,
   handleReportFileInputChange,
-  openBookModal,
-  saveBookModal,
-  openBookmarkModal,
-  saveBookmark,
-  saveHistoryEventModal,
   openModal,
   closeModal,
   closeTopModal,
   openConfirm,
   saveMonthlyReview,
-  chooseFileForEditedBook,
 } from "./modals.js";
 import { navigateTo } from "./router.js";
 import { setSidebarCollapsed, applySidebarCollapseState } from "./layout.js";
-import {
-  handleBookFileInputChange,
-  handleBookFilePicked,
-  saveBookFromUpload,
-  setBookUploadStatus,
-} from "./books.js";
 import { exportData, importData, setBackupStatus } from "./data-io.js";
 import { bindLogsControls } from "./render-logs.js";
 import {
@@ -143,36 +131,6 @@ export function bindEvents() {
     .getElementById("reportAttachInput")
     .addEventListener("change", handleReportFileInputChange);
 
-  document
-    .getElementById("bookModalClose")
-    .addEventListener("click", () => closeModal("bookModal"));
-  document
-    .getElementById("bookModalCancel")
-    .addEventListener("click", () => closeModal("bookModal"));
-  document
-    .getElementById("bookModalSave")
-    .addEventListener("click", saveBookModal);
-
-  document
-    .getElementById("bookmarkModalClose")
-    .addEventListener("click", () => closeModal("bookmarkModal"));
-  document
-    .getElementById("bookmarkModalCancel")
-    .addEventListener("click", () => closeModal("bookmarkModal"));
-  document
-    .getElementById("bookmarkModalSave")
-    .addEventListener("click", saveBookmark);
-
-  document
-    .getElementById("historyEventModalClose")
-    .addEventListener("click", () => closeModal("historyEventModal"));
-  document
-    .getElementById("historyEventModalCancel")
-    .addEventListener("click", () => closeModal("historyEventModal"));
-  document
-    .getElementById("historyEventModalSave")
-    .addEventListener("click", saveHistoryEventModal);
-
   bindLogsControls();
 
   document
@@ -249,12 +207,11 @@ export function bindEvents() {
   document.getElementById("btnClearAll").addEventListener("click", () => {
     openConfirm(
       "Clear All Data",
-      "This deletes all habits and books metadata. Continue?",
+      "This deletes all habits. Continue?",
       () => {
         state = getDefaultState();
         saveState();
         callRenderer("renderAll");
-        callRenderer("renderBooksView");
       },
     );
   });
@@ -320,59 +277,6 @@ export function bindEvents() {
 
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") closeTopModal();
-  });
-
-  document.getElementById("btnUploadBook").addEventListener("click", () => {
-    saveBookFromUpload().catch((err) => {
-      appendLogEntry({
-        level: "error",
-        component: "books",
-        operation: "btnUploadBook.click",
-        message: "Failed to upload PDF.",
-        error: err,
-      });
-      setBookUploadStatus(
-        "Upload failed. Please review the file and try again.",
-        "error",
-      );
-      alert("Failed to upload PDF.");
-    });
-  });
-
-  const pdfInput = document.getElementById("bookPdfInput");
-  if (pdfInput) {
-    pdfInput.addEventListener("change", handleBookFileInputChange);
-  }
-
-  // Re-pointing an existing book at a file on this device.
-  const filePicker = document.getElementById("bookFilePickerInput");
-  if (filePicker) {
-    filePicker.addEventListener("change", () => {
-      handleBookFilePicked().catch((err) => {
-        appendLogEntry({
-          level: "error",
-          component: "books",
-          operation: "bookFilePickerInput.change",
-          message: "Handling the picked book file failed.",
-          error: err,
-        });
-      });
-    });
-  }
-  const bookModalFileBtn = document.getElementById("bookModalFileBtn");
-  if (bookModalFileBtn) {
-    bookModalFileBtn.addEventListener("click", chooseFileForEditedBook);
-  }
-
-  document
-    .getElementById("btnBookCreate")
-    .addEventListener("click", () => openBookModal());
-  document.getElementById("btnAddBookmark").addEventListener("click", () => {
-    if (!state.books.activeBookId) {
-      alert("Select a book first.");
-      return;
-    }
-    openBookmarkModal(state.books.activeBookId);
   });
 
   window.addEventListener("error", (event) => {
