@@ -277,6 +277,9 @@ function Run { param([string]$Exe, [string[]]$Arguments = @(), [string]$WorkDir 
         Set-Location $prevLoc
         $ErrorActionPreference = $prevPref
     }
+    # Strip the colour escapes tools emit, so both the log and every pattern
+    # match below see plain text.
+    if ($text) { $text = [regex]::Replace($text, "$([char]27)\[[0-9;]*[A-Za-z]", '') }
     Log ("  exit  " + $code)
     if ($text -and $text.Trim()) { Log ("  ----- " + $text.Trim()) }
     return @{ Code = $code; Output = [string]$text }
@@ -623,9 +626,16 @@ function Ensure-Venv { param($Python, [string]$VenvDir)
     $full   = Join-Path $Root $VenvDir
     $pyExe  = Join-Path $full 'Scripts\python.exe'
     if (Test-Path $pyExe) {
-        $v = Get-PythonVersion -Exe $pyExe
-        if ($v) { OK ('existing environment reused  (' + $VenvDir + ', Python ' + $v + ')'); return $pyExe }
-        Warn ('the existing ' + $VenvDir + ' folder is broken.')
+        # Reuse it only if it is genuinely healthy: an environment layered on a
+        # conda interpreter often has no working ssl, and pip would then fail
+        # with a misleading certificate error.
+        $probe = Test-PythonCandidate -Exe $pyExe
+        if ($probe -and $probe.Healthy) {
+            OK ('existing environment reused  (' + $VenvDir + ', Python ' + $probe.Version + ')')
+            return $pyExe
+        }
+        if ($probe) { Warn ('the existing ' + $VenvDir + ' environment is unusable: ' + $probe.Problem) }
+        else { Warn ('the existing ' + $VenvDir + ' folder is broken.') }
         Info 'deleting and rebuilding it...'
         Remove-Item -LiteralPath $full -Recurse -Force -ErrorAction SilentlyContinue
         if (Test-Path $full) {
@@ -909,9 +919,17 @@ try {
     if ($App.Shortcut) {
         Step 'Putting a shortcut on your Desktop and Start menu'
         $target = Join-Path $Root $App.Shortcut.Target
-        $icon = ''
-        if ($App.Shortcut.Icon) { $icon = Join-Path $Root $App.Shortcut.Icon }
-        New-Shortcut -Name $App.Shortcut.Name -Target $target -Icon $icon -Description $App.Blurb
+        if (-not (Test-Path $target) -and $App.Shortcut.Fallback) {
+            $target = Join-Path $Root $App.Shortcut.Fallback
+            Info ('pointing the shortcut at ' + $App.Shortcut.Fallback + ' instead')
+        }
+        if (-not (Test-Path $target)) {
+            Warn ('the shortcut target is missing: ' + $target) 'Start the app from this folder instead.'
+        } else {
+            $icon = ''
+            if ($App.Shortcut.Icon) { $icon = Join-Path $Root $App.Shortcut.Icon }
+            New-Shortcut -Name $App.Shortcut.Name -Target $target -Icon $icon -Description $App.Blurb
+        }
     }
 
     # ---------------------------------------------------------------- summary
