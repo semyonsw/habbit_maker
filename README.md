@@ -5,10 +5,24 @@
 [![Version](https://img.shields.io/badge/version-1.0.0-1f9d55)](package.json)
 [![Storage](https://img.shields.io/badge/storage-local--first-0b7285)](#storage-and-privacy)
 [![Stack](https://img.shields.io/badge/stack-vanilla%20JS%20%7C%20Python%20%7C%20SQLite-f59f00)](#architecture)
+[![Install](https://img.shields.io/badge/install-one%20double--click-2b8a3e)](INSTALL.md)
 
 A local-first habit tracker and PDF reader in one app. Track daily habits in a monthly grid, manage a personal PDF library with bookmarks and reader mode, and (optionally) generate AI summaries of what you've read — all stored on your own machine, in a single SQLite file.
 
 Built for people who want their data to live on their own disk: no account, no cloud database, no telemetry.
+
+> ### Install it in one double-click
+>
+> | Your machine | What to do |
+> |---|---|
+> | **Windows** | download the project and **double-click `Install.bat`** |
+> | **Linux / macOS / WSL** | `./install.sh` |
+>
+> The installer checks your Python, **starts the app on a spare port against a
+> throwaway database to prove it really works here**, checks that port 3000 is
+> free, and puts a *Habit Maker* shortcut on your Desktop. Anything that goes
+> wrong is explained in plain English, with the fix.
+> Details and troubleshooting: **[INSTALL.md](INSTALL.md)**.
 
 ---
 
@@ -16,6 +30,7 @@ Built for people who want their data to live on their own disk: no account, no c
 
 - [Features](#features)
 - [Prerequisites](#prerequisites)
+- [Install in one double-click](INSTALL.md)
 - [Installation and Setup](#installation-and-setup)
 - [Environment Variables](#environment-variables)
 - [Architecture](#architecture)
@@ -85,44 +100,67 @@ No Docker, no build step, no package install required to run the app.
 
 ## Installation and Setup
 
-### 1. Clone
+### The one-click way
 
 ```bash
 git clone https://github.com/semyonsw/habbit_maker.git
 cd habbit_maker
 ```
 
-### 2. Run
+| Your machine | What to do |
+|---|---|
+| **Windows** | double-click **`Install.bat`** |
+| **Linux / macOS / WSL** | `./install.sh` |
 
-**Windows**
+That is the whole installation. It:
 
-```bat
-start.bat
-```
+1. finds a Python 3.10+ that is *actually usable* — it rejects one whose
+   `sqlite3`, `ssl` or `venv` module is broken, and on Windows offers to install
+   Python 3.12 for you;
+2. runs [tools/selfcheck.py](tools/selfcheck.py), which applies the real schema
+   to a throwaway database, starts the real server on a spare port, and checks
+   that the page, the API and the static files all answer — so "install
+   complete" means the app works on *your* machine;
+3. warns you if something else is already using port 3000;
+4. offers the optional developer tools (linter, Android build) — the app itself
+   needs none of them;
+5. Windows: writes `Start Habit Maker.bat` and puts a **Habit Maker** shortcut
+   on your Desktop and Start menu.
 
-This launches the Python server on `127.0.0.1:3000` and opens your default browser.
+Everything is logged to `install.log`. Re-running is safe. Nothing is installed
+system-wide — there is nothing to install: the server is Python standard
+library only.
 
-**macOS / Linux**
+### Running it
+
+**Windows** — double-click **Habit Maker** on your Desktop, or `start.bat`.
+
+**macOS / Linux** — `./start.sh` (or `python3 server/app.py`).
+
+Either way the browser opens on <http://localhost:3000> once the server is
+actually up. Keep the launcher window open while you use the app; closing it
+stops the server.
 
 ```bash
-python3 server/app.py
+HABIT_PORT=4000 ./start.sh      # if 3000 is taken
 ```
 
-Then open <http://localhost:3000> in your browser.
+### First run
 
-### 3. (Optional) Install dev tooling
+- `data.db` is created in the project root and seeded with the default
+  categories.
+- For AI summaries, open **Settings → AI**, choose a passphrase, then paste your
+  Gemini API key. The passphrase is asked for again every 7 days per device.
+
+### Doing it by hand
+
+Nothing stops you — there are no dependencies to install:
 
 ```bash
-npm install
-npm run lint
+python3 server/app.py            # then open http://localhost:3000
+python3 tools/selfcheck.py       # the same self-check the installer runs
+npm install && npm run lint      # only if you intend to contribute code
 ```
-
-Only needed if you intend to contribute code.
-
-### 4. First-run
-
-- The first time you load the app, `data.db` is created in the project root and seeded with the default categories.
-- If you plan to use AI summaries, choose **Settings → AI** and set a passphrase before pasting your Gemini API key. The passphrase is required again every 7 days on the same device.
 
 ---
 
