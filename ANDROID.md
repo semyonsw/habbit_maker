@@ -101,18 +101,19 @@ app is ready" is not a workable strategy — you get "Habit Maker isn't respondi
 before the JS ever runs. `hideNativeSplash()` in `src/native.js` is an early-
 dismiss optimisation only; auto-hide is what guarantees the splash goes away.
 
-**`PdfOpenerPlugin` is a local plugin and must stay registered by hand.**
-`cap sync` only wires up plugins that come from npm packages, so
-`MainActivity.onCreate()` calls `registerPlugin(PdfOpenerPlugin.class)` before
-`super.onCreate()` — that is where the bridge is built, so a later call is too
-late. It backs "Open in my PDF app": book bytes live in IndexedDB, which no
-other app can read, so `src/native.js` writes the PDF into the app cache in 3MB
-slices (one base64 string for a 60MB book would OOM the WebView) and the plugin
-fires an `ACTION_VIEW` at a FileProvider URI. If the APK predates the plugin, or
-no PDF reader is installed, the JS falls back to the share sheet. Android has no
-standard "open at page N" intent — the page is passed as a URI fragment, which
-most readers ignore, which is why the in-app reader is the one that reliably
-lands on the bookmark.
+**Reminders need three manifest permissions, and one of them is revocable.**
+`POST_NOTIFICATIONS` is the Android 13+ runtime permission -- the plugin
+requests it itself, but only if it is declared. `SCHEDULE_EXACT_ALARM` is what
+stops a 21:00 reminder arriving at 23:40 under Doze; the user can turn it off in
+system settings, and doing so **deletes every alarm already scheduled**. That is
+why `src/notifications.js` re-schedules the whole set on every resume rather
+than once at install, and why `checkExactAlarms()` exists.
+`RECEIVE_BOOT_COMPLETED` re-registers them after a reboot.
+
+**Never put `--` inside a comment in `AndroidManifest.xml`.** XML forbids it, and
+the manifest merger's error is `MergeFailureException: Error parsing ...` with no
+line number, which reads like a plugin conflict rather than a typo.
+
 
 **No service worker in the APK.** `sw.js` is not staged into `www/`, and
 `index.html` skips registration when the `Capacitor` global exists. Assets are
@@ -137,11 +138,22 @@ those four vars prefer over `env()`. Do not reintroduce bare
 - **`showSaveFilePicker` (live log streaming to a file) is unavailable.** It is a
   desktop-Chrome API; `logging.js` already feature-detects it and falls back.
 - **No install prompt / no "Add to Home Screen"** — it is a real app now.
-- **Online features still need internet**: Gemini summaries, EmailJS and GitHub
-  feedback. Everything else works with no network.
+- **Nothing needs internet.** The APK makes no network requests at runtime at
+  all; the `INTERNET` permission is only there because the Capacitor bridge
+  declares it.
 
-## Not a problem here
+## Battery optimisation
 
-The app runs no background service, no `WorkManager`, and no notifications, so
-One UI battery optimisation and "put unused apps to sleep" have nothing to kill.
-No onboarding step is needed for them.
+The app runs no background service and no `WorkManager`, but it **does** schedule
+notifications now, and those are alarms the OS can throttle.
+
+`allowWhileIdle: true` on every scheduled notification is what gets them through
+Doze. Aggressive OEM battery managers (One UI's "put unused apps to sleep",
+Xiaomi's autostart restrictions) can still delay or drop them; there is no API
+that fixes this from inside the app, and the honest answer to "my reminder came
+an hour late" is to exempt Habit Maker from battery optimisation in system
+settings.
+
+Because a revoked `SCHEDULE_EXACT_ALARM` silently deletes pending alarms, the
+app re-schedules on `visibilitychange` and on window focus. Opening the app is
+always enough to repair the schedule.

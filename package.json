@@ -1,10 +1,12 @@
 {
   "name": "habbit_maker",
-  "version": "1.0.0",
-  "description": "Local-first habit tracker.",
+  "version": "1.1.0",
+  "description": "Local-first habit tracker that does not punish you for missing a day.",
   "scripts": {
-    "lint": "eslint src/**/*.js",
-    "lint:fix": "eslint src/**/*.js --fix",
+    "test": "node --test \"tests/*.test.mjs\"",
+    "lint": "eslint src tests scripts",
+    "lint:fix": "eslint src tests scripts --fix",
+    "check": "npm run lint && npm test",
     "build:www": "node scripts/build-www.mjs",
     "android:sync": "node scripts/build-www.mjs && cap sync android",
     "android:build": "node scripts/build-apk.mjs"
@@ -28,13 +30,15 @@
   "homepage": "https://github.com/semyonsw/habbit_maker#readme",
   "devDependencies": {
     "eslint": "^9.0.0",
-    "globals": "^15.0.0"
+    "globals": "^15.0.0",
+    "linkedom": "^0.18.13"
   },
   "dependencies": {
     "@capacitor/android": "8.5.0",
     "@capacitor/cli": "8.5.0",
     "@capacitor/core": "8.5.0",
     "@capacitor/filesystem": "8.1.2",
+    "@capacitor/local-notifications": "^8.3.1",
     "@capacitor/share": "8.0.1",
     "@capacitor/splash-screen": "8.0.2",
     "@capacitor/status-bar": "8.0.3"

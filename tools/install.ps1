@@ -22,7 +22,7 @@ param([switch]$NonInteractive)
 
 $App = @{
     Name          = 'Habit Maker'
-    Blurb         = 'A local-first habit tracker and PDF reader. Your data never leaves this PC.'
+    Blurb         = 'A local-first habit tracker. Your data never leaves this PC.'
     Repo          = 'https://github.com/semyonsw/habbit_maker.git'
     Issues        = 'https://github.com/semyonsw/habbit_maker/issues'
     WindowsOnly   = $false
@@ -149,7 +149,7 @@ exit /b %RC%
         'Keep the black window open while you use the app; closing it stops the server.',
         '',
         'Your data:  data.db in this folder. Back that one file up and you have backed',
-        'up everything - habits, notes, bookmarks and summaries.'
+        'up everything - habits, completions, notes and settings.'
     )
 }
 

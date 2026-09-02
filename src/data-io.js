@@ -4,7 +4,7 @@ import { state, setState } from "./state.js";
 import {
   isPlainObject,
   monthKey,
-} from "./utils.js?v=2";
+} from "./utils.js";
 import { appendLogEntry } from "./logging.js";
 import { migrateState, ensureMonthData, saveState } from "./persistence.js";
 import { callRenderer } from "./render-registry.js";
@@ -109,6 +109,10 @@ export function importData(file) {
       migrateState();
       ensureMonthData();
       saveState();
+      // A backup carries every habit's reminder settings, so the imported ones
+      // have to replace whatever was scheduled for the habits they just
+      // overwrote.
+      callRenderer("rescheduleReminders");
       callRenderer("renderAll");
 
 

@@ -9,11 +9,6 @@ export default [
       globals: {
         ...globals.browser,
         ...globals.es2024,
-        Chart: "readonly",
-        marked: "readonly",
-        katex: "readonly",
-        MathJax: "readonly",
-        pdfjsLib: "readonly",
       },
     },
     rules: {
@@ -31,6 +26,27 @@ export default [
       "no-undef": "error",
       "no-redeclare": "error",
       "no-unreachable": "error",
+    },
+  },
+  {
+    // The pure-maths tests run under node, not the browser.
+    files: ["tests/**/*.mjs", "scripts/**/*.mjs"],
+    languageOptions: {
+      ecmaVersion: "latest",
+      sourceType: "module",
+      globals: {
+        ...globals.node,
+        ...globals.es2024,
+        // tests/dom.mjs installs a linkedom document onto globalThis before the
+        // src/ modules are imported, so the render tests read it as a global
+        // exactly as the app does.
+        document: "readonly",
+        window: "readonly",
+      },
+    },
+    rules: {
+      "no-undef": "error",
+      "no-unused-vars": "error",
     },
   },
 ];

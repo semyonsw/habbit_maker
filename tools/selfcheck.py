@@ -109,7 +109,6 @@ def check_server(tmp: Path) -> None:
     env["HABIT_PORT"] = str(port)
     env["HABIT_HOST"] = "127.0.0.1"
     env["HABIT_DB_PATH"] = str(tmp / "server.db")
-    env["HABIT_BOOKS_DIR"] = str(tmp / "books")
 
     proc = subprocess.Popen(
         [sys.executable, str(APP)],

@@ -1,84 +1,101 @@
 "use strict";
 
-import { ALL_WEEKDAYS } from "./constants.js";
-import { state } from "./state.js";
-import {
-  monthKey,
-  daysInMonth,
-  daysBetweenDates,
-  parseDateKey,
-  normalizeWeekdayArray,
-  normalizeMonthDayArray,
-  normalizeSequenceLength,
-  normalizeSequencePositions,
-} from "./utils.js?v=2";
+// The stateful side of habits: reading and writing completions against the
+// live `state`, and the memo cache in front of the (now range-walking, and so
+// more expensive) streak and strength maths.
+//
+// All the actual arithmetic lives in scoring.js, which knows nothing about
+// `state` and is unit-tested directly.
+
+import { SKIPPED, SCORE_HALF_LIFE_DAYS } from "./constants.js";
+import { state, globals, getStateRevision } from "./state.js";
+import { monthKey, daysInMonth, formatTimeString } from "./utils.js";
 import { saveState, getCurrentMonthData } from "./persistence.js";
 import { callRenderer } from "./render-registry.js";
+import {
+  computeMonthDayCounts,
+  computeScore,
+  computeStreak,
+  computeUsualTime,
+  computeWeekdayStats,
+  computeYearGrid,
+  getHabitScheduleMode,
+  getHabitTarget,
+  isDoneValue,
+  isHabitTrackedOnDate,
+  isSkippedValue,
+  readDayValue,
+} from "./scoring.js";
 
-export function getHabitScheduleMode(habit) {
-  const mode = String(
-    (habit && (habit.scheduleMode || habit.type)) || "fixed",
-  );
-  if (
-    mode === "specific_weekdays" ||
-    mode === "specific_month_days" ||
-    mode === "custom_sequence"
-  ) {
-    return mode;
+export {
+  getHabitScheduleMode,
+  getHabitTarget,
+  isHabitTrackedOnDate,
+  isSkippedValue,
+};
+
+/* ====================================================================== */
+/* Memo cache                                                             */
+/* ====================================================================== */
+
+// computeStreak/computeScore now walk the whole calendar range rather than
+// just the recorded months, and Today calls them once per visible habit on
+// every render -- which happens on every single tap. Without a cache that is a
+// full-history walk per habit per tap.
+//
+// The key is state.js's revision counter, which saveState() bumps on every
+// write, so the whole cache is invalidated by any change without anyone having
+// to know which derived values a given edit affects.
+let memoRevision = -1;
+const memo = new Map();
+
+function memoized(kind, habitId, compute) {
+  const revision = getStateRevision();
+  if (revision !== memoRevision) {
+    memo.clear();
+    memoRevision = revision;
   }
-  return "fixed";
+  const key = `${kind}:${habitId}`;
+  if (memo.has(key)) return memo.get(key);
+  const value = compute();
+  memo.set(key, value);
+  return value;
 }
 
-export function isHabitTrackedOnDate(habit, year, month, day) {
-  if (!habit) return true;
-  const mode = getHabitScheduleMode(habit);
-  if (mode === "fixed") return true;
+/* ====================================================================== */
+/* "Now"                                                                  */
+/* ====================================================================== */
 
-  if (mode === "specific_weekdays") {
-    const weekday = new Date(year, month, day).getDay();
-    const activeWeekdays = normalizeWeekdayArray(
-      Array.isArray(habit.activeWeekdays)
-        ? habit.activeWeekdays
-        : ALL_WEEKDAYS,
-    );
-    return activeWeekdays.includes(weekday);
-  }
-
-  if (mode === "specific_month_days") {
-    const activeMonthDays = normalizeMonthDayArray(
-      Array.isArray(habit.activeMonthDays) ? habit.activeMonthDays : [],
-    );
-    return activeMonthDays.includes(day);
-  }
-
-  if (mode === "custom_sequence") {
-    const length = normalizeSequenceLength(habit.sequenceLength);
-    const active = normalizeSequencePositions(habit.sequenceActive, length);
-    if (!active.length) return false;
-    const anchor = parseDateKey(habit.sequenceAnchor);
-    // Without a valid start date the cycle has no phase; treat as always-on so
-    // the habit stays visible (normalization guarantees a valid anchor).
-    if (!anchor) return true;
-    const diff = daysBetweenDates(
-      anchor.year,
-      anchor.month,
-      anchor.day,
-      year,
-      month,
-      day,
-    );
-    if (diff < 0) return false;
-    const pos = ((diff % length) + length) % length;
-    return active.includes(pos);
-  }
-
-  return true;
+// A single {year, month, day} for the real current date. Everything that has to
+// distinguish "past", "today" and "future" reads this, rather than each site
+// building its own `new Date()` and comparing three fields by hand.
+export function todayParts() {
+  const now = new Date();
+  return {
+    year: now.getFullYear(),
+    month: now.getMonth(),
+    day: now.getDate(),
+  };
 }
+
+export function isToday(year, month, day) {
+  const t = todayParts();
+  return t.year === year && t.month === month && t.day === day;
+}
+
+export function isFutureDate(year, month, day) {
+  const t = todayParts();
+  if (year !== t.year) return year > t.year;
+  if (month !== t.month) return month > t.month;
+  return day > t.day;
+}
+
+/* ====================================================================== */
+/* Habit list                                                             */
+/* ====================================================================== */
 
 export function getSortedDailyHabits() {
-  return [...state.habits.daily].sort(
-    (a, b) => (a.order || 0) - (b.order || 0),
-  );
+  return [...state.habits.daily].sort((a, b) => (a.order || 0) - (b.order || 0));
 }
 
 export function updateHabitOrder() {
@@ -88,8 +105,12 @@ export function updateHabitOrder() {
   });
 }
 
+export function findHabit(id) {
+  return state.habits.daily.find((h) => h.id === id) || null;
+}
+
 export function deleteHabit(id) {
-  const habit = state.habits.daily.find((h) => h.id === id);
+  const habit = findHabit(id);
   if (!habit) return;
 
   callRenderer(
@@ -101,9 +122,8 @@ export function deleteHabit(id) {
       updateHabitOrder();
       Object.values(state.months).forEach((monthData) => {
         delete monthData.dailyCompletions[id];
-        if (monthData.dailyNotes) {
-          delete monthData.dailyNotes[id];
-        }
+        if (monthData.dailyNotes) delete monthData.dailyNotes[id];
+        if (monthData.dailyTimes) delete monthData.dailyTimes[id];
       });
       saveState();
       callRenderer("closeHabitSheet");
@@ -113,59 +133,23 @@ export function deleteHabit(id) {
   );
 }
 
-/* ==========================================================================
-   Completion values and statistics
-   --------------------------------------------------------------------------
-   A checkbox habit stores `true`/`false` for a day. A count habit stores a
-   number. Everything reads through these two helpers so the two shapes never
-   have to be handled at a call site -- and so an existing boolean written by
-   an older build still reads correctly.
-   ========================================================================== */
-
-export function getHabitTarget(habit) {
-  return habit && habit.trackType === "count"
-    ? Math.max(2, parseInt(habit.countTarget, 10) || 2)
-    : 1;
-}
+/* ====================================================================== */
+/* Reading a day                                                          */
+/* ====================================================================== */
 
 export function getDayValue(monthData, habitId, day) {
-  const row = monthData && monthData.dailyCompletions[habitId];
-  const raw = row ? row[day] : undefined;
-  if (typeof raw === "number") return raw;
-  return raw ? 1 : 0;
+  return readDayValue(monthData, habitId, day);
 }
 
 export function isHabitDoneOn(habit, monthData, day) {
-  return getDayValue(monthData, habit.id, day) >= getHabitTarget(habit);
+  return isDoneValue(
+    readDayValue(monthData, habit.id, day),
+    getHabitTarget(habit),
+  );
 }
 
-// The single write path for a completion, so every surface stays in step.
-export function setHabitDayValue(habitId, day, value) {
-  const habit = state.habits.daily.find((h) => h.id === habitId);
-  if (!habit) return;
-  const monthData = getCurrentMonthData();
-  if (!monthData.dailyCompletions[habitId]) {
-    monthData.dailyCompletions[habitId] = {};
-  }
-  const target = getHabitTarget(habit);
-  const next = Math.max(0, Math.min(target, Number(value) || 0));
-  // Checkbox habits keep storing booleans, so a downgrade to an older build
-  // (or an export read by one) still sees the shape it expects.
-  monthData.dailyCompletions[habitId][day] =
-    habit.trackType === "count" ? next : next >= 1;
-  saveState();
-  callRenderer("renderAll");
-}
-
-// Tap behaviour from the design: a checkbox toggles; a counter increments and
-// wraps back to zero once it is past its target.
-export function advanceHabitDay(habitId, day) {
-  const habit = state.habits.daily.find((h) => h.id === habitId);
-  if (!habit) return;
-  const monthData = getCurrentMonthData();
-  const value = getDayValue(monthData, habitId, day);
-  const target = getHabitTarget(habit);
-  setHabitDayValue(habitId, day, value >= target ? 0 : value + 1);
+export function isHabitSkippedOn(habit, monthData, day) {
+  return isSkippedValue(readDayValue(monthData, habit.id, day));
 }
 
 export function getScheduledHabits(year, month, day) {
@@ -174,78 +158,219 @@ export function getScheduledHabits(year, month, day) {
   );
 }
 
-export function getDayCounts(day) {
-  const monthData = getCurrentMonthData();
-  const habits = getScheduledHabits(state.currentYear, state.currentMonth, day);
-  const done = habits.filter((h) => isHabitDoneOn(h, monthData, day)).length;
-  return { done, total: habits.length };
+/* ====================================================================== */
+/* Writing a day                                                          */
+/* ====================================================================== */
+
+function monthDataFor(year, month) {
+  return state.months[monthKey(year, month)] || null;
 }
 
-// Current and best run of consecutive scheduled days, walked over every month
-// on record. An unfinished *today* does not break the current run -- you have
-// not missed it yet.
-export function computeHabitStreak(habitId) {
-  const habit = state.habits.daily.find((h) => h.id === habitId);
-  if (!habit) return { current: 0, best: 0 };
-
-  const days = [];
-  Object.keys(state.months)
-    .sort()
-    .forEach((key) => {
-      const [y, m] = key.split("-").map((n) => parseInt(n, 10));
-      const month = m - 1;
-      const total = daysInMonth(y, month);
-      for (let day = 1; day <= total; day += 1) {
-        if (!isHabitTrackedOnDate(habit, y, month, day)) continue;
-        days.push({
-          y,
-          m: month,
-          day,
-          done: isHabitDoneOn(habit, state.months[key], day),
-        });
-      }
-    });
-
-  let best = 0;
-  let chain = 0;
-  days.forEach((d) => {
-    chain = d.done ? chain + 1 : 0;
-    best = Math.max(best, chain);
-  });
-
+// Record the wall-clock time a habit was completed, but only when the day being
+// filled in IS today -- back-filling last Tuesday says nothing about when you
+// usually do the thing, and would poison the "usual time" average.
+function recordCompletionTime(monthData, habitId, day) {
+  if (!isToday(state.currentYear, state.currentMonth, day)) return;
+  if (!monthData.dailyTimes) monthData.dailyTimes = {};
+  if (!monthData.dailyTimes[habitId]) monthData.dailyTimes[habitId] = {};
   const now = new Date();
-  const isFuture = (d) =>
-    d.y > now.getFullYear() ||
-    (d.y === now.getFullYear() && d.m > now.getMonth()) ||
-    (d.y === now.getFullYear() && d.m === now.getMonth() && d.day > now.getDate());
-  const isToday = (d) =>
-    d.y === now.getFullYear() && d.m === now.getMonth() && d.day === now.getDate();
+  monthData.dailyTimes[habitId][day] = formatTimeString(
+    now.getHours(),
+    now.getMinutes(),
+  );
+}
 
-  let current = 0;
-  const past = days.filter((d) => !isFuture(d));
-  for (let i = past.length - 1; i >= 0; i -= 1) {
-    const d = past[i];
-    if (!d.done) {
-      if (isToday(d)) continue; // still open, not yet a miss
-      break;
-    }
-    current += 1;
+function clearCompletionTime(monthData, habitId, day) {
+  if (monthData.dailyTimes && monthData.dailyTimes[habitId]) {
+    delete monthData.dailyTimes[habitId][day];
+  }
+}
+
+// The single write path for a completion, so every surface stays in step.
+export function setHabitDayValue(habitId, day, value, options = {}) {
+  const habit = findHabit(habitId);
+  if (!habit) return;
+  const monthData = getCurrentMonthData();
+  if (!monthData.dailyCompletions[habitId]) {
+    monthData.dailyCompletions[habitId] = {};
   }
 
-  return { current, best };
+  const target = getHabitTarget(habit);
+
+  if (value === SKIPPED) {
+    monthData.dailyCompletions[habitId][day] = SKIPPED;
+    clearCompletionTime(monthData, habitId, day);
+  } else {
+    const next = Math.max(0, Math.min(target, Number(value) || 0));
+    // Checkbox habits keep storing booleans, so a downgrade to an older build
+    // (or an export read by one) still sees the shape it expects.
+    monthData.dailyCompletions[habitId][day] =
+      habit.trackType === "count" ? next : next >= 1;
+    if (isDoneValue(next, target)) recordCompletionTime(monthData, habitId, day);
+    else clearCompletionTime(monthData, habitId, day);
+  }
+
+  saveState();
+  if (!options.silent) callRenderer("renderAll");
+}
+
+// Tap behaviour from the design: a checkbox toggles; a counter increments and
+// wraps back to zero once it is past its target. A skipped day is cleared by
+// the same tap rather than needing to be un-skipped first.
+export function advanceHabitDay(habitId, day) {
+  const habit = findHabit(habitId);
+  if (!habit) return null;
+  const monthData = getCurrentMonthData();
+  const previous = readDayValue(monthData, habitId, day);
+  const target = getHabitTarget(habit);
+
+  let next;
+  if (isSkippedValue(previous)) next = target; // skipped -> straight to done
+  else if (previous >= target) next = 0;
+  else next = previous + 1;
+
+  setHabitDayValue(habitId, day, next);
+  return { previous, next };
+}
+
+// Mark a day deliberately skipped -- rest day, illness, travel. Neutral to both
+// the streak and the strength score, which is the point: the alternative is
+// either lying (marking it done) or taking a hit for a day you had already
+// decided not to do. Skipping again clears it.
+export function toggleHabitDaySkip(habitId, day) {
+  const habit = findHabit(habitId);
+  if (!habit) return null;
+  const monthData = getCurrentMonthData();
+  const previous = readDayValue(monthData, habitId, day);
+  const next = isSkippedValue(previous) ? 0 : SKIPPED;
+  setHabitDayValue(habitId, day, next);
+  return { previous, next };
+}
+
+// Restore a raw stored value. Used by Undo, which has to be able to put back a
+// partial count or a skip, not just "off".
+export function restoreHabitDayValue(habitId, day, value) {
+  setHabitDayValue(habitId, day, value);
+}
+
+/* ====================================================================== */
+/* Stats                                                                  */
+/* ====================================================================== */
+
+export function computeHabitStreak(habitId) {
+  const habit = findHabit(habitId);
+  if (!habit) return { current: 0, best: 0 };
+  return memoized("streak", habitId, () =>
+    computeStreak(habit, state.months, todayParts()),
+  );
+}
+
+// 0..1 habit strength. See constants.js for what the number means.
+export function computeHabitScore(habitId) {
+  const habit = findHabit(habitId);
+  if (!habit) return 0;
+  return memoized("score", habitId, () =>
+    computeScore(habit, state.months, todayParts(), SCORE_HALF_LIFE_DAYS),
+  );
+}
+
+export function getHabitUsualTime(habitId) {
+  const habit = findHabit(habitId);
+  if (!habit) return null;
+  return memoized("usualTime", habitId, () =>
+    computeUsualTime(habit, state.months),
+  );
+}
+
+export function getHabitWeekdayStats(habitId) {
+  const habit = findHabit(habitId);
+  if (!habit) return [];
+  return memoized("weekday", habitId, () =>
+    computeWeekdayStats([habit], state.months, todayParts()),
+  );
+}
+
+export function getAllWeekdayStats() {
+  return memoized("weekday", "__all__", () =>
+    computeWeekdayStats(getSortedDailyHabits(), state.months, todayParts()),
+  );
+}
+
+export function getYearGrid(year) {
+  return memoized("yearGrid", String(year), () =>
+    computeYearGrid(getSortedDailyHabits(), state.months, year, todayParts()),
+  );
+}
+
+// Per-day {done, total, skipped} for the whole viewed month, in one pass.
+// Cached per render because the day strip needs all 31 at once.
+export function getMonthDayCounts() {
+  const year = state.currentYear;
+  const month = state.currentMonth;
+  return memoized("dayCounts", `${year}-${month}`, () =>
+    computeMonthDayCounts(
+      getSortedDailyHabits(),
+      monthDataFor(year, month),
+      year,
+      month,
+    ),
+  );
+}
+
+export function getDayCounts(day) {
+  const counts = getMonthDayCounts();
+  return counts[day] || { done: 0, total: 0, skipped: 0 };
 }
 
 // How many of a habit's scheduled days this month are complete.
 export function countHabitMonthDone(habit, year, month) {
-  const key = monthKey(year, month);
-  const monthData = state.months[key];
+  const monthData = monthDataFor(year, month);
   if (!monthData) return 0;
   const total = daysInMonth(year, month);
+  const target = getHabitTarget(habit);
   let done = 0;
   for (let day = 1; day <= total; day += 1) {
     if (!isHabitTrackedOnDate(habit, year, month, day)) continue;
-    if (isHabitDoneOn(habit, monthData, day)) done += 1;
+    if (isDoneValue(readDayValue(monthData, habit.id, day), target)) done += 1;
   }
   return done;
 }
 
+/* ====================================================================== */
+/* Month navigation                                                       */
+/* ====================================================================== */
+
+// Step the viewed month. The day selection is dropped, because day 29 of a
+// 31-day month is meaningless in February -- getSelectedDay() re-resolves it to
+// today (if the new month is the current one) or the 1st.
+export function shiftViewedMonth(delta) {
+  let month = state.currentMonth + delta;
+  let year = state.currentYear;
+  while (month < 0) {
+    month += 12;
+    year -= 1;
+  }
+  while (month > 11) {
+    month -= 12;
+    year += 1;
+  }
+  state.currentMonth = month;
+  state.currentYear = year;
+  globals.dayFocusDay = null;
+  saveState();
+  callRenderer("renderAll");
+}
+
+export function isViewingCurrentMonth() {
+  const t = todayParts();
+  return state.currentYear === t.year && state.currentMonth === t.month;
+}
+
+export function goToCurrentMonth() {
+  const t = todayParts();
+  state.currentYear = t.year;
+  state.currentMonth = t.month;
+  globals.dayFocusDay = null;
+  saveState();
+  callRenderer("renderAll");
+}

@@ -9,7 +9,7 @@
  */
 "use strict";
 
-const CACHE_VERSION = "v10";
+const CACHE_VERSION = "v11";
 const CACHE_NAME = `habit-shell-${CACHE_VERSION}`;
 
 // Core shell precached on install. The woff2 font binaries are intentionally
@@ -36,7 +36,9 @@ const PRECACHE = [
   "src/loading-ui.js",
   "src/logging.js",
   "src/modals.js",
+  "src/month-nav.js",
   "src/native.js",
+  "src/notifications.js",
   "src/persistence.js",
   "src/render-analytics.js",
   "src/render-detail.js",
@@ -45,8 +47,10 @@ const PRECACHE = [
   "src/render-shell.js",
   "src/render-today.js",
   "src/router.js",
+  "src/scoring.js",
   "src/sheet.js",
   "src/state.js",
+  "src/toast.js",
   "src/ui-prefs.js",
   "src/utils.js",
   // Vendored libraries
@@ -113,5 +117,27 @@ self.addEventListener("fetch", (event) => {
           return Response.error();
         });
     }),
+  );
+});
+
+// A notification shown by the service worker (rather than by the page) still
+// has to know where to go when it is tapped. The web reminder path in
+// src/notifications.js constructs page-scoped Notifications and handles its own
+// clicks, so this is the fallback for anything shown while no page was around
+// to own it.
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  event.waitUntil(
+    self.clients
+      .matchAll({ type: "window", includeUncontrolled: true })
+      .then((clients) => {
+        for (const client of clients) {
+          if ("focus" in client) {
+            client.navigate(`${self.registration.scope}#/today`).catch(() => {});
+            return client.focus();
+          }
+        }
+        return self.clients.openWindow(`${self.registration.scope}#/today`);
+      }),
   );
 });

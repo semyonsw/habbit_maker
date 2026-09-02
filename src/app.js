@@ -13,7 +13,6 @@ import { loadState } from "./persistence.js";
 import { initUiPrefs } from "./ui-prefs.js";
 import { bindEvents } from "./events.js";
 import { callRenderer } from "./render-registry.js";
-import { deleteHabit } from "./habits.js";
 import {
   setGlobalLoaderMessage,
   hideGlobalLoader,
@@ -24,6 +23,7 @@ import * as db from "./db.js";
 import { bindSheetGestures, initKeyboardInset } from "./sheet.js";
 import { closeTopOverlay } from "./modals.js";
 import { hideNativeSplash } from "./native.js";
+import { initNotifications } from "./notifications.js";
 import { initRouter } from "./router.js";
 
 // Import render modules so they register themselves
@@ -32,12 +32,7 @@ import "./render-today.js";
 import "./render-detail.js";
 import "./render-analytics.js";
 import "./render-settings.js";
-
-// Kept for inline onclick handlers in rendered markup. Only habit deletion
-// still needs one; everything else is delegated inside its own screen module.
-window.HabitApp = {
-  deleteHabit,
-};
+import "./notifications.js";
 
 // ---- Legacy bundle collection (one-shot, runs only on first launch) ------
 
@@ -196,6 +191,20 @@ async function init() {
 
     // After the first render, so a deep-linked view has something to switch to.
     initRouter();
+
+    // Reminders. Deliberately after the first paint and never awaited: on
+    // native this is a bridge round-trip, and a slow or missing plugin must not
+    // hold the splash up. It also must not run before loadState(), because the
+    // schedule is built from the habits.
+    initNotifications().catch((err) => {
+      appendLogEntry({
+        level: "error",
+        component: "app",
+        operation: "initNotifications",
+        message: "Could not initialise reminders.",
+        error: err,
+      });
+    });
 
     if (appRoot) appRoot.style.display = "";
     await waitForNextPaint();

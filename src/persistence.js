@@ -6,8 +6,9 @@ import {
   ALL_WEEKDAYS,
   DEFAULT_CATEGORIES,
   DEFAULT_DAILY_HABITS,
+  SKIPPED,
 } from "./constants.js";
-import { state, setState } from "./state.js";
+import { state, setState, bumpStateRevision } from "./state.js";
 import {
   uid,
   monthKey,
@@ -18,7 +19,7 @@ import {
   normalizeSequencePositions,
   parseDateKey,
   formatDateKey,
-} from "./utils.js?v=2";
+} from "./utils.js";
 import { appendLogEntry } from "./logging.js";
 import * as db from "./db.js";
 
@@ -38,6 +39,9 @@ export function getDefaultMonthData() {
   return {
     dailyCompletions: {},
     dailyNotes: {},
+    // habitId -> day -> "HH:MM", written only when a habit is completed ON the
+    // day itself. Feeds the "usual time" insight.
+    dailyTimes: {},
     monthlyReview: { wins: "", blockers: "", focus: "" },
   };
 }
@@ -48,6 +52,9 @@ export function ensureMonthDataShape(monthData) {
   }
   if (!isPlainObject(monthData.dailyNotes)) {
     monthData.dailyNotes = {};
+  }
+  if (!isPlainObject(monthData.dailyTimes)) {
+    monthData.dailyTimes = {};
   }
   if (!isPlainObject(monthData.monthlyReview)) {
     monthData.monthlyReview = {};
@@ -79,6 +86,30 @@ export function getDefaultState() {
   };
 }
 
+// Keep stored day values to the three shapes the app understands: a boolean, a
+// non-negative count, or the SKIPPED sentinel. Anything else -- a NaN from a
+// hand-edited backup, a negative number that is not SKIPPED -- becomes 0 rather
+// than flowing into the score maths as garbage.
+function normalizeCompletionValues(monthData) {
+  Object.values(monthData.dailyCompletions).forEach((row) => {
+    if (!isPlainObject(row)) return;
+    Object.keys(row).forEach((day) => {
+      const raw = row[day];
+      if (typeof raw === "boolean") return;
+      const num = Number(raw);
+      if (!Number.isFinite(num)) {
+        row[day] = false;
+        return;
+      }
+      if (num === SKIPPED) {
+        row[day] = SKIPPED;
+        return;
+      }
+      row[day] = num > 0 ? Math.floor(num) : false;
+    });
+  });
+}
+
 // Coerce one stored report entry into the canonical shape. Blobs live in the
 // file store; only lightweight attachment metadata is kept in state.
 export function migrateState() {
@@ -108,6 +139,7 @@ export function migrateState() {
     }
     delete state.months[key].weeklyCompletions;
     ensureMonthDataShape(state.months[key]);
+    normalizeCompletionValues(state.months[key]);
   });
 
   state.habits.daily.forEach((habit, idx) => {
@@ -221,6 +253,14 @@ export function migrateState() {
       ? habit.reminder.time
       : "08:00";
 
+    // --- schema 7: implementation intention -------------------------------
+    // The "when-where-then" sentence: *After I pour my coffee, I will read for
+    // ten minutes in the kitchen.* Naming the cue and the place is the single
+    // best-evidenced thing a habit app can ask for -- it is what the research
+    // calls an implementation intention -- and it costs one string per habit.
+    // Absent on every earlier schema, so it simply starts empty.
+    habit.cue = String(habit.cue || "").slice(0, 200);
+
     // The design drops emoji: a habit is identified by a two-letter mark
     // derived from its name. `emoji` is left on the record rather than
     // deleted, so nothing is lost if it is ever wanted back.
@@ -295,6 +335,10 @@ export async function loadState() {
 }
 
 export function saveState() {
+  // Invalidate the derived-value caches in habits.js BEFORE the async write:
+  // the in-memory `state` object has already changed, so anything computed
+  // from it is stale as of right now, not as of when IndexedDB acknowledges.
+  bumpStateRevision();
   db.putState(state).catch((error) => {
     appendLogEntry({
       level: "error",

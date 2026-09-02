@@ -1,25 +1,72 @@
 "use strict";
 
-// Settings: exactly three groups, as specified -- Appearance, Reminders, Data.
+// Settings: Appearance, Reminders, Data.
 
 import { APP_VERSION, THEMES } from "./constants.js";
 import { setState } from "./state.js";
-import { sanitize } from "./utils.js?v=2";
+import { sanitize } from "./utils.js";
 import { getDefaultState, saveState } from "./persistence.js";
 import { exportData, importData, setBackupStatus } from "./data-io.js";
 import {
   getDailyReminder,
+  getFadeReminders,
   getTheme,
   getWeekStart,
   setDailyReminderEnabled,
   setDailyReminderTime,
+  setFadeReminders,
   setTheme,
   setWeekStart,
 } from "./ui-prefs.js";
+import {
+  getNotificationStatus,
+  notificationsSupported,
+  rescheduleReminders,
+} from "./notifications.js";
 import { openConfirm } from "./modals.js";
 import { callRenderer, registerRenderer } from "./render-registry.js";
 
 const THEME_LABELS = { light: "Light", dark: "Dark", auto: "Auto" };
+
+// One line telling the truth about whether a reminder will actually arrive.
+// The app used to imply background delivery it had no code for at all; the
+// web build still cannot provide it, so it says so rather than pretending.
+function deliveryNoteHtml() {
+  if (!notificationsSupported()) {
+    return (
+      '<div class="settings-note is-warn">' +
+      "This browser cannot show notifications, so reminders will not fire." +
+      "</div>"
+    );
+  }
+
+  const { permission, background } = getNotificationStatus();
+
+  if (permission === "denied") {
+    return (
+      '<div class="settings-note is-warn">' +
+      "Notifications are blocked for Habit Maker. Turn them back on in your " +
+      "system settings, then reopen the app." +
+      "</div>"
+    );
+  }
+
+  if (background) {
+    return (
+      '<div class="settings-note">' +
+      "Reminders are scheduled with Android and arrive even when the app is " +
+      "closed." +
+      "</div>"
+    );
+  }
+
+  return (
+    '<div class="settings-note">' +
+    "On the web, reminders only fire while Habit Maker is open in a tab. " +
+    "Install the Android app for reminders that arrive in the background." +
+    "</div>"
+  );
+}
 
 export function renderSettings() {
   const body = document.getElementById("settingsBody");
@@ -27,6 +74,7 @@ export function renderSettings() {
 
   const theme = getTheme();
   const reminder = getDailyReminder();
+  const fade = getFadeReminders();
 
   body.innerHTML =
     // ---- Appearance ----------------------------------------------------
@@ -62,7 +110,16 @@ export function renderSettings() {
       ? `<input type="time" id="dailyReminderTime" value="${sanitize(reminder.time)}" aria-label="Reminder time" />`
       : `<div class="settings-row-value num">${sanitize(reminder.time)}</div>`) +
     "</div>" +
+    '<div class="settings-row">' +
+    "<div>" +
+    '<div class="settings-row-label">Ease off automatically</div>' +
+    '<div class="settings-row-hint">Remind less as a habit gets stronger</div>' +
     "</div>" +
+    `<button type="button" class="toggle${fade ? " is-on" : ""}" data-fade-reminders` +
+    ` role="switch" aria-checked="${fade}" aria-label="Ease off automatically"><span></span></button>` +
+    "</div>" +
+    "</div>" +
+    deliveryNoteHtml() +
     // ---- Data -----------------------------------------------------------
     '<div class="section-label settings-label">Data</div>' +
     '<div class="settings-group">' +
@@ -79,7 +136,7 @@ export function renderSettings() {
     "</button>" +
     "</div>" +
     '<p class="backup-status" id="backupStatus" role="status" aria-live="polite"></p>' +
-    `<div class="version-line">Habit Tracker ${sanitize(APP_VERSION)}</div>` +
+    `<div class="version-line">Habit Maker ${sanitize(APP_VERSION)}</div>` +
     // The file picker Import drives. Kept in the DOM (not created per click)
     // so the change handler binds once.
     '<input type="file" id="importFileInput" accept="application/json,.json" class="visually-hidden" />';
@@ -102,7 +159,16 @@ export function bindSettingsEvents() {
       return;
     }
     if (event.target.closest("[data-daily-reminder]")) {
-      setDailyReminderEnabled(!getDailyReminder().enabled);
+      const enabling = !getDailyReminder().enabled;
+      setDailyReminderEnabled(enabling);
+      if (enabling) callRenderer("requestReminderPermission");
+      else rescheduleReminders();
+      renderSettings();
+      return;
+    }
+    if (event.target.closest("[data-fade-reminders]")) {
+      setFadeReminders(!getFadeReminders());
+      rescheduleReminders();
       renderSettings();
       return;
     }
@@ -122,6 +188,7 @@ export function bindSettingsEvents() {
         () => {
           setState(getDefaultState());
           saveState();
+          rescheduleReminders();
           setBackupStatus("All data reset.", "warn");
           callRenderer("renderAll");
         },
@@ -132,6 +199,7 @@ export function bindSettingsEvents() {
   section.addEventListener("change", (event) => {
     if (event.target.id === "dailyReminderTime") {
       setDailyReminderTime(event.target.value);
+      rescheduleReminders();
       return;
     }
     if (event.target.id === "importFileInput") {

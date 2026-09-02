@@ -2,7 +2,7 @@
 
 import { MAX_LOG_RECORDS } from "./constants.js";
 import { appLogs, setAppLogs } from "./state.js";
-import { uid, nowIso, sanitizeErrorForLog, redactForLogs } from "./utils.js?v=2";
+import { uid, nowIso, sanitizeErrorForLog, redactForLogs } from "./utils.js";
 import * as db from "./db.js";
 
 export async function loadLogs() {

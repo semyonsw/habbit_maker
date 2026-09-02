@@ -1,28 +1,33 @@
 # Habit Maker
 
-[![Build Status](https://img.shields.io/badge/build-passing-2b8a3e)](#)
-[![License: MIT](https://img.shields.io/badge/license-MIT-2b8a3e)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.0.0-1f9d55)](package.json)
-[![Storage](https://img.shields.io/badge/storage-local--first-0b7285)](#storage-and-privacy)
-[![Stack](https://img.shields.io/badge/stack-vanilla%20JS%20%7C%20Python%20%7C%20SQLite-f59f00)](#architecture)
-[![Install](https://img.shields.io/badge/install-one%20double--click-2b8a3e)](INSTALL.md)
+A local-first habit tracker that does not punish you for missing a day.
 
-A local-first habit tracker and PDF reader in one app. Track daily habits in a monthly grid, manage a personal PDF library with bookmarks and reader mode, and (optionally) generate AI summaries of what you've read — all stored on your own machine, in a single SQLite file.
+Your data lives on your machine — a SQLite file on the PC, IndexedDB on the
+phone. There is no account, no server to sign up to, and nothing leaves the
+device. It runs three ways from one codebase: as a desktop app behind a small
+Python server, as an installable PWA, and as an Android APK.
 
-Built for people who want their data to live on their own disk: no account, no cloud database, no telemetry.
+<p align="center">
+  <img src="icons/icon-192.png" width="96" alt="" />
+</p>
 
-> ### Install it in one double-click
->
-> | Your machine | What to do |
-> |---|---|
-> | **Windows** | download the project and **double-click `Install.bat`** |
-> | **Linux / macOS / WSL** | `./install.sh` |
->
-> The installer checks your Python, **starts the app on a spare port against a
-> throwaway database to prove it really works here**, checks that port 3000 is
-> free, and puts a *Habit Maker* shortcut on your Desktop. Anything that goes
-> wrong is explained in plain English, with the fix.
-> Details and troubleshooting: **[INSTALL.md](INSTALL.md)**.
+---
+
+## Why another habit tracker
+
+Most trackers are built around the streak, and the streak is a fragile thing to
+hang a habit on: it is worth 40 one day and 0 the next. Losing a long run hurts
+far more than extending it rewards, so one bad day is where people quit
+entirely.
+
+Habit Maker keeps the streak — it is genuinely motivating while it lasts — but
+it leads with a **strength score** instead:
+
+- Every completion pushes it up; every miss decays it; nothing resets it to zero.
+- A day you **skip on purpose** counts as neither. Rest days, illness and travel
+  are not failures, and you should not have to lie to the app about them.
+- Reminders **ease off** as a habit gets stronger, instead of nagging forever
+  about something you now do automatically.
 
 ---
 
@@ -30,14 +35,17 @@ Built for people who want their data to live on their own disk: no account, no c
 
 - [Features](#features)
 - [Prerequisites](#prerequisites)
-- [Install in one double-click](INSTALL.md)
-- [Installation and Setup](#installation-and-setup)
-- [Environment Variables](#environment-variables)
+- [Installation](#installation)
+- [How it works](#how-it-works)
+- [Reminders](#reminders)
+- [Habit strength](#habit-strength)
 - [Architecture](#architecture)
-- [Schema Reference](#schema-reference)
-- [Usage](#usage)
-- [Configuration Reference](#configuration-reference)
-- [Storage and Privacy](#storage-and-privacy)
+- [Data model](#data-model)
+- [HTTP API](#http-api)
+- [Environment variables](#environment-variables)
+- [Android](#android)
+- [Development](#development)
+- [Storage and privacy](#storage-and-privacy)
 - [Contributing](#contributing)
 - [Security](#security)
 - [License](#license)
@@ -46,540 +54,395 @@ Built for people who want their data to live on their own disk: no account, no c
 
 ## Features
 
-**Habit tracking**
-- Monthly grid view with one cell per day per habit.
-- Categories with custom name, emoji, and color.
-- Per-habit monthly goal and streak (current / best).
-- Three scheduling modes: every day, specific weekdays, specific month-days.
-- Daily notes per habit/day; weekly summary cards; monthly review (wins / blockers / focus).
-- Per-habit three-dot menu: move up, move down, edit, delete.
+**Tracking**
 
-**PDF library**
-- Upload PDFs (up to 70 MB each by default) and store them on disk.
-- Reader with page navigation, dark mode, and zoom.
-- Named bookmarks with notes and a real-page mapping (so "page 42 in the book" is preserved even when the PDF page count differs).
-- Bookmark history (every edit is logged).
-- Re-point a book at a different file at any time ("Choose PDF file" / "Replace file…"), keeping every bookmark, note and summary. This is how you finish an import: a metadata-only backup carries the *other* device's file paths, so each book needs its local copy picked once.
-- "Open at Bookmark" goes to the in-app reader or to the phone's / browser's own PDF viewer — your choice, per tap or remembered.
-- Inside a book, the **Bookmarks** button jumps to any bookmark, moves one to the page you have actually read to (the real-page offset follows), or adds a new one.
+- Checkbox habits, or count habits with a per-day target (`3/5`).
+- Three completion states: done, missed, and **skipped** — skipped is neutral to
+  both the streak and the strength score.
+- Four schedules: every day, chosen weekdays, chosen days of the month, or a
+  repeating custom cycle ("every third day" from a start date).
+- Per-habit monthly goal, current streak, best streak and strength.
+- **Month navigation** on Today, the habit calendar and Analytics — every month
+  you have ever recorded is reachable.
+- Per-day notes, prompted by what happened: *"What got in the way?"* after a
+  miss, *"Why did you skip?"* after a skip.
+- Undo on the two taps that can lose work.
 
-**Optional AI summaries**
-- Bring your own Gemini API key. The key is encrypted at rest with AES-256-GCM derived from a passphrase you choose.
-- Per-bookmark summaries; incremental mode that builds on previous summaries.
-- Multi-model picker.
+**Habit design**
 
-**Send feedback, three ways**
-- **GitHub Issue** — opens a pre-filled issue in a new tab; nothing is sent automatically.
-- **Email instead** — uses your default mail client via `mailto:` (the zero-setup option).
-- **Real email via EmailJS** *(optional)* — configure three IDs once and the app POSTs feedback directly to the maintainer's inbox, no mail client required. Credentials are validated by a real test email at save time, so a wrong template ID surfaces immediately instead of failing silently on submit.
-- **AI-polished feedback** *(optional)* — if you already have a Gemini key configured, the Email path routes your raw title and description through `gemini-2.5-flash-lite` and shows an **editable** preview of a clean subject + body before sending. Skips automatically when no key is set.
+- An optional **implementation intention** per habit — the "after X, I will do Y,
+  in Z" sentence. It shows on the habit row, and it becomes the text of that
+  habit's reminder.
+- Nine built-in categories.
 
-**Activity logs**
-- A built-in **Logs** view (sidebar → *Logs*) records every meaningful action — feedback sent, AI summary attempted, encryption unlocked, import/export — with ISO 8601 timestamps, level pills (debug / info / warn / error), and component tags.
-- Filter by level, component, or free text. Export as JSON or CSV. Optional live `.log` file via the File System Access API for long-running debugging.
+**Reminders that actually fire**
 
-**Data ownership**
-- One SQLite file (`data.db`) holds everything except PDF binaries (which sit in `books/`).
-- One-click JSON export and import.
-- Nothing leaves your machine unless you opt into AI summaries or real-email feedback delivery.
+- Per-habit reminders (every day / weekdays / chosen days, at a chosen time) and
+  one optional global daily nudge.
+- Real OS alarms on Android, including while the app is closed.
+- **Fading**: as a habit's strength climbs past 75%, its reminders thin out —
+  and past 90% they drop to a single weekly nudge. Never to zero.
+- Settings states plainly whether background delivery is available on the build
+  you are running, rather than implying it.
+
+**Analytics**
+
+- Average strength, month completion and perfect days.
+- A seven-day bar chart.
+- A **year heatmap** — the whole year, one cell per day.
+- A **weekday breakdown**: which day of the week you actually fail on.
+- **Usual time**: the hour you normally do a habit, from your own completion
+  times, averaged circularly so 23:50 and 00:10 land on midnight and not noon.
+
+**Data**
+
+- One-file JSON export and import.
+- Light / dark / auto theme, Monday- or Sunday-first weeks.
+- Fully offline. Installable. No telemetry of any kind.
 
 ---
 
 ## Prerequisites
 
-| Tool | Minimum version | Why |
+| Tool | Minimum | Why |
 |---|---|---|
-| Python | 3.10+ | Backend uses `http.server` + `sqlite3` from the standard library. |
-| Node.js | 18+ | Only required if you plan to run the linter (`npm run lint`). The app itself does not need Node at runtime. |
-| A modern browser | Chrome 110+, Firefox 110+, Edge 110+, or Safari 16.4+ | Uses `crypto.subtle` (WebCrypto), ES2024 modules, and IndexedDB. |
-| Disk space | ~100 MB for app + your PDFs | Per-PDF cap is 70 MB. |
+| Python | 3.10+ | The desktop server uses `http.server` + `sqlite3` from the standard library. |
+| Node.js | 18+ | Only for development: linting, tests, and building the APK. The app has no build step and needs no Node at runtime. |
+| A modern browser | Chrome 110+, Firefox 110+, Edge 110+, Safari 16.4+ | ES modules, IndexedDB, and the Notification API. |
+| JDK | 21+ | Only to build the Android APK. |
 
-No Docker, no build step, no package install required to run the app.
-
----
-
-## Installation and Setup
-
-### The one-click way
-
-```bash
-git clone https://github.com/semyonsw/habbit_maker.git
-cd habbit_maker
-```
-
-| Your machine | What to do |
-|---|---|
-| **Windows** | double-click **`Install.bat`** |
-| **Linux / macOS / WSL** | `./install.sh` |
-
-That is the whole installation. It:
-
-1. finds a Python 3.10+ that is *actually usable* — it rejects one whose
-   `sqlite3`, `ssl` or `venv` module is broken, and on Windows offers to install
-   Python 3.12 for you;
-2. runs [tools/selfcheck.py](tools/selfcheck.py), which applies the real schema
-   to a throwaway database, starts the real server on a spare port, and checks
-   that the page, the API and the static files all answer — so "install
-   complete" means the app works on *your* machine;
-3. warns you if something else is already using port 3000;
-4. offers the optional developer tools (linter, Android build) — the app itself
-   needs none of them;
-5. Windows: writes `Start Habit Maker.bat` and puts a **Habit Maker** shortcut
-   on your Desktop and Start menu.
-
-Everything is logged to `install.log`. Re-running is safe. Nothing is installed
-system-wide — there is nothing to install: the server is Python standard
-library only.
-
-### Running it
-
-**Windows** — double-click **Habit Maker** on your Desktop, or `start.bat`.
-
-**macOS / Linux** — `./start.sh` (or `python3 server/app.py`).
-
-Either way the browser opens on <http://localhost:3000> once the server is
-actually up. Keep the launcher window open while you use the app; closing it
-stops the server.
-
-```bash
-HABIT_PORT=4000 ./start.sh      # if 3000 is taken
-```
-
-### First run
-
-- `data.db` is created in the project root and seeded with the default
-  categories.
-- For AI summaries, open **Settings → AI**, choose a passphrase, then paste your
-  Gemini API key. The passphrase is asked for again every 7 days per device.
-
-### Doing it by hand
-
-Nothing stops you — there are no dependencies to install:
-
-```bash
-python3 server/app.py            # then open http://localhost:3000
-python3 tools/selfcheck.py       # the same self-check the installer runs
-npm install && npm run lint      # only if you intend to contribute code
-```
+No Docker, no bundler, no `npm install` required just to run it.
 
 ---
 
-## Environment Variables
+## Installation
 
-This project intentionally avoids `.env` files: configuration lives in [src/constants.js](src/constants.js) and the top of [server/app.py](server/app.py). The values below can be overridden via OS environment variables when launching the server.
+### One click
 
-| Variable | Description | Required | Default |
-|---|---|---|---|
-| `HABIT_HOST` | Bind host for the HTTP server. | No | `127.0.0.1` |
-| `HABIT_PORT` | TCP port for the HTTP server. | No | `3000` |
-| `HABIT_DB_PATH` | Absolute path to the SQLite file. | No | `<repo>/data.db` |
-| `HABIT_BOOKS_DIR` | Directory where uploaded PDFs are stored. | No | `<repo>/books/` |
-| `HABIT_MAX_PDF_BYTES` | Hard upload cap, in bytes. | No | `83886080` (80 MiB) |
+**Windows** — double-click `Install.bat`, then `Start Habit Maker.bat`.
 
-> Override only the variables you need: `HABIT_PORT=4000 python3 server/app.py`.
+**macOS / Linux**
 
-The Gemini API key is **not** an environment variable. It is entered through the UI and stored encrypted in the database; see [Storage and Privacy](#storage-and-privacy).
+```bash
+./install.sh
+./start.sh
+```
+
+The installer checks for Python, creates `data.db` on first run, and writes
+`install.log`. `tools/selfcheck.py` reports on an existing install.
+
+### By hand
+
+```bash
+python3 server/app.py
+# then open http://127.0.0.1:3000
+```
+
+### As a PWA
+
+Open the GitHub Pages deployment (or any static host serving the repo root) and
+use your browser's **Install** / **Add to Home Screen**. The service worker
+caches the shell for offline use; data goes to IndexedDB.
+
+> The desktop build and the phone build are **separate stores**. Move data
+> between them with Export / Import. See [Architecture](#architecture).
+
+---
+
+## How it works
+
+**Today** is the working screen. Pick a day from the strip, tap a habit to check
+it off. Tap a count habit to add one; tap it past its target to reset (with an
+undo). **Hold** any habit for half a second to mark that day skipped — the toast
+confirms it, and the streak and strength are left alone. On a keyboard, press
+`s` with the control focused.
+
+Tap a habit's name to open its **detail** screen: strength, streaks, the month
+calendar (tap a day to cycle *done → skipped → clear*), the note for the
+selected day, its patterns, and its tracking and reminder settings.
+
+**Analytics** rolls everything up. **Settings** holds the theme, the global
+reminder and Export / Import.
+
+---
+
+## Reminders
+
+Reminders behave differently on each build, because the platforms genuinely
+differ. The app says which one you are on rather than pretending.
+
+| Build | Mechanism | Fires when the app is closed |
+|---|---|---|
+| Android APK | `@capacitor/local-notifications` → real OS alarms | **Yes** |
+| PWA / browser | `Notification` + timers, re-armed on every wake | No — only while a tab is open |
+
+There is no cross-browser API for scheduling a notification for later
+(Notification Triggers never shipped past an origin trial), so the web ceiling
+really is "while the page is alive". Install the APK if you need reminders that
+survive a closed app.
+
+**On Android**, the manifest declares:
+
+- `POST_NOTIFICATIONS` — the Android 13+ runtime permission. The app requests it
+  the moment you switch a reminder on, not at launch.
+- `SCHEDULE_EXACT_ALARM` — without it a 21:00 reminder can arrive at 23:40 once
+  the device is in Doze. It is user-revocable, and revoking it *deletes*
+  already-scheduled alarms, which is why the app re-schedules on every resume.
+- `RECEIVE_BOOT_COMPLETED` — so reminders survive a reboot.
+
+---
+
+## Habit strength
+
+Strength is an exponentially weighted moving average over a habit's **scheduled**
+days — not calendar days, so a 3×/week habit is judged on the three chances it
+actually had:
+
+```
+score ← score × k  +  credit × (1 − k)        k = 0.5 ^ (1 / halfLife)
+```
+
+- `credit` is 1 for a completed day, `value / target` for a partly-done count
+  habit, and 0 for a miss.
+- A **skipped** day is not scored at all — it is as if it never came.
+- **Today** is not scored until it is done. An empty box in the morning is not
+  yet a miss.
+- `halfLife` is 21 scheduled days ([`SCORE_HALF_LIFE_DAYS`](src/constants.js)):
+  the number of consecutive misses that halves the score, and symmetrically how
+  long a perfect run takes to close half the remaining gap to 100%.
+
+Because it is smoothed, 100% is unreachable and 80–90% is what a genuinely
+consistent habit looks like. One bad day costs a couple of points, which is the
+point.
+
+The maths lives in [src/scoring.js](src/scoring.js) — no DOM, no database, no
+globals — and is covered by [tests/scoring.test.mjs](tests/scoring.test.mjs).
 
 ---
 
 ## Architecture
 
-Habit Maker is a thin three-layer app: a static SPA in vanilla JS, a small Python HTTP server, and a single SQLite file plus an on-disk PDF directory.
+Vanilla ES modules loaded straight from `src/`. No bundler, no framework, no
+build step for the web app.
 
-```mermaid
-flowchart LR
-    subgraph Browser["Browser (your machine)"]
-        UI["Vanilla JS SPA<br/>(src/, index.html, styles.css)"]
-        WC["WebCrypto<br/>(AES-256-GCM)"]
-        SS["sessionStorage<br/>(API key cache, 7d)"]
-        UI -- encrypts/decrypts --> WC
-        UI -- caches unlocked key --> SS
-    end
-
-    subgraph Server["Python http.server (127.0.0.1:3000)"]
-        R["Routes<br/>(server/app.py)"]
-    end
-
-    subgraph Disk["Local disk"]
-        DB["data.db<br/>(SQLite, WAL)"]
-        PDF["books/<br/>(PDF binaries)"]
-    end
-
-    subgraph External["External (only if AI is used)"]
-        GEM["Gemini API"]
-    end
-
-    UI <-->|JSON / fetch| R
-    R <--> DB
-    R <--> PDF
-    UI -.->|optional, key in header| GEM
+```
+index.html ──┬── src/app.js            boot: migrate → load → render → router
+             │
+             ├── state.js              the single mutable state + a revision counter
+             ├── persistence.js        schema migration, load/save, defaults
+             ├── db.js ────┬── db-rest.js   PC: SQLite over HTTP
+             │             └── db-idb.js    phone/PWA: IndexedDB
+             │
+             ├── scoring.js            PURE maths: schedules, streaks, strength
+             ├── habits.js             stateful reads/writes + a memo cache
+             ├── notifications.js      reminders (native alarms / web timers)
+             │
+             ├── render-shell.js       view switching, renderAll()
+             ├── render-today.js       ├─ Today
+             ├── render-detail.js      ├─ one habit
+             ├── render-analytics.js   ├─ roll-ups
+             ├── render-settings.js    └─ settings
+             ├── month-nav.js          shared prev/next month control
+             ├── modals.js  sheet.js  toast.js
+             └── router.js  events.js  logging.js  utils.js
 ```
 
-**Module map (frontend, [src/](src/))**
+**Two backends, one codebase.** [src/db.js](src/db.js) picks an implementation
+at boot by hostname: `localhost` → the Python/SQLite REST backend; anything else
+(including the Capacitor WebView) → IndexedDB. Every other module imports from
+`db.js` and never knows which is live.
 
-| Concern | Modules |
+They are **independent stores**. This is the app's biggest structural
+limitation: your desktop history and your phone history are separate universes
+joined only by Export / Import. Real sync would need per-day records rather than
+one whole-state blob, and is not implemented.
+
+**Renderer registry.** Modules register named renderers with
+[render-registry.js](src/render-registry.js) and call each other through it, so
+`habits.js` can trigger a re-render or a reminder reschedule without importing
+the render or notification layer and creating a cycle.
+
+---
+
+## Data model
+
+The client state is one JSON object:
+
+```jsonc
+{
+  "currentYear": 2026,
+  "currentMonth": 8,
+  "categories": [{ "id": "cat_health", "name": "Health", "emoji": "❤️", "color": "#3E85B5" }],
+  "habits": {
+    "daily": [{
+      "id": "dh_1",
+      "name": "Morning reading",
+      "cue": "After I pour my coffee, I will read in the kitchen",
+      "categoryId": "cat_health",
+      "monthGoal": 30,
+      "scheduleMode": "fixed",        // fixed | specific_weekdays
+                                      // specific_month_days | custom_sequence
+      "activeWeekdays": [0,1,2,3,4,5,6],
+      "activeMonthDays": [],
+      "trackType": "check",           // check | count
+      "countTarget": 1,
+      "reminder": { "enabled": true, "repeat": "daily", "days": [], "time": "08:00" },
+      "mark": "MR",
+      "order": 0
+    }]
+  },
+  "months": {
+    "2026-09": {
+      "dailyCompletions": { "dh_1": { "1": true, "2": 3, "3": -1 } },
+      "dailyNotes":       { "dh_1": { "3": "travelling" } },
+      "dailyTimes":       { "dh_1": { "1": "07:12" } },
+      "monthlyReview":    { "wins": "", "blockers": "", "focus": "" }
+    }
+  },
+  "meta": { "schemaVersion": 7 }
+}
+```
+
+A day's value is one of:
+
+| Value | Meaning |
 |---|---|
-| App boot & wiring | [app.js](src/app.js), [events.js](src/events.js) |
-| State (in-memory) | [state.js](src/state.js), [constants.js](src/constants.js) |
-| Persistence | [persistence.js](src/persistence.js), [db.js](src/db.js), [data-io.js](src/data-io.js), [idb.js](src/idb.js) |
-| Domain features | [habits.js](src/habits.js), [books.js](src/books.js), [pdf-reader.js](src/pdf-reader.js), [ai-summary.js](src/ai-summary.js), [model-picker.js](src/model-picker.js) |
-| Rendering | [render-dashboard.js](src/render-dashboard.js), [render-analytics.js](src/render-analytics.js), [render-books.js](src/render-books.js), [render-logs.js](src/render-logs.js), [modals.js](src/modals.js), [layout.js](src/layout.js), [loading-ui.js](src/loading-ui.js), [render-registry.js](src/render-registry.js) |
-| Cross-cutting | [encryption.js](src/encryption.js), [logging.js](src/logging.js), [preferences.js](src/preferences.js), [utils.js](src/utils.js) |
+| `true` / `false` | a checkbox habit, done or not |
+| a number ≥ 0 | a count habit's progress toward its target |
+| `-1` (`SKIPPED`) | deliberately skipped — neutral to streak and strength |
 
-**Backend ([server/app.py](server/app.py))** — A single `ThreadingHTTPServer` that:
-- Serves static files (`index.html`, `styles.css`, `src/*.js`).
-- Exposes a small JSON API under `/api/*` for habits, books, bookmarks, summaries, logs, preferences, and secure settings.
-- Streams PDF binaries to/from `books/` with a size cap.
-- Applies the SQL schema at boot via `executescript([server/migrations.sql](server/migrations.sql))`.
+`SKIPPED` is negative on purpose: an older build coercing with `>= target` reads
+it as "not done" rather than as a completion.
 
----
+`migrateState()` in [persistence.js](src/persistence.js) upgrades every earlier
+schema in place on load, so an old export always opens.
 
-## Schema Reference
+### SQLite
 
-The full DDL lives in [server/migrations.sql](server/migrations.sql). Key tables:
-
-### `categories`
-
-| Field | Type | Notes |
-|---|---|---|
-| `id` | TEXT PK | e.g. `cat_health` |
-| `name` | TEXT | display name |
-| `emoji` | TEXT | single emoji |
-| `color` | TEXT | hex string, e.g. `#3E85B5` |
-
-### `habits_daily`
-
-| Field | Type | Notes |
-|---|---|---|
-| `id` | TEXT PK | e.g. `dh_1` |
-| `name` | TEXT | habit name |
-| `category_id` | TEXT | nullable; FK → `categories.id` (`ON DELETE SET NULL`) |
-| `month_goal` | INTEGER | target completions per month (≥ 1), default 20 |
-| `schedule_mode` | TEXT | one of `fixed`, `specific_weekdays`, `specific_month_days` |
-| `active_weekdays` | TEXT (JSON) | e.g. `[0,1,2,3,4,5,6]`; used when `schedule_mode = 'specific_weekdays'` |
-| `active_month_days` | TEXT (JSON) | e.g. `[1,15,28]`; used when `schedule_mode = 'specific_month_days'` |
-| `emoji` | TEXT | optional |
-| `order_index` | INTEGER | controls display order in the UI |
-
-### `daily_completions`
-
-| Field | Type | Notes |
-|---|---|---|
-| `month_key` | TEXT | format `YYYY-MM` |
-| `habit_id` | TEXT | FK → `habits_daily.id` (`ON DELETE CASCADE`) |
-| `day` | INTEGER | 1–31 |
-| `completed` | INTEGER | 0 or 1 |
-
-PK: `(month_key, habit_id, day)`. Indexes: `idx_completions_month`, `idx_completions_habit_month`.
-
-### `daily_notes`
-
-Same shape as `daily_completions` plus `note_text TEXT`. PK on `(month_key, habit_id, day)`. Index: `idx_daily_notes_month`.
-
-### `monthly_review`
-
-`month_key` (PK), `wins`, `blockers`, `focus` — three free-form text fields per month.
-
-### `books`
-
-| Field | Type | Notes |
-|---|---|---|
-| `book_id` | TEXT PK | |
-| `title`, `author` | TEXT | |
-| `file_id` | TEXT UNIQUE | name of the file inside `books/` |
-| `file_name`, `file_size` | TEXT, INTEGER | |
-| `created_at`, `updated_at` | TEXT (ISO 8601) | |
-
-### `bookmarks`
-
-| Field | Type | Notes |
-|---|---|---|
-| `bookmark_id` | TEXT PK | |
-| `book_id` | TEXT | FK → `books.book_id` (`ON DELETE CASCADE`) |
-| `label`, `note` | TEXT | |
-| `pdf_page` | INTEGER | 1-indexed page in the PDF |
-| `real_page` | INTEGER | optional "page printed in the book" |
-| `created_at`, `updated_at` | TEXT | |
-
-Index: `idx_bookmarks_book`.
-
-### `bookmark_history`, `summaries`
-
-Per-bookmark audit log and AI-generated content. Both cascade-delete with their parent bookmark. See [server/migrations.sql](server/migrations.sql) for full fields.
-
-### `app_logs`, `prefs`, `secure_settings`
-
-- `app_logs` — client-emitted error/audit log; trimmed to the last ~1000 rows.
-- `prefs` — generic key/value JSON blob store for UI preferences.
-- `secure_settings` — encrypted Gemini API key (`keyCiphertext`, `saltBase64`, `ivBase64`, `kdfIterations`, `keyUpdatedAt`).
+The desktop backend stores the whole client state as one JSON blob in
+`prefs.__state__`. [server/migrations.sql](server/migrations.sql) also creates
+normalized tables (`categories`, `habits_daily`, `daily_completions`,
+`daily_notes`, `monthly_review`) — **nothing writes to them yet**; they are
+staged for a future normalization pass. `app_logs` and `prefs` are live.
 
 ---
 
-## Usage
+## HTTP API
 
-### Daily flow
+Localhost only, single user, no auth. Only the desktop build uses it.
 
-1. Open <http://localhost:3000>.
-2. The dashboard shows the current month with one row per habit and one column per day. Click a cell to toggle today's completion.
-3. Right-click (or use the three-dot menu) on a habit to edit, reorder, or delete it.
-4. The sidebar shows monthly progress, streaks, and a donut summary.
-
-### Adding a habit
-
-```text
-Sidebar → "+ New Habit" → fill in name, emoji, category, monthly goal,
-and schedule mode (fixed / weekdays / month-days) → Save
-```
-
-### Importing a PDF
-
-```text
-Books → Upload PDF → pick a file (≤ 70 MB) → set title/author → Open
-```
-
-Inside the reader, press `B` (or the bookmark button) to add a bookmark at the current page. Bookmarks appear in the sidebar grouped by book.
-
-### Attaching a PDF to a book you imported
-
-A metadata-only backup restores your books and every bookmark, but not the files themselves — the paths in it belong to the machine that made the export. Each book then shows **No PDF file on this device yet**:
-
-```text
-Books → the book → Choose PDF file → pick it from your storage
-```
-
-The file is stored under the book's existing id, so bookmarks, history and summaries all survive. Use **Edit → Replace file…** later to swap in a different copy (a re-scan, a smaller edition) without losing any of it.
-
-### Where "Open at Bookmark" takes you
-
-`Books → My Books → Open bookmarks in` chooses between the app's own reader, the phone's / browser's PDF app, and asking each time. The in-app reader is the one that lands exactly on the bookmarked page; Android has no standard way to tell another app which page to open, so there you get the file and the page number. On the desktop the browser's PDF viewer does honour it.
-
-### Backing up your data
-
-```text
-Settings → Export → JSON
-```
-
-This produces a single `.json` file containing categories, habits, all month data, and bookmark metadata. PDFs are referenced by `file_id` and not embedded by default — back up the `books/` directory separately.
-
-### Generating an AI summary (optional)
-
-1. **Settings → AI**, paste your Gemini API key, choose a passphrase, save.
-2. Open a bookmark, choose a model, set the page range, click **Summarize**.
-3. The key is decrypted only for the duration of the request. The decrypted copy is cached in `sessionStorage` for up to 7 days so you don't re-enter the passphrase on every summary.
-
-### Sending feedback
-
-Click the **Send feedback** button in the sidebar footer. Fill in **Type** (Bug / Feature / Other), **Title**, and **Description**, then choose how to deliver it:
-
-- **Open GitHub Issue** — opens a pre-filled issue in a new tab; you submit it yourself.
-- **Email instead** — uses your default mail client via `mailto:` *unless* you have EmailJS configured (see below), in which case the app posts the feedback as a real email.
-- If you have a **Gemini API key** configured, the Email path first polishes your title and description into a clean professional email via `gemini-2.5-flash-lite` and shows an editable preview. You can edit anything before sending.
-
-Every submit, AI polish, and validation attempt is recorded under component **`feedback`** in the **Logs** sidebar view with an ISO timestamp — useful when something looks wrong.
-
-### Setting up real email delivery (EmailJS)
-
-By default the feedback form falls back to `mailto:`, which only works if your browser has a default mail client. To send feedback as a *real* email straight from the browser — no mail client needed — you can wire the app to [EmailJS](https://www.emailjs.com/). The free tier covers 200 emails per month, which is plenty for personal use.
-
-You need three credentials from EmailJS: a **Public Key**, a **Service ID**, and a **Template ID**. Here's how to obtain each:
-
-#### Step 1 — Create a free EmailJS account
-
-1. Go to <https://www.emailjs.com/> and click **Sign up** (top-right).
-2. Verify your email and finish onboarding. You land on the EmailJS dashboard at <https://dashboard.emailjs.com/admin>.
-
-#### Step 2 — Add an email service (gets you the **Service ID**)
-
-EmailJS needs to know *which* inbox to send mail through. You typically connect a Gmail / Outlook / Yahoo / custom SMTP account that EmailJS will use as the sender.
-
-1. In the dashboard, open **Email Services** (left sidebar) → **Add New Service**.
-2. Pick a provider — for most people **Gmail** is the simplest. Click it.
-3. Click **Connect Account** and grant EmailJS permission to send mail on behalf of that Gmail account.
-4. Leave the **Service ID** as auto-generated (it will look like `service_z0ur4tn`). Click **Create Service**.
-5. Copy the **Service ID** shown in the services list — you'll paste it into the app later.
-
-> The Gmail account you connect here is the *sender*. The recipient (where your feedback lands) is configured in the next step's template.
-
-#### Step 3 — Create an email template (gets you the **Template ID**)
-
-The template defines the subject and body shape of the emails that will be sent. The Habit Maker app fills in three variables: `{{subject}}`, `{{message}}`, and `{{to_email}}`.
-
-1. In the dashboard, open **Email Templates** (left sidebar) → **Create New Template**.
-2. In the **Subject** field at the top, type: `{{subject}}`
-3. In the **Content** area (the big text box), type the body. The simplest version is just:
-   ```
-   {{message}}
-   ```
-   That's it — one line. EmailJS will substitute the polished feedback body in.
-4. Open the **Settings** tab of the template (top of the page) and configure:
-   - **To Email**: `{{to_email}}` *(this lets the app set the destination dynamically — it will always be the maintainer's address; you don't need to hardcode it here).*
-   - **From Name**: anything you like, e.g. `Habit Maker feedback`.
-   - **Reply To**: leave blank or use `{{from_email}}` if you want.
-5. Click **Save**.
-6. Copy the **Template ID** shown at the top of the template page (it will look like `template_htxepod`).
-
-> If you skip step 4's "To Email = `{{to_email}}`" detail, EmailJS will send to whatever fixed address you put there instead. The app sends `to_email` set to the maintainer's address (`semyonsw@gmail.com`); change that constant in [src/constants.js](src/constants.js#L59) if you want feedback delivered elsewhere.
-
-#### Step 4 — Copy the **Public Key**
-
-1. In the dashboard, open **Account** (left sidebar) → **General**.
-2. Scroll to the **API Keys** section.
-3. Copy the value labelled **Public Key** (it looks like `s7Dk0zX2dZXXUKWQ3`). This is safe to use in the browser — it is *not* a secret. EmailJS limits abuse via the allowed-origins list and rate limiting, not via key secrecy.
-
-#### Step 5 — Paste the three values into Habit Maker
-
-1. Open the app, click **Send feedback** in the sidebar footer.
-2. Expand **▾ Email delivery settings (EmailJS) — optional** at the top of the form.
-3. Paste your three values:
-   - **EmailJS public key** → the value from Step 4.
-   - **EmailJS service ID** → the value from Step 2 (starts with `service_`).
-   - **EmailJS template ID** → the value from Step 3 (starts with `template_`).
-4. Click **Save EmailJS settings**.
-5. The app immediately sends a clearly-marked test email to verify the three IDs work together:
-   - On success → green ✓ "Saved and validated — a test email was sent." Check the maintainer's inbox; an email with subject **`[Habit Maker] EmailJS credentials test — please ignore`** should arrive within seconds.
-   - On failure → red ✗ "Validation failed." Open the **Logs** sidebar, filter component = `feedback`, and look at the most recent `emailjs-validate-fail` row — its context column shows the exact error from EmailJS (e.g. "The template ID not found"), pointing you at the right fix.
-
-That's it. From now on, every "Email instead" submission goes through EmailJS as a real email, and the three IDs persist in your browser's `localStorage` — you won't need to re-enter them. On every modal open, you'll see a passive green "✓ Credentials saved on this browser." confirming they're still in place.
-
-#### Allowed origins (recommended)
-
-For extra safety, lock the public key to your local origin so nobody else can use it:
-
-1. EmailJS dashboard → **Account** → **Security**.
-2. Add `http://localhost:3000` (and `http://127.0.0.1:3000` if you use that host) to the **Allow EmailJS API for following hostnames** list.
-3. Save.
-
-After this, requests from any origin other than the ones you listed will be rejected by EmailJS, even if someone scrapes your public key.
-
-#### Troubleshooting common errors
-
-| EmailJS error (visible in the Logs view) | What it means | Fix |
+| Method | Path | Purpose |
 |---|---|---|
-| `400 The template ID not found` | The Template ID you pasted doesn't exist in your EmailJS account. | Re-copy the ID from the **Email Templates** page; make sure you saved the template after creating it. |
-| `400 The service ID not found` | The Service ID you pasted doesn't exist. | Re-copy from the **Email Services** page. |
-| `403 The public key is invalid` | Public Key typo or the key was rotated. | Re-copy from **Account → General → API Keys**. |
-| `403 ... not allowed for this origin` | The "Allow hostnames" list doesn't include your origin. | Add `http://localhost:3000` (or whatever you use) to **Account → Security**. |
-| `400 The Gmail_API service ... is not connected` | The Gmail account you connected in Step 2 was disconnected or its OAuth token expired. | Open **Email Services**, click the affected service, click **Reconnect Account**. |
-| `429 Too many requests` | You hit the free-tier rate limit (200 emails / month, or per-minute throttle). | Wait, or upgrade your EmailJS plan. |
+| `GET` | `/api/migration-status` | Schema version + whether the legacy import has run |
+| `GET` / `PUT` | `/api/state` | The whole client state blob |
+| `GET` / `PUT` | `/api/prefs` | Theme, week start, reminder prefs |
+| `GET` / `POST` / `DELETE` | `/api/logs` | Activity log |
+| `POST` | `/api/import-legacy` | One-shot import of pre-SQLite localStorage data |
 
-### API examples
+Everything else is served as a static file from the repo root.
 
 ```bash
-# Health check (returns 200 + serves the SPA)
-curl -i http://localhost:3000/
-
-# Get the full app state blob
-curl http://localhost:3000/api/state
-
-# Read encrypted Gemini settings (no plaintext key here)
-curl http://localhost:3000/api/secure-settings
+curl -s localhost:3000/api/migration-status
+curl -s localhost:3000/api/state | head -c 400
 ```
 
-See [server/app.py](server/app.py) for the full route list.
+---
+
+## Environment variables
+
+No `.env` file. Configuration lives in [src/constants.js](src/constants.js) and
+at the top of [server/app.py](server/app.py); these three can be overridden at
+launch.
+
+| Variable | Description | Default |
+|---|---|---|
+| `HABIT_HOST` | Bind host | `127.0.0.1` |
+| `HABIT_PORT` | TCP port | `3000` |
+| `HABIT_DB_PATH` | Path to the SQLite file | `<repo>/data.db` |
+
+```bash
+HABIT_PORT=4000 python3 server/app.py
+```
 
 ---
 
-## Configuration Reference
+## Android
 
-Frontend constants ([src/constants.js](src/constants.js)) you may want to change:
+See [ANDROID.md](ANDROID.md) for the full setup. In short:
 
-| Constant | Default | Effect |
-|---|---|---|
-| `MAX_PDF_FILE_SIZE_MB` | `70` | Hard cap on each uploaded PDF. |
-| `EMBEDDED_EXPORT_SIZE_WARN_BYTES` | `50 * 1024 * 1024` | Warning threshold when embedding PDFs into a JSON export. |
-| `MAX_BOOKMARK_HISTORY` | `200` | Per-bookmark history cap before old events are trimmed. |
-| `SUMMARY_MAX_CHARS_PER_CHUNK_DEFAULT` | `12000` | Approx chars per chunk sent to Gemini. |
-| `SUMMARY_MAX_PAGES_PER_RUN_DEFAULT` | `120` | Page cap per single summary call. |
-| `MAX_LOG_RECORDS` | `1000` | Client log retention. |
-| `GEMINI_MODELS` | (list) | Models offered in the model picker. Add or remove freely. |
-| `GEMINI_POLISH_MODEL` | `gemini-2.5-flash-lite` | Model used to polish feedback subject + body. Cheapest Flash variant; change here if you want to use a different one. |
-| `FEEDBACK_EMAIL` | `semyonsw@gmail.com` | Destination address used as `to_email` in the EmailJS template and the `mailto:` fallback. If you fork the app, update this. |
-| `EMAILJS_API_URL` | `https://api.emailjs.com/api/v1.0/email/send` | EmailJS REST endpoint. Only change if EmailJS publishes a new API version. |
+```bash
+npm install
+npm run android:build      # stage www/ → cap sync → gradlew assembleDebug
+```
 
-EmailJS credentials are not constants — they are stored per-browser in `localStorage` under three keys (`habitTracker_emailjs_publicKey_v1`, `_serviceId_v1`, `_templateId_v1`) and entered through the **Send feedback** form, not the source code.
+The build script does all three steps every time and then **CRC-checks every
+file inside the APK against `www/`**, because gradle will happily report
+`BUILD SUCCESSFUL` for an APK whose assets are several edits old.
 
-Backend constants ([server/app.py](server/app.py)):
-
-| Constant | Default | Effect |
-|---|---|---|
-| `HOST` | `127.0.0.1` | Bind address. **Do not** bind to `0.0.0.0` unless you have added auth. |
-| `PORT` | `3000` | TCP port. |
-| `MAX_PDF_BYTES` | `80 * 1024 * 1024` | Server-side upload cap (slightly higher than the client cap to allow form overhead). |
-| `MIN_KDF_ITERATIONS` | `200_000` | PBKDF2 floor enforced on `PUT /api/secure-settings`. |
-| `DB_PATH` | `data.db` | Path to the SQLite file. |
-| `BOOKS_DIR` | `books/` | PDF storage directory. |
-
-Each of these can be overridden by an OS env var of the same name prefixed with `HABIT_` (see [Environment Variables](#environment-variables)).
+```bash
+npm run android:build -- --verify-only   # is the APK I have current?
+adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+```
 
 ---
 
-## Storage and Privacy
+## Development
 
-- **Where your data lives.** All habit, bookmark, and summary data is in `data.db` (SQLite). PDF binaries sit in `books/`. Both are in the project directory and never sent anywhere by default.
-- **What leaves the machine.** Three opt-in paths, and only what you ask for:
-  1. **AI summaries** — PDF text for the requested page range goes to Google's Gemini API. Habit data is never included.
-  2. **AI feedback polish** — your feedback title and description (no other app data) are sent to Gemini's `gemini-2.5-flash-lite` model to produce a polished subject and body. You see the result *before* anything is sent further.
-  3. **EmailJS feedback delivery** — if you configured EmailJS, the polished (or raw) subject and body are POSTed to `api.emailjs.com`, which relays the message to the maintainer through the Gmail/SMTP service you connected in your EmailJS dashboard. Habit data, notes, and PDFs are never sent.
-- **API key handling.** The Gemini key is encrypted with AES-256-GCM using a key derived from your passphrase via PBKDF2-SHA256 (600,000 iterations by default; existing keys keep their original iteration count and remain decryptable). The plaintext key never touches disk and is sent to Gemini only via the `x-goog-api-key` request header.
-- **EmailJS credentials.** The Public Key, Service ID, and Template ID live in your browser's `localStorage` in plaintext — this is by design. EmailJS public keys are *not* secrets (they're rate-limited and origin-locked, not access-controlled), so encryption would add a passphrase prompt for no real security benefit.
-- **Passphrase cache.** After you unlock once, the decrypted Gemini key sits in `sessionStorage` for up to 7 days so summaries don't prompt every time. Closing the browser tab does not clear it; only TTL expiry or an explicit lock does.
-- **No telemetry.** There is no analytics SDK, no error reporter, no ping. Outbound network calls are limited to `generativelanguage.googleapis.com` (when you summarize or polish feedback) and `api.emailjs.com` (when you send feedback via EmailJS) — and only at the moment you trigger those actions.
+```bash
+npm install
+npm run lint      # eslint over src/, tests/, scripts/
+npm test          # node --test, no browser needed
+npm run check     # both
+```
+
+Tests are in two halves:
+
+- [tests/scoring.test.mjs](tests/scoring.test.mjs) — the pure maths. Streaks,
+  strength, schedules, roll-ups, escaping.
+- [tests/render.test.mjs](tests/render.test.mjs) — every screen rendered against
+  the **real** `index.html` under [linkedom](https://github.com/WebReflection/linkedom),
+  so a renamed mount point or a throwing render fails here instead of on a phone.
+
+[CI](.github/workflows/ci.yml) runs both on every push and pull request.
+
+**Guidelines**
+
+- `src/scoring.js` must stay free of DOM, database and `state` imports — that is
+  what keeps it testable.
+- Every write to `state` goes through `saveState()`, which bumps the revision
+  counter that invalidates the memo cache in `habits.js`.
+- Bump `CACHE_VERSION` in [sw.js](sw.js) and add any new module to its
+  `PRECACHE` list when you add a file to `src/`.
+
+---
+
+## Storage and privacy
+
+Nothing leaves your device. There is no analytics, no crash reporting, no remote
+config and no network call of any kind at runtime.
+
+| Build | Where your data lives |
+|---|---|
+| Desktop | `data.db` (SQLite) next to the repo, served only on `127.0.0.1` |
+| PWA / Android | IndexedDB (`habitTracker_store_v1`), on-device |
+
+The PWA asks for persistent storage (`navigator.storage.persist()`) so the
+browser will not evict it under pressure. Export regularly anyway — Export
+writes a single JSON file, and on Android it goes through the system share sheet
+so it can land in Files or Drive.
 
 ---
 
 ## Contributing
 
-Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide.
-
-**Quick version**
-
-1. Fork the repo and create a feature branch:
-   ```bash
-   git checkout -b feature/short-description
-   # or fix/<bug>, docs/<area>, refactor/<area>
-   ```
-2. Run the linter:
-   ```bash
-   npm install
-   npm run lint
-   ```
-3. Manually test the affected area in a browser (`python3 server/app.py`, then exercise the feature). UI changes should be checked on at least one of Chrome and Firefox.
-4. Commit with a present-tense, imperative subject (≤ 72 chars). Reference issues with `Closes #123` in the body.
-5. Open a PR. The description should answer: **what changed, why, and how to test it.** Screenshots help for any UI change.
-
-**Code style**
-
-- 2-space indent, LF line endings, UTF-8 (enforced by [.editorconfig](.editorconfig)).
-- ES modules (`import` / `export`); avoid IIFEs and `var`.
-- Prefer pure functions; isolate DOM mutation in the `render-*` modules.
-- No new runtime dependencies without discussion — the project's value proposition is "vanilla and inspectable."
-
-**Reporting bugs / requesting features**
-
-The fastest way is from inside the app: click the **Send feedback** button in the sidebar footer, fill in the form, and pick a delivery path:
-
-- **Open GitHub Issue** — opens a pre-filled issue in a new tab for you to review and submit.
-- **Email instead** — uses your default mail client via `mailto:`, or (if you've set up EmailJS — see [Setting up real email delivery (EmailJS)](#setting-up-real-email-delivery-emailjs)) sends a real email straight from the browser.
-- If you have a Gemini API key configured, you'll see an **editable AI-polished preview** of the subject and body before anything is sent.
-
-You stay in control — nothing is sent automatically and your habits, notes, and PDFs are never included.
-
-You can also open an issue directly at the [Issues page](https://github.com/semyonsw/habbit_maker/issues). Include steps to reproduce, expected vs. actual behavior, and (if possible) a JSON export of the smallest state that triggers the bug. Do **not** attach a real `data.db` — it may contain personal data.
-
-**Security disclosures**
-
-Please do not file public issues for security bugs. See [SECURITY.md](SECURITY.md).
-
----
+See [CONTRIBUTING.md](CONTRIBUTING.md) and
+[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). Run `npm run check` before opening a
+pull request.
 
 ## Security
 
-For the threat model, supported versions, and disclosure timeline, see [SECURITY.md](SECURITY.md). Summary: report privately, expect an initial response within 7 days.
-
----
+See [SECURITY.md](SECURITY.md).
 
 ## License
 
-[MIT](LICENSE) © 2026 Semyon
-
-If you build something on top of this, a link back is appreciated but not required.
+MIT — see [LICENSE](LICENSE).

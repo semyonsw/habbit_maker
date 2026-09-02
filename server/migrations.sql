@@ -49,6 +49,12 @@ CREATE TABLE IF NOT EXISTS daily_completions (
   month_key TEXT NOT NULL CHECK (month_key GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]'),
   habit_id TEXT NOT NULL REFERENCES habits_daily(id) ON DELETE CASCADE,
   day INTEGER NOT NULL CHECK (day BETWEEN 1 AND 31),
+  -- NOTE: this CHECK predates the skip state. A day's value in the live client
+  -- is now 0, a positive count, or -1 for "deliberately skipped" (SKIPPED in
+  -- src/constants.js). Nothing writes this table yet -- the server keeps the
+  -- whole client state as one JSON blob in prefs.__state__ -- but whenever the
+  -- normalization lands, this constraint has to widen to `completed >= -1`
+  -- first, or every skipped day will be rejected on insert.
   completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
   PRIMARY KEY (month_key, habit_id, day)
 );

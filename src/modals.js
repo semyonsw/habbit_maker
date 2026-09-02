@@ -10,7 +10,7 @@
 
 import { DEFAULT_CATEGORIES, REMINDER_REPEATS, WEEKDAY_LABELS } from "./constants.js";
 import { state, globals } from "./state.js";
-import { uid, sanitize } from "./utils.js?v=2";
+import { uid, sanitize } from "./utils.js";
 import { deriveHabitMark, saveState } from "./persistence.js";
 import { deleteHabit, getHabitTarget, updateHabitOrder } from "./habits.js";
 import { callRenderer, registerRenderer } from "./render-registry.js";
@@ -36,6 +36,7 @@ function draftFromHabit(habit) {
     return {
       id: null,
       name: "",
+      cue: "",
       categoryId: (state.categories[0] || DEFAULT_CATEGORIES[0]).id,
       trackType: "check",
       countTarget: 3,
@@ -56,6 +57,7 @@ function draftFromHabit(habit) {
   return {
     id: habit.id,
     name: habit.name,
+    cue: habit.cue || "",
     categoryId: habit.categoryId,
     trackType: habit.trackType === "count" ? "count" : "check",
     countTarget: getHabitTarget(habit) > 1 ? getHabitTarget(habit) : 3,
@@ -122,6 +124,12 @@ export function renderHabitSheet() {
   let html =
     '<div class="section-label field-label">Name</div>' +
     `<input id="draftName" class="text-input" type="text" value="${sanitize(d.name)}" placeholder="e.g. Evening walk" />` +
+    // The implementation intention. Naming the cue and the place -- "after X,
+    // I will do Y, in Z" -- is the best-evidenced single thing a habit app can
+    // ask a user to write down, and it costs one optional field.
+    '<div class="section-label field-label">When and where <span class="field-optional">optional</span></div>' +
+    `<textarea id="draftCue" class="text-input note-input" rows="2" placeholder="After I pour my morning coffee, I will read in the kitchen">${sanitize(d.cue)}</textarea>` +
+    '<div class="field-hint">Habits stick to a moment you already have. Naming one makes it far more likely to happen — and it becomes the reminder text.</div>' +
     '<div class="section-label field-label">Category</div>' +
     '<div class="chip-row">' +
     cats
@@ -251,6 +259,7 @@ function saveDraft() {
 
   const fields = {
     name,
+    cue: String(d.cue || "").trim().slice(0, 200),
     categoryId: d.categoryId,
     trackType: d.trackType,
     countTarget: d.trackType === "count" ? d.countTarget : 1,
@@ -278,6 +287,10 @@ function saveDraft() {
   }
 
   saveState();
+  // The habit's reminder may have been added, changed or removed by this save,
+  // and the notification text is built from its name and cue.
+  callRenderer("rescheduleReminders");
+  if (fields.reminder.enabled) callRenderer("requestReminderPermission");
   closeHabitSheet();
   callRenderer("renderAll");
 }
@@ -405,6 +418,9 @@ export function bindOverlayEvents() {
         d.name = event.target.value;
         const save = sheet.querySelector("[data-sheet-save]");
         if (save) save.disabled = !d.name.trim();
+      }
+      if (event.target.id === "draftCue") {
+        d.cue = event.target.value;
       }
       if (event.target.id === "draftReminderTime") {
         d.reminder.time = event.target.value;

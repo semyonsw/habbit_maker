@@ -16,7 +16,11 @@ export function isNative() {
   return !!(cap && cap.isNativePlatform && cap.isNativePlatform());
 }
 
-function plugin(name) {
+// Exported so notifications.js can reach LocalNotifications the same way --
+// there is no bundler here, so plugins come off the injected global bridge
+// rather than from an npm import. The npm package must still be installed:
+// that is what registers the Java side during `npx cap sync`.
+export function plugin(name) {
   if (!cap || typeof cap.registerPlugin !== "function") return null;
   try {
     return cap.registerPlugin(name);

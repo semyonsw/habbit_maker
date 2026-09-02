@@ -1515,3 +1515,548 @@ body.is-modal-open-fixed {
     font-size: 16px;
   }
 }
+
+/* ========================================================================
+   Additions: month navigation, skip state, strength, heatmap, toast
+   ------------------------------------------------------------------------
+   Tokens first. `--skip` has to read as "deliberately set aside" rather than
+   as either done (accent) or missed (empty): a muted blue-grey, distinct from
+   both in light and dark, and distinguishable without relying on hue alone
+   because the skip cell also carries a dash.
+   ======================================================================== */
+
+:root {
+  --skip: #67708c;
+  --skip-soft: rgba(103, 112, 140, 0.22);
+  --heat-0: #1a1d27;
+  --heat-1: rgba(46, 196, 166, 0.26);
+  --heat-2: rgba(46, 196, 166, 0.45);
+  --heat-3: rgba(46, 196, 166, 0.68);
+  --heat-4: #2ec4a6;
+}
+
+html[data-theme="light"] {
+  --skip: #8a90a6;
+  --skip-soft: rgba(138, 144, 166, 0.24);
+  --heat-0: #e4e8f0;
+  --heat-1: rgba(18, 161, 132, 0.22);
+  --heat-2: rgba(18, 161, 132, 0.42);
+  --heat-3: rgba(18, 161, 132, 0.66);
+  --heat-4: #12a184;
+}
+
+/* ---------------------------------------------------------- month nav ---- */
+
+.month-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 16px 0 10px;
+}
+
+.month-nav-step {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 11px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--secondary);
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.month-nav-step:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.month-nav-step:disabled {
+  opacity: 0.32;
+  cursor: default;
+}
+
+.month-nav-label {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: none;
+  background: none;
+  color: var(--text);
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+}
+
+.month-nav-label:disabled {
+  cursor: default;
+}
+
+/* The way back when you have wandered off into history. */
+.month-nav-back {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: var(--pill-active);
+  color: var(--secondary);
+}
+
+/* ------------------------------------------------------------- skipped --- */
+
+.habit-row.is-skipped .habit-name,
+.habit-row.is-skipped .habit-mark {
+  opacity: 0.6;
+}
+
+.habit-check.is-skipped {
+  border: 1.5px dashed var(--skip);
+  background: var(--skip-soft);
+  color: var(--skip);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.habit-meta .mono.is-skip {
+  color: var(--skip);
+}
+
+/* Held long enough to be about to skip. Visible feedback for a gesture that
+   otherwise gives none until it fires. */
+.habit-check.is-holding,
+.habit-count.is-holding {
+  transform: scale(0.93);
+  transition: transform 0.18s ease;
+}
+
+.habit-cue {
+  display: block;
+  margin-top: 5px;
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--muted);
+  font-style: italic;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.detail-cue {
+  margin-top: 8px;
+  padding: 11px 13px;
+  border-radius: 12px;
+  background: var(--sunken);
+  border: 1px solid var(--divider);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--secondary);
+  font-style: italic;
+}
+
+/* --------------------------------------------------------- stat grids ---- */
+
+.stat-grid.is-four {
+  grid-template-columns: 1fr 1fr;
+}
+
+.kpi-grid.is-three {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
+.kpi-grid.is-three .kpi-value {
+  font-size: 22px;
+}
+
+/* ---------------------------------------------------------- calendar ----- */
+
+.cal-cell.is-skipped {
+  background: var(--skip-soft);
+  color: var(--skip);
+  border: 1px dashed var(--skip);
+}
+
+.cal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.cal-legend {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 10.5px;
+  color: var(--dim);
+}
+
+.cal-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.cal-legend .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 3px;
+  display: inline-block;
+}
+
+.cal-legend .dot.is-complete {
+  background: var(--accent);
+}
+
+.cal-legend .dot.is-skipped {
+  background: var(--skip-soft);
+  border: 1px dashed var(--skip);
+}
+
+.cal-hint {
+  margin-top: 12px;
+  font-size: 10.5px;
+  color: var(--faint);
+  text-align: center;
+}
+
+/* ---------------------------------------------------------- insights ----- */
+
+.insight-line {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--secondary);
+  margin-bottom: 6px;
+}
+
+.insight-line strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.weekday-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  margin-top: 14px;
+}
+
+.weekday-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+}
+
+.weekday-track {
+  width: 100%;
+  height: 56px;
+  border-radius: 6px;
+  background: var(--bar-empty);
+  display: flex;
+  align-items: flex-end;
+  overflow: hidden;
+}
+
+.weekday-bars.is-wide .weekday-track {
+  height: 78px;
+}
+
+.weekday-fill {
+  width: 100%;
+  background: var(--accent);
+  border-radius: 6px;
+  transition: height 0.25s ease;
+}
+
+.weekday-label {
+  font-size: 10px;
+  color: var(--dim);
+  font-family: var(--font-mono);
+}
+
+.weekday-value {
+  font-size: 9.5px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+
+/* ----------------------------------------------------------- heatmap ----- */
+
+.chart-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.chart-head .chart-title {
+  margin-bottom: 0;
+}
+
+.chart-caption {
+  margin-top: 12px;
+  font-size: 11px;
+  color: var(--dim);
+}
+
+.year-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.year-nav button {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--secondary);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.year-nav button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.year-nav-label {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--secondary);
+  min-width: 38px;
+  text-align: center;
+}
+
+/* 53 weeks never fits a phone, so the grid scrolls sideways inside the card
+   rather than forcing the page to. renderAnalytics scrolls it to today. */
+.heat-wrap {
+  display: flex;
+  gap: 5px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+}
+
+.heat-wrap::-webkit-scrollbar {
+  display: none;
+}
+
+.heat-rows {
+  display: grid;
+  grid-template-rows: repeat(7, 11px);
+  gap: 3px;
+  flex: none;
+  padding-top: 0;
+}
+
+.heat-rows span {
+  font-size: 8.5px;
+  line-height: 11px;
+  color: var(--faint);
+  font-family: var(--font-mono);
+}
+
+.heat-grid {
+  display: flex;
+  gap: 3px;
+  flex: none;
+}
+
+.heat-col {
+  display: grid;
+  grid-template-rows: repeat(7, 11px);
+  gap: 3px;
+}
+
+.heat-cell {
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+  background: var(--heat-0);
+  display: block;
+}
+
+.heat-cell.is-void {
+  background: none;
+}
+
+.heat-cell.is-future {
+  background: none;
+  border: 1px solid var(--divider);
+}
+
+.heat-cell.is-none,
+.heat-cell.is-l0 {
+  background: var(--heat-0);
+}
+
+.heat-cell.is-l1 {
+  background: var(--heat-1);
+}
+
+.heat-cell.is-l2 {
+  background: var(--heat-2);
+}
+
+.heat-cell.is-l3 {
+  background: var(--heat-3);
+}
+
+.heat-cell.is-l4 {
+  background: var(--heat-4);
+}
+
+.heat-cell.is-skip {
+  background: var(--skip-soft);
+}
+
+.heat-cell.is-today {
+  outline: 1.5px solid var(--text);
+  outline-offset: 1px;
+}
+
+.heat-legend {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-top: 12px;
+  font-size: 10px;
+  color: var(--faint);
+}
+
+.heat-legend .heat-cell {
+  width: 10px;
+  height: 10px;
+}
+
+/* -------------------------------------------------------- goal rows ------ */
+
+.goal-strength {
+  margin-left: 8px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--tile);
+  color: var(--muted);
+  font-size: 10px;
+}
+
+/* --------------------------------------------------------- settings ------ */
+
+.settings-note {
+  margin-top: 10px;
+  padding: 11px 13px;
+  border-radius: 12px;
+  background: var(--sunken);
+  border: 1px solid var(--divider);
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.settings-note.is-warn {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+/* ------------------------------------------------------------ fields ----- */
+
+.field-optional {
+  margin-left: 6px;
+  font-weight: 400;
+  color: var(--faint);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.field-hint {
+  margin-top: 6px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--dim);
+}
+
+.note-input {
+  resize: vertical;
+  min-height: 62px;
+  font-family: inherit;
+  line-height: 1.45;
+}
+
+/* -------------------------------------------------------------- toast ---- */
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(78px + var(--safe-b));
+  transform: translate(-50%, 14px);
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: min(440px, calc(100vw - 32px));
+  padding: 12px 14px;
+  border-radius: 13px;
+  background: var(--tile);
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--text);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
+}
+
+.toast.is-open {
+  opacity: 1;
+  transform: translate(-50%, 0);
+  pointer-events: auto;
+}
+
+.toast-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.toast-action {
+  flex: none;
+  padding: 6px 11px;
+  border-radius: 9px;
+  border: none;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast,
+  .weekday-fill,
+  .habit-check.is-holding,
+  .habit-count.is-holding {
+    transition: none;
+  }
+}

@@ -9,6 +9,7 @@
 import { navigateTo } from "./router.js";
 import { bindTodayEvents } from "./render-today.js";
 import { bindDetailEvents } from "./render-detail.js";
+import { bindAnalyticsEvents } from "./render-analytics.js";
 import { bindSettingsEvents } from "./render-settings.js";
 import { bindOverlayEvents, closeTopOverlay, openHabitSheet } from "./modals.js";
 import { appendLogEntry } from "./logging.js";
@@ -23,6 +24,7 @@ export function bindEvents() {
 
   bindTodayEvents();
   bindDetailEvents();
+  bindAnalyticsEvents();
   bindSettingsEvents();
   bindOverlayEvents();
 

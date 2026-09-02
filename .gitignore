@@ -22,6 +22,10 @@ habit-tracker-backup-*.json
 .env
 .env.*
 
+# Python bytecode
+__pycache__/
+*.pyc
+
 # SQLite database
 data.db
 data.db-journal

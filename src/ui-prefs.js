@@ -24,6 +24,11 @@ export const uiPrefs = {
   weekStart: "monday",
   dailyReminderEnabled: false,
   dailyReminderTime: DAILY_REMINDER_DEFAULT_TIME,
+  // Thin a habit's reminders out as its strength score climbs. On by default:
+  // the whole point of a reminder is to stop needing it, and an app that keeps
+  // nagging about something you now do automatically is an app whose
+  // notifications get switched off entirely.
+  fadeReminders: true,
 };
 
 let mediaQuery = null;
@@ -36,6 +41,10 @@ export function getTheme() {
 
 export function getWeekStart() {
   return WEEK_STARTS.includes(uiPrefs.weekStart) ? uiPrefs.weekStart : "monday";
+}
+
+export function getFadeReminders() {
+  return uiPrefs.fadeReminders !== false;
 }
 
 export function getDailyReminder() {
@@ -89,6 +98,7 @@ export function initUiPrefsFromBlob(prefs) {
   uiPrefs.dailyReminderTime = /^\d{2}:\d{2}$/.test(blob.dailyReminderTime)
     ? blob.dailyReminderTime
     : DAILY_REMINDER_DEFAULT_TIME;
+  uiPrefs.fadeReminders = blob.fadeReminders !== false;
 }
 
 export async function initUiPrefs() {
@@ -135,4 +145,9 @@ export function setDailyReminderTime(time) {
   if (!/^\d{2}:\d{2}$/.test(time)) return;
   uiPrefs.dailyReminderTime = time;
   db.patchPrefs({ dailyReminderTime: time }).catch(() => {});
+}
+
+export function setFadeReminders(enabled) {
+  uiPrefs.fadeReminders = !!enabled;
+  db.patchPrefs({ fadeReminders: uiPrefs.fadeReminders }).catch(() => {});
 }

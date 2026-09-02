@@ -10,7 +10,7 @@
 # ---------------------------------------------------------------------------
 
 APP_NAME='Habit Maker'
-APP_BLURB='A local-first habit tracker and PDF reader. Your data never leaves this PC.'
+APP_BLURB='A local-first habit tracker. Your data never leaves this PC.'
 APP_ISSUES='https://github.com/semyonsw/habbit_maker/issues'
 
 # ===========================================================================
@@ -338,7 +338,7 @@ NEXT_STEPS=(
     'or:  python3 server/app.py     then open http://localhost:3000'
     ''
     'Your data:  data.db in this folder. Back up that one file and you have'
-    'backed up everything - habits, notes, bookmarks and summaries.'
+    'backed up everything - habits, completions, notes and settings.'
 )
 
 start_banner
