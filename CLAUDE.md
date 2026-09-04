@@ -134,7 +134,7 @@ tests/              node --test; see the testing notes below
 
 ## Testing
 
-Five suites, all under plain `node --test`:
+Six suites, all under plain `node --test`:
 
 - `tests/scoring.test.mjs` — the pure maths.
 - `tests/render.test.mjs` — every screen rendered against the real
@@ -144,6 +144,11 @@ Five suites, all under plain `node --test`:
   stubbed rather than mocked away, asserting on what reached the file.
 - `tests/reorder.test.mjs` — the drag, with real rectangles fed to the rows so
   the midpoint arithmetic is actually exercised.
+- `tests/notifications.test.mjs` — reminders: the permission negotiation, what
+  reaches Android's scheduler, and how a web notification is delivered. The
+  Capacitor bridge and `Notification` are stubbed the way the real platforms
+  behave — Android's fourth permission state, and a page `Notification`
+  constructor that throws the way Chrome-on-Android's does.
 
 `tests/dom.mjs` models `inert`, `history`, `location.hash` and a **deferred**
 `requestAnimationFrame` (a synchronous one turns any self-scheduling animation

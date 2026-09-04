@@ -27,6 +27,7 @@ import {
 import {
   getNotificationStatus,
   notificationsSupported,
+  openExactAlarmSettings,
   rescheduleReminders,
 } from "./notifications.js";
 import { isNative } from "./native.js";
@@ -84,6 +85,29 @@ function deliveryNoteHtml() {
   );
 }
 
+// Android's "Alarms & reminders" switch, surfaced only when it is off.
+//
+// From Android 14 it is off on install, and with it off every reminder is
+// scheduled inexact -- it still arrives, but it can be a quarter of an hour
+// late, or later once the phone is dozing. That is the single most common
+// "my reminder is broken" report, and nothing in the app said a word about it.
+// The OS owns the decision, so the honest offer is a shortcut to the switch.
+function exactAlarmRowHtml() {
+  if (!isNative()) return "";
+  const { permission, exact } = getNotificationStatus();
+  if (permission !== "granted" || exact !== "denied") return "";
+  return (
+    '<button type="button" class="settings-row is-tappable" data-exact-alarms>' +
+    "<div>" +
+    '<div class="settings-row-label">Allow exact alarms</div>' +
+    '<div class="settings-row-hint">Off, so reminders can arrive late. ' +
+    "Opens Android settings</div>" +
+    "</div>" +
+    '<span class="settings-row-value">Off</span>' +
+    "</button>"
+  );
+}
+
 export function renderSettings() {
   const body = document.getElementById("settingsBody");
   if (!body) return;
@@ -134,6 +158,7 @@ export function renderSettings() {
     `<button type="button" class="toggle${fade ? " is-on" : ""}" data-fade-reminders` +
     ` role="switch" aria-checked="${fade}" aria-label="Ease off automatically"><span></span></button>` +
     "</div>" +
+    exactAlarmRowHtml() +
     "</div>" +
     deliveryNoteHtml() +
     // ---- Data -----------------------------------------------------------
@@ -186,6 +211,12 @@ export function bindSettingsEvents() {
       if (enabling) callRenderer("requestReminderPermission");
       else rescheduleReminders();
       renderSettings();
+      return;
+    }
+    if (event.target.closest("[data-exact-alarms]")) {
+      // The system screen answers when it closes; re-render then, so the row
+      // disappears once the switch is on rather than lingering as a lie.
+      openExactAlarmSettings().then(() => renderSettings());
       return;
     }
     if (event.target.closest("[data-fade-reminders]")) {

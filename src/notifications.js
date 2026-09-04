@@ -19,6 +19,8 @@
 //     origin trial -- so the honest ceiling is a timer that only runs while the
 //     page is alive. We do that, re-arming on every wake, and Settings says so
 //     out loud rather than implying background delivery it cannot provide.
+//     Delivery goes through the service worker where there is one, because on
+//     Android `new Notification()` is an illegal constructor and throws.
 //
 // Nothing here throws into a caller: a denied permission or a missing plugin
 // degrades to "no reminders", never to a broken screen.
@@ -47,12 +49,36 @@ const IDS_PER_HABIT = 10;
 /* Capability                                                             */
 /* ====================================================================== */
 
-// Cached because Settings reads it on every render and the native round-trip
-// is a bridge call. Refreshed on resume and whenever a request is made.
+// Cached because Settings reads it on every render, synchronously, and the
+// native round-trip is a bridge call. Refreshed before every reschedule -- so a
+// permission revoked in system settings is noticed rather than believed to be
+// granted until the app is next restarted.
 let nativePermission = "prompt";
+
+// Whether the OS will honour an exact alarm: "granted", "denied", or "unknown"
+// until the first check has answered.
+let exactAlarms = "unknown";
 
 function localNotifications() {
   return plugin("LocalNotifications");
+}
+
+// Android has FOUR permission states where the rest of this app understands
+// three.
+//
+// Dismiss the system dialog once without choosing and POST_NOTIFICATIONS lands
+// on "prompt-with-rationale" -- still perfectly askable, and the single most
+// likely state for anyone who swiped the first prompt away. Code that only
+// recognised the exact string "prompt" then never asked again and never
+// explained why: the toggle sat there looking on, with no alarms behind it.
+// That is the precise failure this module exists to end.
+//
+// So it is normalised here, at the boundary, and nothing downstream ever sees a
+// state it does not handle.
+function normalizePermission(raw) {
+  const value = String(raw || "");
+  if (value === "granted" || value === "denied") return value;
+  return "prompt";
 }
 
 export function notificationsSupported() {
@@ -68,12 +94,18 @@ export function getNotificationStatus() {
     return { permission: "unsupported", background: false };
   }
   if (isNative()) {
-    return { permission: nativePermission, background: true };
+    return {
+      permission: nativePermission,
+      background: true,
+      // Only meaningful on Android, and only once checked. "denied" means the
+      // alarms are still scheduled but inexact, so they can arrive late.
+      exact: exactAlarms,
+    };
   }
-  const raw = Notification.permission;
   return {
-    permission: raw === "default" ? "prompt" : raw,
+    permission: normalizePermission(Notification.permission),
     background: false,
+    exact: "unknown",
   };
 }
 
@@ -82,7 +114,7 @@ async function refreshNativePermission() {
   if (!api) return "unsupported";
   try {
     const result = await api.checkPermissions();
-    nativePermission = result && result.display ? result.display : "prompt";
+    nativePermission = normalizePermission(result && result.display);
   } catch (_) {
     nativePermission = "prompt";
   }
@@ -99,7 +131,7 @@ export async function requestNotificationPermission() {
     const api = localNotifications();
     try {
       const result = await api.requestPermissions();
-      nativePermission = result && result.display ? result.display : "denied";
+      nativePermission = normalizePermission(result && result.display);
     } catch (_) {
       nativePermission = "denied";
     }
@@ -107,28 +139,60 @@ export async function requestNotificationPermission() {
   }
 
   try {
-    const result = await Notification.requestPermission();
-    return result === "default" ? "prompt" : result;
+    return normalizePermission(await Notification.requestPermission());
   } catch (_) {
     return "denied";
   }
 }
 
 // Android 12+ downgrades scheduled notifications to inexact unless
-// SCHEDULE_EXACT_ALARM is both declared AND left enabled by the user -- and a
-// user who turns it off later has their existing alarms deleted. So this is
-// asked on every resume, not once at install.
+// SCHEDULE_EXACT_ALARM is both declared AND left enabled by the user -- and
+// from Android 14 it is NOT granted on install, so the default state for a new
+// phone is "denied": every reminder is set with setAndAllowWhileIdle and can
+// land a quarter of an hour late or worse under Doze.
+//
+// This is checked after every reschedule, not once at install, because the
+// setting is user-revocable at any time -- and revoking it deletes the alarms
+// already scheduled, which is what the reschedule is there to repair. It used
+// to be checked nowhere at all: the function existed, nothing called it, and a
+// late reminder had no explanation anywhere in the UI.
 export async function checkExactAlarms() {
   const api = localNotifications();
   if (!api || typeof api.checkExactNotificationSetting !== "function") {
-    return "unknown";
+    exactAlarms = "unknown";
+    return exactAlarms;
   }
   try {
     const result = await api.checkExactNotificationSetting();
-    return (result && result.exact_alarm) || "unknown";
+    exactAlarms = normalizeExact(result);
   } catch (_) {
-    return "unknown";
+    exactAlarms = "unknown";
   }
+  return exactAlarms;
+}
+
+function normalizeExact(result) {
+  const value = String((result && result.exact_alarm) || "");
+  return value === "granted" || value === "denied" ? value : "unknown";
+}
+
+// Opens Android's "Alarms & reminders" screen for this app and reports what the
+// user chose. There is no way to grant this from inside the app -- the OS owns
+// the decision -- so the honest offer is a shortcut to the switch.
+export async function openExactAlarmSettings() {
+  const api = localNotifications();
+  if (!api || typeof api.changeExactNotificationSetting !== "function") {
+    return exactAlarms;
+  }
+  try {
+    exactAlarms = normalizeExact(await api.changeExactNotificationSetting());
+  } catch (_) {
+    /* dismissed, or no such screen on this device: leave the last known state */
+  }
+  // Alarms already on the books were scheduled inexact; granting the permission
+  // does not upgrade them, so they have to be laid down again.
+  rescheduleReminders();
+  return exactAlarms;
 }
 
 /* ====================================================================== */
@@ -254,6 +318,11 @@ async function scheduleNative(reminders) {
             weekday: toCapacitorWeekday(r.weekday),
             hour: r.hour,
             minute: r.minute,
+            // Pinned, because the plugin builds the trigger from "now" and
+            // only overwrites the fields it is given -- so without this an
+            // 08:00 reminder fires at 08:00 plus whatever second the app
+            // happened to reschedule on.
+            second: 0,
           },
           repeats: true,
           // Survive Doze. Without it a 21:00 reminder can arrive at 23:40.
@@ -304,20 +373,53 @@ function nextOccurrence(reminder, from) {
   return candidate;
 }
 
-function fireWebNotification(reminder) {
+// The service worker registration, or null. Deliberately `getRegistration()`
+// and not `ready`: `ready` never settles when nothing is registered, which is
+// every environment without a service worker -- the APK among them -- and
+// awaiting it there would hang the delivery for ever instead of falling back.
+async function serviceWorkerRegistration() {
+  if (typeof navigator === "undefined" || !navigator.serviceWorker) return null;
+  try {
+    return (await navigator.serviceWorker.getRegistration()) || null;
+  } catch (_) {
+    return null;
+  }
+}
+
+// Exported so the tests can drive the real delivery path with a stubbed
+// service worker and a stubbed Notification, rather than asserting that a timer
+// was set and hoping.
+export async function fireWebNotification(reminder) {
   const stamp = `${reminder.id}:${new Date().toDateString()}`;
   if (firedAt.has(stamp)) return;
   firedAt.set(stamp, Date.now());
   // Bounded: one entry per reminder per day, cleared well before it matters.
   if (firedAt.size > 200) firedAt.clear();
 
+  const options = {
+    body: reminder.body,
+    tag: `habit-${reminder.id}`,
+    icon: "icons/icon-192.png",
+    badge: "icons/icon-192.png",
+  };
+
   try {
-    const notification = new Notification(reminder.title, {
-      body: reminder.body,
-      tag: `habit-${reminder.id}`,
-      icon: "icons/icon-192.png",
-      badge: "icons/icon-192.png",
-    });
+    // Through the service worker first.
+    //
+    // `new Notification()` is an ILLEGAL CONSTRUCTOR in Chrome on Android: it
+    // throws, so on a phone the PWA's reminders fired the timer, threw, logged
+    // a warning nobody reads, and showed nothing -- for every reminder, every
+    // day. A notification there may only be owned by a service worker, and
+    // sw.js already has the `notificationclick` handler that focuses Today.
+    const registration = await serviceWorkerRegistration();
+    if (registration && typeof registration.showNotification === "function") {
+      await registration.showNotification(reminder.title, options);
+      return;
+    }
+
+    // Desktop, or a page with no service worker: the page owns it, so it also
+    // owns the click.
+    const notification = new Notification(reminder.title, options);
     notification.onclick = () => {
       try {
         window.focus();
@@ -378,9 +480,15 @@ export function rescheduleReminders() {
     const reminders = collectReminders();
     try {
       if (isNative()) {
-        if (nativePermission !== "granted") await refreshNativePermission();
+        // Re-read the permission every time rather than trusting the cache: it
+        // is revocable from system settings at any moment, and a cache that
+        // only ever gets refreshed while it says "not granted" can never find
+        // out that it stopped being true.
+        await refreshNativePermission();
         if (nativePermission !== "granted") return;
         await scheduleNative(reminders);
+        // After scheduling, so Settings can explain a late reminder.
+        await checkExactAlarms();
       } else {
         scheduleWeb(reminders);
       }
@@ -429,6 +537,10 @@ export async function initNotifications() {
 export async function enableRemindersInteractive() {
   const status = getNotificationStatus();
   let permission = status.permission;
+  // Anything that is not already settled is worth asking about. Android's
+  // fourth state ("prompt-with-rationale", after a dismissed dialog) is
+  // normalised into "prompt" upstream precisely so this stays a two-way
+  // decision rather than silently doing nothing.
   if (permission === "prompt") {
     permission = await requestNotificationPermission();
   }

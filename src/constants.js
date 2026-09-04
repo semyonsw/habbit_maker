@@ -97,7 +97,7 @@ export const HOLD_TO_DRAG_MS = 550;
 // Movement beyond this before a hold fires means the finger is scrolling.
 export const DRAG_SLOP_PX = 10;
 
-export const APP_VERSION = "1.4.1";
+export const APP_VERSION = "1.4.2";
 
 export const DEFAULT_CATEGORIES = [
   { id: "cat_health", name: "Health", emoji: "\u2764\uFE0F", color: "#3E85B5" },
