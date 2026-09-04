@@ -77,6 +77,7 @@ src/db.js           picks db-rest.js (desktop/SQLite) or db-idb.js (phone)
 src/notifications.js reminders: native alarms, or web timers
 src/render-*.js     one file per screen, each registering named renderers
 src/sheet.js        overlay mechanics: scroll lock, focus trap, drag, keyboard
+src/reorder.js      hold-and-drag to reorder habits on Today
 tests/              node --test; see the testing notes below
 ```
 
@@ -101,17 +102,31 @@ tests/              node --test; see the testing notes below
   Changing it orphans every phone install's data. Treat it as permanent.
 - **Never put `--` inside a comment in `AndroidManifest.xml`.** XML forbids it
   and the manifest merger's error names no line.
+- **Two press-and-hold gestures share the habit row.** Holding the *checkbox*
+  skips the day (`render-today.js`); holding the *row body* picks it up to drag
+  (`reorder.js`). Each handler ignores what is not its own — keep it that way.
+  Both timings live in `constants.js`.
+- **A gesture that suppresses a later click must do it on a timer, not a flag.**
+  Dropping a drag re-renders the list, so the click the browser queued may never
+  reach the delegated handler — and a flag nothing clears stays armed and eats
+  the user's next unrelated tap.
 
 ## Testing
 
-Three suites, all under plain `node --test`:
+Five suites, all under plain `node --test`:
 
 - `tests/scoring.test.mjs` — the pure maths.
 - `tests/render.test.mjs` — every screen rendered against the real
   `index.html` via linkedom.
 - `tests/interaction.test.mjs` — the app's real handlers driven by real clicks.
+- `tests/data-io.test.mjs` — export/import, with the File System Access API
+  stubbed rather than mocked away, asserting on what reached the file.
+- `tests/reorder.test.mjs` — the drag, with real rectangles fed to the rows so
+  the midpoint arithmetic is actually exercised.
 
-`tests/dom.mjs` models `inert`, `history` and `location.hash`, and its `click()`
+`tests/dom.mjs` models `inert`, `history`, `location.hash` and a **deferred**
+`requestAnimationFrame` (a synchronous one turns any self-scheduling animation
+loop into infinite recursion), and its `click()`
 **refuses to dispatch on anything a browser would not route a pointer event
 to** (`inert`, `disabled`). Keep that: asserting markup *exists* says nothing
 about whether it *works*, and the render suite was green throughout the release

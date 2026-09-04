@@ -82,7 +82,22 @@ export const MAX_LOG_RECORDS = 1000;
 // A skipped/undone action stays undoable for this long.
 export const UNDO_WINDOW_MS = 6000;
 
-export const APP_VERSION = "1.2.0";
+/* ------------------------------------------------------------- gestures
+   Two press-and-hold gestures share the habit row, so their timings are set
+   here together rather than drifting apart in two files:
+
+     hold the checkbox  -> skip the day
+     hold the row body  -> pick it up and drag it to a new position
+
+   Drag is the slightly longer press. It is the more disruptive of the two and
+   the one you are least likely to want by accident.
+   ---------------------------------------------------------------------- */
+export const HOLD_TO_SKIP_MS = 500;
+export const HOLD_TO_DRAG_MS = 550;
+// Movement beyond this before a hold fires means the finger is scrolling.
+export const DRAG_SLOP_PX = 10;
+
+export const APP_VERSION = "1.3.0";
 
 export const DEFAULT_CATEGORIES = [
   { id: "cat_health", name: "Health", emoji: "\u2764\uFE0F", color: "#3E85B5" },

@@ -62,6 +62,10 @@ it leads with a **strength score** instead:
 - Four schedules: every day, chosen weekdays, chosen days of the month, or a
   repeating custom cycle ("every third day" from a start date).
 - Per-habit monthly goal, current streak, best streak and strength.
+- **Reorder by holding a habit and dragging it** up or down the list, so a new
+  one does not have to live at the bottom. Alt+Up / Alt+Down does the same from
+  a keyboard. Reordering a day that hides some habits leaves the hidden ones
+  exactly where they were.
 - **Month navigation** on Today, the habit calendar and Analytics — every month
   you have ever recorded is reachable.
 - Per-day notes, prompted by what happened: *"What got in the way?"* after a
@@ -156,7 +160,9 @@ caches the shell for offline use; data goes to IndexedDB.
 ## How it works
 
 **Today** is the working screen. Pick a day from the strip, tap a habit to check
-it off. Tap a count habit to add one; tap it past its target to reset (with an
+it off. Two press-and-hold gestures share the row: hold the **checkbox** to skip
+the day, hold the **row itself** to pick the habit up and drag it somewhere
+else in the list. Tap a count habit to add one; tap it past its target to reset (with an
 undo). **Hold** any habit for half a second to mark that day skipped — the toast
 confirms it, and the streak and strength are left alone. On a keyboard, press
 `s` with the control focused.

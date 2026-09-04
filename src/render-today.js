@@ -8,13 +8,19 @@
 // globals.dayFocusDay holds the selection; null means "today if we are looking
 // at the current month, else the 1st".
 
-import { FULL_WEEKDAYS, MONTH_NAMES, WEEKDAY_LABELS } from "./constants.js";
+import {
+  FULL_WEEKDAYS,
+  HOLD_TO_SKIP_MS,
+  MONTH_NAMES,
+  WEEKDAY_LABELS,
+} from "./constants.js";
 import { state, globals } from "./state.js";
 import { sanitize, daysInMonth } from "./utils.js";
 import { getViewedMonthData, getCategoryById } from "./persistence.js";
 import {
   advanceHabitDay,
   computeHabitScore,
+  nudgeHabitOrder,
   computeHabitStreak,
   getDayCounts,
   getDayValue,
@@ -28,6 +34,11 @@ import {
 } from "./habits.js";
 import { monthNavHtml, handleMonthNavClick } from "./month-nav.js";
 import { showToast } from "./toast.js";
+import {
+  bindHabitReorder,
+  consumeDragClick,
+  isDragging,
+} from "./reorder.js";
 import { registerRenderer, callRenderer } from "./render-registry.js";
 import { navigateTo } from "./router.js";
 
@@ -179,7 +190,8 @@ function rowHtml(habit, monthData, day) {
 
   return (
     `<div class="${classes.join(" ")}">` +
-    `<button type="button" class="habit-open" data-open="${sanitize(habit.id)}">` +
+    '<button type="button" class="habit-open" title="Hold to reorder"' +
+    ` data-open="${sanitize(habit.id)}">` +
     `<span class="habit-mark" aria-hidden="true">${sanitize(habit.mark || "HB")}</span>` +
     '<span class="habit-text">' +
     `<span class="habit-name">${sanitize(habit.name)}</span>` +
@@ -282,11 +294,18 @@ export function renderToday(options = {}) {
       ? habits.map((h) => rowHtml(h, monthData, day)).join("")
       : "<div class='empty-state'><p>Nothing scheduled for this day.</p></div>";
   }
+
+  // A gesture nobody knows about is a gesture nobody uses. Only shown once
+  // there is actually something to reorder.
+  const hint = document.getElementById("todayListHint");
+  if (hint) {
+    hint.textContent =
+      habits.length > 1 ? "Hold a habit to drag it up or down" : "";
+  }
 }
 
 /* ---------------------------------------------------------------- handlers */
 
-const HOLD_MS = 500;
 
 function habitNameFor(habitId) {
   const habit = state.habits.daily.find((h) => h.id === habitId);
@@ -330,6 +349,10 @@ function advanceWithUndo(habitId, day) {
 export function bindTodayEvents() {
   const section = document.getElementById("view-today");
   if (!section) return;
+
+  // Hold the row body to drag it; hold the checkbox to skip. Bound first so its
+  // pointerdown runs before the skip gesture's.
+  bindHabitReorder(section);
 
   // --- hold-to-skip ------------------------------------------------------
   //
@@ -380,7 +403,7 @@ export function bindTodayEvents() {
         }
       }
       skipWithUndo(habitId, day);
-    }, HOLD_MS);
+    }, HOLD_TO_SKIP_MS);
   });
 
   ["pointerup", "pointercancel", "pointerleave"].forEach((type) => {
@@ -401,6 +424,9 @@ export function bindTodayEvents() {
   });
 
   section.addEventListener("click", (event) => {
+    // The click the browser queues when a drag is dropped must not also open
+    // the habit that was dropped.
+    if (consumeDragClick() || isDragging()) return;
     if (holdFired) {
       holdFired = false;
       return;
@@ -438,13 +464,34 @@ export function bindTodayEvents() {
     }
   });
 
-  // Keyboard equivalent of hold-to-skip, since a long press has none.
   section.addEventListener("keydown", (event) => {
-    if (event.key !== "s" && event.key !== "S") return;
-    const control = event.target.closest("[data-advance]");
-    if (!control) return;
+    // Keyboard equivalent of hold-to-skip, since a long press has none.
+    if (event.key === "s" || event.key === "S") {
+      const control = event.target.closest("[data-advance]");
+      if (!control) return;
+      event.preventDefault();
+      skipWithUndo(control.dataset.advance, parseInt(control.dataset.day, 10));
+      return;
+    }
+
+    // ...and of the drag. Alt+Arrow rather than a bare arrow, so the arrows are
+    // left doing what they normally do inside a list.
+    if (!event.altKey) return;
+    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+    const open = event.target.closest("[data-open]");
+    if (!open) return;
     event.preventDefault();
-    skipWithUndo(control.dataset.advance, parseInt(control.dataset.day, 10));
+    const habitId = open.dataset.open;
+    if (!nudgeHabitOrder(habitId, event.key === "ArrowUp" ? -1 : 1)) return;
+    callRenderer("renderAll");
+    // Keep the habit you are moving focused, so it can be moved again.
+    // Matched by scanning rather than by building a selector: habit ids come
+    // from imported files as well as from uid(), and CSS.escape is not defined
+    // everywhere it would be needed.
+    const next = Array.from(document.querySelectorAll("[data-open]")).find(
+      (el) => el.dataset.open === habitId,
+    );
+    if (next && typeof next.focus === "function") next.focus();
   });
 }
 

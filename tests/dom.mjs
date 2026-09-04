@@ -22,6 +22,8 @@ export function installDom() {
 
   const noop = () => {};
   const store = new Map();
+  const rafTimers = new Map();
+  let rafId = 0;
 
   // --- inert -------------------------------------------------------------
   //
@@ -158,13 +160,30 @@ export function installDom() {
       addEventListener: noop,
       addListener: noop,
     }),
+    // Deferred, like a browser's -- NOT synchronous.
+    //
+    // A synchronous rAF turns any self-scheduling animation loop into infinite
+    // recursion: src/reorder.js runs an auto-scroll loop for the length of a
+    // drag, and calling it back from inside itself blew the stack instantly.
+    // A test environment that cannot express "next frame" cannot test anything
+    // that animates.
     requestAnimationFrame: (fn) => {
-      // Synchronous, so the post-render measurement passes run inside the test
-      // rather than after it has finished.
-      fn(0);
-      return 0;
+      const id = ++rafId;
+      const timer = setTimeout(() => {
+        rafTimers.delete(id);
+        fn(Date.now());
+      }, 0);
+      // Cleanup work must never hold the test runner open.
+      if (timer && typeof timer.unref === "function") timer.unref();
+      rafTimers.set(id, timer);
+      return id;
     },
-    cancelAnimationFrame: noop,
+    cancelAnimationFrame: (id) => {
+      const timer = rafTimers.get(id);
+      if (timer === undefined) return;
+      clearTimeout(timer);
+      rafTimers.delete(id);
+    },
     localStorage: {
       getItem: (k) => (store.has(k) ? store.get(k) : null),
       setItem: (k, v) => store.set(k, String(v)),

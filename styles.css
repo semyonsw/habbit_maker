@@ -2075,3 +2075,68 @@ html[data-theme="light"] {
     transition: none;
   }
 }
+
+/* ========================================================================
+   Drag to reorder (src/reorder.js)
+   ------------------------------------------------------------------------
+   Hold the row body to pick a habit up. Holding the checkbox is a different
+   gesture (skip), so only the row body gets these affordances.
+   ======================================================================== */
+
+/* The press is registering. Small enough not to look like a tap response,
+   visible enough that the hold does not feel like nothing is happening. */
+.habit-row.is-lifting {
+  transform: scale(0.985);
+  transition: transform 0.18s ease;
+}
+
+.habit-row.is-dragging {
+  position: relative;
+  z-index: 5;
+  cursor: grabbing;
+  background: var(--tile);
+  border-color: var(--border-strong);
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.4);
+  /* No transition on transform: it is being driven per-frame by the pointer,
+     and easing it would make the row lag the finger. */
+  transition: box-shadow 0.18s ease, background 0.18s ease;
+}
+
+html[data-theme="light"] .habit-row.is-dragging {
+  box-shadow: 0 14px 32px rgba(20, 22, 31, 0.18);
+}
+
+/* While a drag is live the browser must not also scroll the list. touch-action
+   is only consulted when a gesture begins -- before the hold has fired -- so
+   reorder.js additionally cancels touchmove; this covers the rest. */
+.habit-list.is-reordering {
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.habit-list.is-reordering .habit-open {
+  cursor: grabbing;
+}
+
+.habit-open {
+  cursor: grab;
+}
+
+.list-hint {
+  margin-top: 12px;
+  font-size: 10.5px;
+  color: var(--faint);
+  text-align: center;
+}
+
+.list-hint:empty {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .habit-row.is-lifting,
+  .habit-row.is-dragging {
+    transition: none;
+  }
+}

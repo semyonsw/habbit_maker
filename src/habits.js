@@ -19,6 +19,7 @@ import { callRenderer } from "./render-registry.js";
 import { navigateTo } from "./router.js";
 import {
   historyRange,
+  mergeVisibleOrder,
   computeMonthDayCounts,
   computeScore,
   computeStreak,
@@ -109,6 +110,58 @@ export function updateHabitOrder() {
   state.habits.daily.forEach((h, idx) => {
     h.order = idx;
   });
+}
+
+// Commit a drag on the Today list. `visibleIds` is what is now on screen, top
+// to bottom; habits not scheduled for the viewed day keep their own slots.
+export function applyVisibleOrder(visibleIds) {
+  const ordered = getSortedDailyHabits();
+  const allIds = ordered.map((h) => h.id);
+  const known = new Set(allIds);
+  const moving = visibleIds.filter((id) => known.has(id));
+  if (!moving.length) return false;
+
+  const nextIds = mergeVisibleOrder(allIds, moving);
+  if (nextIds.every((id, i) => id === allIds[i])) return false; // no change
+
+  const byId = new Map(ordered.map((h) => [h.id, h]));
+  state.habits.daily = nextIds.map((id) => byId.get(id));
+  state.habits.daily.forEach((habit, index) => {
+    habit.order = index;
+  });
+  saveState();
+  return true;
+}
+
+// Move one habit one place up or down within the habits visible on the viewed
+// day. The keyboard equivalent of the drag, and how reordering is done without
+// a pointer at all.
+export function nudgeHabitOrder(habitId, delta) {
+  const visible = getScheduledHabits(
+    state.currentYear,
+    state.currentMonth,
+    currentSelectedDay(),
+  ).map((h) => h.id);
+
+  const from = visible.indexOf(habitId);
+  const to = from + delta;
+  if (from === -1 || to < 0 || to >= visible.length) return false;
+
+  visible.splice(to, 0, visible.splice(from, 1)[0]);
+  return applyVisibleOrder(visible);
+}
+
+// The day Today is showing. Duplicated from render-today's getSelectedDay()
+// rather than imported, to keep habits.js free of render imports.
+function currentSelectedDay() {
+  const total = daysInMonth(state.currentYear, state.currentMonth);
+  if (globals.dayFocusDay == null) {
+    const t = todayParts();
+    const viewingCurrent =
+      t.year === state.currentYear && t.month === state.currentMonth;
+    return viewingCurrent ? t.day : 1;
+  }
+  return Math.min(total, Math.max(1, globals.dayFocusDay));
 }
 
 export function findHabit(id) {

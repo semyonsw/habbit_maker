@@ -295,6 +295,29 @@ export function computeScore(habit, months, today, halfLife) {
 }
 
 /* ====================================================================== */
+/* Ordering                                                               */
+/* ====================================================================== */
+
+// Splice a reordered subset back into the full list.
+//
+// Today only shows the habits scheduled for the day you are looking at, so a
+// drag there reorders a FILTERED list. Rewriting the whole order from what was
+// on screen would fling every hidden habit to the end -- reorder two habits on
+// a Tuesday and the ones you only do at weekends silently pile up at the
+// bottom.
+//
+// Instead the slots the visible habits occupied are refilled, in their new
+// order, and every hidden habit keeps the exact position it had. Move the third
+// visible habit to the top and that is all that changes.
+export function mergeVisibleOrder(allIds, visibleIdsInNewOrder) {
+  const moving = new Set(visibleIdsInNewOrder);
+  let next = 0;
+  return allIds.map((id) =>
+    moving.has(id) ? visibleIdsInNewOrder[next++] : id,
+  );
+}
+
+/* ====================================================================== */
 /* Roll-ups for Analytics                                                 */
 /* ====================================================================== */
 
