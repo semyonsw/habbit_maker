@@ -139,11 +139,21 @@ those four vars prefer over `env()`. Do not reintroduce bare
 - **Data does not carry over from the PWA.** The GitHub Pages install and the APK
   are different origins with separate IndexedDB stores. Move data with the app's
   own Export (in the PWA) → Import (in the APK). One-time, manual.
-- **Saving files goes through the share sheet, not a download.** The Android
-  WebView has no download manager wired up, so `<a download>` does nothing.
-  `src/native.js` intercepts Export / log export / feedback screenshots, writes
-  the file to the app cache and opens the system share sheet instead. There is no
-  "Downloads" folder result — pick a destination in the sheet.
+- **Saving a file goes through Android's file browser, not a download.** The
+  Android WebView has no download manager wired up — Capacitor registers no
+  `DownloadListener` — so `<a download>` does nothing at all, silently. Export
+  therefore hands the backup to the local `FileSaver` plugin, which opens the
+  Storage Access Framework's "save as" browser (`ACTION_CREATE_DOCUMENT`); pick
+  Downloads there if that is where you want it. The share sheet is the fallback
+  below it, and if neither is reachable Export says so — it must never report a
+  download that the WebView cannot perform.
+- **Plugins are reached as `Capacitor.Plugins.<Name>`, never `registerPlugin`.**
+  The WebView injects one ready-made object per registered plugin, every
+  `@PluginMethod` already wrapped as a promise. `registerPlugin` belongs to the
+  `@capacitor/core` npm module, and nothing bundles that into this app, so it is
+  simply absent on the phone — code that reaches for it gets `null` for every
+  plugin and quietly loses Export, reminders and the splash hide all at once.
+  `src/native.js` is the only place that resolves a plugin; keep it that way.
 - **`showSaveFilePicker` (live log streaming to a file) is unavailable.** It is a
   desktop-Chrome API; `logging.js` already feature-detects it and falls back.
 - **No install prompt / no "Add to Home Screen"** — it is a real app now.

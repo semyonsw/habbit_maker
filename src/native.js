@@ -4,29 +4,60 @@
 //
 // This app has no bundler -- src/*.js are loaded as raw ES modules -- so the
 // Capacitor plugins are reached through the global bridge that the native
-// WebView injects (`window.Capacitor.registerPlugin`) rather than by importing
-// the npm packages. The npm packages still have to be installed: that is what
-// registers the Java side during `npx cap sync`.
+// WebView injects (`window.Capacitor.Plugins`) rather than by importing the npm
+// packages. The npm packages still have to be installed: that is what registers
+// the Java side during `npx cap sync`.
 //
 // Every export here is a no-op on the web, so callers never need to branch.
 
-const cap = typeof window !== "undefined" ? window.Capacitor : undefined;
+// The bridge object, read on every call rather than captured once at module
+// load. It is injected into the page by the native WebView, and a module that
+// evaluated before the injection would cache `undefined` for the life of the
+// app -- turning the whole APK into "not native" with no way to tell.
+function bridge() {
+  return typeof window !== "undefined" ? window.Capacitor : undefined;
+}
 
 export function isNative() {
+  const cap = bridge();
   return !!(cap && cap.isNativePlatform && cap.isNativePlatform());
 }
 
-// Exported so notifications.js can reach LocalNotifications the same way --
-// there is no bundler here, so plugins come off the injected global bridge
-// rather than from an npm import. The npm package must still be installed:
-// that is what registers the Java side during `npx cap sync`.
+// Reach a Capacitor plugin, or null if this build cannot.
+//
+// There are two shapes of bridge and only ONE of them exists here:
+//
+//   * `Capacitor.Plugins.<Name>` -- injected into the page by the native
+//     WebView itself, one ready-made object per registered plugin with every
+//     @PluginMethod already wrapped as a promise-returning function. No import,
+//     no registration, no bundler. This is the APK's route, and the only one
+//     an app of raw ES modules can use.
+//
+//   * `Capacitor.registerPlugin` -- a function from the @capacitor/core npm
+//     module, which is only in the page if something bundles it in. Nothing
+//     here does, so on the phone it simply does not exist.
+//
+// This tried registerPlugin FIRST and gave up when it was missing, so on the
+// phone EVERY plugin came back null. Export skipped both the file browser and
+// the share sheet and fell through to `<a download>`, which the Android WebView
+// ignores outright -- while Settings cheerfully reported the backup as saved to
+// Downloads. Reminders went the same way, silently downgrading to in-page
+// timers that die with the app.
 export function plugin(name) {
-  if (!cap || typeof cap.registerPlugin !== "function") return null;
-  try {
-    return cap.registerPlugin(name);
-  } catch {
-    return null;
+  const cap = bridge();
+  if (!cap) return null;
+
+  const injected = cap.Plugins ? cap.Plugins[name] : null;
+  if (injected) return injected;
+
+  if (typeof cap.registerPlugin === "function") {
+    try {
+      return cap.registerPlugin(name);
+    } catch {
+      return null;
+    }
   }
+  return null;
 }
 
 /* ------------------------------------------------------------------ splash */
@@ -83,12 +114,6 @@ function blobToBase64(blob) {
   });
 }
 
-// Android's WebView has no download manager wired up: Capacitor registers no
-// DownloadListener, so `<a download>` with a blob: URL silently does nothing.
-// Instead write the file into the app cache and hand it to the system share
-// sheet, which lets it be saved to Files/Drive/anywhere without needing a
-// storage permission.
-//
 /* --------------------------------------------------------- save with a picker
 
    The real thing: Android's Storage Access Framework file browser, via the

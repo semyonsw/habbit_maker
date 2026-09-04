@@ -105,6 +105,19 @@ tests/              node --test; see the testing notes below
   up npm plugins, so `MainActivity.onCreate()` calls
   `registerPlugin(FileSaverPlugin.class)` **before** `super.onCreate()` — that is
   where the bridge is built, and a later call is silently too late.
+- **JS reaches a plugin as `Capacitor.Plugins.<Name>`, never through
+  `Capacitor.registerPlugin`.** The WebView injects one ready-made object per
+  registered plugin, each `@PluginMethod` already a promise-returning function.
+  `registerPlugin` comes from the `@capacitor/core` npm module, and with no
+  bundler nothing puts that in the page — so asking for it returns `null` for
+  *every* plugin, silently: Export announced a file saved to Downloads that the
+  Android WebView never wrote, and reminders dropped to in-page timers.
+  `plugin()` in [src/native.js](src/native.js) is the only place that resolves
+  one; keep it that way.
+- **On Android, Export must never fall through to `<a download>`.** Capacitor
+  wires up no `DownloadListener`, so an anchor download does nothing whatsoever
+  and reports nothing. Every native route ends the export — with the truth if
+  no file was written.
 - **`habit.startDate` empty means "no start date on record".** Never backfill one
   onto an existing habit: it would either erase the history before it or invent
   one. Only the add sheet sets it, to today.

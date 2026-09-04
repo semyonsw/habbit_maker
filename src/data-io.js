@@ -18,7 +18,9 @@
 //
 //   3. A plain anchor download, for Firefox and Safari. Straight to the
 //      browser's download folder with nothing to choose -- the old behaviour,
-//      and now only the last resort.
+//      and now only the last resort. WEB ONLY: Capacitor wires no
+//      DownloadListener into the Android WebView, so there `<a download>` does
+//      nothing whatsoever, and route 2 has to end the export either way.
 //
 // Import mirrors it: a real open dialog where available, starting in the same
 // remembered folder, otherwise a hidden <input type="file">.
@@ -242,9 +244,28 @@ export async function exportData() {
       showToast("Export failed. See the logs for details.");
       return;
     }
+
+    // Both native routes reported "unavailable", so nothing was written. This
+    // MUST NOT fall through to the download below: Capacitor registers no
+    // DownloadListener, so `<a download>` in the Android WebView does exactly
+    // nothing, and the status line then announced a file in Downloads that was
+    // never created anywhere. Say what actually happened instead.
+    appendLogEntry({
+      level: "error",
+      component: "backup",
+      operation: "exportData.native",
+      message: "No native save route: neither FileSaver nor Share resolved.",
+    });
+    setBackupStatus(
+      "Export failed: this app could not reach Android's file saver. " +
+        "See the logs for details.",
+      "error",
+    );
+    showToast("Export failed. See the logs for details.");
+    return;
   }
 
-  // 3. Plain download.
+  // 3. Plain download. Web only -- see the note at the top of the file.
   try {
     downloadThroughAnchor(json, filename);
     setBackupStatus(

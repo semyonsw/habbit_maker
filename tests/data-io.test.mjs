@@ -91,6 +91,7 @@ beforeEach(seed);
 afterEach(() => {
   delete window.showSaveFilePicker;
   delete window.showOpenFilePicker;
+  delete window.Capacitor;
 });
 
 /* ====================================================================== */
@@ -173,6 +174,92 @@ test("the backup is named for today, not for the month being viewed", async () =
     picker.options.suggestedName.includes("2024-03"),
     false,
     "the viewed month must not leak into the filename",
+  );
+});
+
+/* ====================================================================== */
+/* Export on Android                                                      */
+/* ====================================================================== */
+
+// The bridge the native WebView injects into the page. Note what is NOT on it:
+// `registerPlugin`. That function comes from the @capacitor/core npm module and
+// only exists where something bundles it in; this app is raw ES modules, so on
+// the phone a plugin is reachable ONLY as `Capacitor.Plugins.<Name>` -- an
+// object the WebView builds itself, one method per @PluginMethod.
+//
+// The stub therefore offers nothing else on purpose. Reaching for registerPlugin
+// first is exactly what made every plugin come back null on the phone.
+function stubNativeBridge(plugins = {}) {
+  window.Capacitor = {
+    isNativePlatform: () => true,
+    Plugins: plugins,
+  };
+}
+
+// Records what reached FileSaver.save(), so a test can decode the payload and
+// prove the backup itself was handed over rather than just that a call happened.
+function stubFileSaver(result) {
+  const calls = [];
+  stubNativeBridge({
+    FileSaver: {
+      save: async (options) => {
+        calls.push(options);
+        return result;
+      },
+    },
+  });
+  return calls;
+}
+
+test("on Android the export goes through the system file browser", async () => {
+  const calls = stubFileSaver({ saved: true, name: "habits.json" });
+
+  await exportData();
+
+  assert.equal(calls.length, 1, "the file browser was opened");
+  assert.equal(calls[0].filename, TODAY_NAME, "with today's name suggested");
+  assert.equal(calls[0].mimeType, "application/json");
+
+  // The bridge cannot carry raw bytes, so the file arrives base64-encoded.
+  const written = Buffer.from(String(calls[0].data), "base64").toString("utf8");
+  const parsed = JSON.parse(written);
+  assert.ok(Array.isArray(parsed.habits.daily), "and the whole backup with it");
+  assert.equal(parsed.habits.daily.length, getSortedDailyHabits().length);
+
+  assert.match(status(), /Saved as habits\.json/);
+});
+
+test("dismissing Android's file browser is reported as cancelled", async () => {
+  stubFileSaver({ saved: false, cancelled: true });
+
+  await exportData();
+
+  assert.match(status(), /cancelled/i);
+  assert.doesNotMatch(
+    status(),
+    /downloads/i,
+    "nothing was written, so nothing may be claimed about Downloads",
+  );
+});
+
+test("on Android an export that saved nothing never claims a download", async () => {
+  // The bug: with no plugin reachable, export fell through to `<a download>`,
+  // which the Android WebView ignores outright -- Capacitor registers no
+  // DownloadListener -- and then announced the backup as saved to Downloads.
+  // A file the user cannot find is bad; being told it is there is worse.
+  stubNativeBridge({});
+
+  await exportData();
+
+  assert.doesNotMatch(
+    status(),
+    /downloads/i,
+    "Android has no download folder route at all",
+  );
+  assert.equal(
+    document.getElementById("backupStatus").classList.contains("error"),
+    true,
+    "a save that did not happen is an error, not a success",
   );
 });
 

@@ -147,6 +147,38 @@ export function installDom() {
     exited: false,
   };
 
+  // --- FileReader ---------------------------------------------------------
+  //
+  // Node has Blob but no FileReader, and the Android export path runs
+  // blob -> base64 -> bridge. Modelled on the real API rather than mocked out
+  // -- asynchronous, onload/onerror, and a genuine data: URL built from the
+  // blob's own bytes -- so a test can assert on the bytes that actually reached
+  // the native plugin instead of trusting a stub's word for it.
+  class FileReaderShim {
+    constructor() {
+      this.result = null;
+      this.error = null;
+      this.onload = null;
+      this.onerror = null;
+    }
+
+    readAsDataURL(blob) {
+      Promise.resolve()
+        .then(() => blob.arrayBuffer())
+        .then((buffer) => {
+          const type = blob.type || "application/octet-stream";
+          this.result = `data:${type};base64,${Buffer.from(buffer).toString(
+            "base64",
+          )}`;
+          if (this.onload) this.onload({ target: this });
+        })
+        .catch((error) => {
+          this.error = error;
+          if (this.onerror) this.onerror({ target: this });
+        });
+    }
+  }
+
   const shim = {
     document,
     addEventListener,
@@ -207,6 +239,7 @@ export function installDom() {
     configurable: true,
   });
   globalThis.document = document;
+  globalThis.FileReader = FileReaderShim;
   globalThis.HTMLElement = window.HTMLElement;
   globalThis.Node = window.Node;
   globalThis.Event = window.Event;
