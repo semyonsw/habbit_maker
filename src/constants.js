@@ -82,7 +82,7 @@ export const MAX_LOG_RECORDS = 1000;
 // A skipped/undone action stays undoable for this long.
 export const UNDO_WINDOW_MS = 6000;
 
-export const APP_VERSION = "1.1.1";
+export const APP_VERSION = "1.2.0";
 
 export const DEFAULT_CATEGORIES = [
   { id: "cat_health", name: "Health", emoji: "\u2764\uFE0F", color: "#3E85B5" },

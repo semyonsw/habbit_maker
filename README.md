@@ -96,7 +96,11 @@ it leads with a **strength score** instead:
 
 **Data**
 
-- One-file JSON export and import.
+- One-file JSON export and import. **Export opens a real save dialog** where
+  the browser has one — you pick the folder, and it reopens there next time.
+  On Android it goes through the system share sheet; on Firefox and Safari it
+  falls back to the downloads folder. Settings says which you will get before
+  you tap.
 - Light / dark / auto theme, Monday- or Sunday-first weeks.
 - Fully offline. Installable. No telemetry of any kind.
 
@@ -451,9 +455,17 @@ config and no network call of any kind at runtime.
 | PWA / Android | IndexedDB (`habitTracker_store_v1`), on-device |
 
 The PWA asks for persistent storage (`navigator.storage.persist()`) so the
-browser will not evict it under pressure. Export regularly anyway — Export
-writes a single JSON file, and on Android it goes through the system share sheet
-so it can land in Files or Drive.
+browser will not evict it under pressure. Export regularly anyway. Export writes a
+single JSON file:
+
+| Where you are running it | What happens |
+|---|---|
+| Chromium desktop (incl. the local Python build) | A save dialog — you choose the folder and filename, and it reopens there next time |
+| Android APK | The system share sheet — Files, Drive, anywhere |
+| Firefox / Safari | Straight to the downloads folder |
+
+Import mirrors it, starting in the same remembered folder. Backups are named
+`habit-maker-backup-YYYY-MM-DD.json` for the day they were taken.
 
 ---
 

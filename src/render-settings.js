@@ -6,7 +6,13 @@ import { APP_VERSION, THEMES } from "./constants.js";
 import { setState } from "./state.js";
 import { sanitize } from "./utils.js";
 import { getDefaultState, saveState } from "./persistence.js";
-import { exportData, importData, setBackupStatus } from "./data-io.js";
+import {
+  canChooseExportFolder,
+  exportData,
+  importData,
+  importThroughPicker,
+  setBackupStatus,
+} from "./data-io.js";
 import {
   getDailyReminder,
   getFadeReminders,
@@ -23,10 +29,19 @@ import {
   notificationsSupported,
   rescheduleReminders,
 } from "./notifications.js";
+import { isNative } from "./native.js";
 import { openConfirm } from "./modals.js";
 import { callRenderer, registerRenderer } from "./render-registry.js";
 
 const THEME_LABELS = { light: "Light", dark: "Dark", auto: "Auto" };
+
+// Say where the file will end up, since it differs by platform and "Export"
+// alone gives no clue whether you get to choose.
+function exportHint() {
+  if (canChooseExportFolder()) return "Choose the folder to save it in";
+  if (isNative()) return "Save it anywhere via the share sheet";
+  return "Saves to your downloads folder";
+}
 
 // One line telling the truth about whether a reminder will actually arrive.
 // The app used to imply background delivery it had no code for at all; the
@@ -124,11 +139,17 @@ export function renderSettings() {
     '<div class="section-label settings-label">Data</div>' +
     '<div class="settings-group">' +
     '<button type="button" class="settings-row is-tappable" data-export>' +
-    '<span class="settings-row-label">Export data</span>' +
+    "<div>" +
+    '<div class="settings-row-label">Export data</div>' +
+    `<div class="settings-row-hint">${sanitize(exportHint())}</div>` +
+    "</div>" +
     '<span class="settings-row-value">JSON</span>' +
     "</button>" +
     '<button type="button" class="settings-row is-tappable" data-import>' +
-    '<span class="settings-row-label">Import data</span>' +
+    "<div>" +
+    '<div class="settings-row-label">Import data</div>' +
+    '<div class="settings-row-hint">Replaces everything on this device</div>' +
+    "</div>" +
     '<span class="settings-row-value">JSON</span>' +
     "</button>" +
     '<button type="button" class="settings-row is-tappable" data-reset>' +
@@ -177,8 +198,14 @@ export function bindSettingsEvents() {
       return;
     }
     if (event.target.closest("[data-import]")) {
-      const input = document.getElementById("importFileInput");
-      if (input) input.click();
+      // A real open dialog where the browser has one -- it starts in the same
+      // folder the last export went to. The hidden <input type="file"> is the
+      // fallback for Firefox, Safari and the Android WebView.
+      importThroughPicker().then((handled) => {
+        if (handled) return;
+        const input = document.getElementById("importFileInput");
+        if (input) input.click();
+      });
       return;
     }
     if (event.target.closest("[data-reset]")) {

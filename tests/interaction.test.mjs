@@ -592,6 +592,51 @@ test("every settings control responds", () => {
   assert.notEqual(getFadeReminders(), fade);
 });
 
+test("the Export button reaches the save dialog", async () => {
+  // Closes the loop between the button and data-io.js; the routes themselves
+  // are covered in tests/data-io.test.mjs.
+  let opened = null;
+  window.showSaveFilePicker = async (options) => {
+    opened = options;
+    return {
+      name: options.suggestedName,
+      createWritable: async () => ({ write: async () => {}, close: async () => {} }),
+    };
+  };
+  try {
+    switchView("settings");
+    assert.ok(
+      $("[data-export]").innerHTML.includes("Choose the folder"),
+      "and Settings says the folder is yours to pick",
+    );
+    click($("[data-export]"), "Export data");
+    await new Promise((r) => setTimeout(r, 0));
+    assert.ok(opened, "the save dialog was opened");
+    assert.match(opened.suggestedName, /^habit-maker-backup-\d{4}-\d{2}-\d{2}\.json$/);
+  } finally {
+    delete window.showSaveFilePicker;
+  }
+});
+
+test("the Import button reaches the open dialog", async () => {
+  let opened = null;
+  window.showOpenFilePicker = async (options) => {
+    opened = options;
+    const error = new Error("cancelled");
+    error.name = "AbortError";
+    throw error;
+  };
+  try {
+    switchView("settings");
+    click($("[data-import]"), "Import data");
+    await new Promise((r) => setTimeout(r, 0));
+    assert.ok(opened, "the open dialog was opened");
+    assert.equal(opened.id, "habitMakerBackup", "in the remembered folder");
+  } finally {
+    delete window.showOpenFilePicker;
+  }
+});
+
 test("the bottom nav switches every view", () => {
   const views = ["analytics", "settings", "today"];
   views.forEach((view) => {
