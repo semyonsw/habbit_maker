@@ -62,6 +62,10 @@ it leads with a **strength score** instead:
 - Four schedules: every day, chosen weekdays, chosen days of the month, or a
   repeating custom cycle ("every third day" from a start date).
 - Per-habit monthly goal, current streak, best streak and strength.
+- **A start date, defaulting to today.** A habit you add on the 20th is not
+  retroactively scheduled for the 1st. If the schedule means the first real day
+  is later — start a Mondays-and-Fridays habit on a Tuesday and it begins on
+  Friday — the sheet says so before you save.
 - **Reorder by holding a habit and dragging it** up or down the list, so a new
   one does not have to live at the bottom. Alt+Up / Alt+Down does the same from
   a keyboard. Reordering a day that hides some habits leaves the hidden ones
@@ -101,10 +105,9 @@ it leads with a **strength score** instead:
 **Data**
 
 - One-file JSON export and import. **Export opens a real save dialog** where
-  the browser has one — you pick the folder, and it reopens there next time.
-  On Android it goes through the system share sheet; on Firefox and Safari it
-  falls back to the downloads folder. Settings says which you will get before
-  you tap.
+  the browser has one, and Android's own file browser in the APK — you pick the
+  folder and the filename either way. Firefox and Safari fall back to the
+  downloads folder. Settings says which you will get before you tap.
 - Light / dark / auto theme, Monday- or Sunday-first weeks.
 - Fully offline. Installable. No telemetry of any kind.
 
@@ -467,7 +470,7 @@ single JSON file:
 | Where you are running it | What happens |
 |---|---|
 | Chromium desktop (incl. the local Python build) | A save dialog — you choose the folder and filename, and it reopens there next time |
-| Android APK | The system share sheet — Files, Drive, anywhere |
+| Android APK | The system file browser (Storage Access Framework) — you pick the folder and the name, and the file lands there |
 | Firefox / Safari | Straight to the downloads folder |
 
 Import mirrors it, starting in the same remembered folder. Backups are named

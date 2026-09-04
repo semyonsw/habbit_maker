@@ -43,6 +43,22 @@ export function getHabitScheduleMode(habit) {
 
 export function isHabitTrackedOnDate(habit, year, month, day) {
   if (!habit) return true;
+
+  // Before the habit existed, it was not being missed.
+  //
+  // Without this a habit added today was retroactively scheduled for every day
+  // of recorded history, so the moment you created one it appeared as a long
+  // run of misses: its strength started near zero and the whole month's
+  // completion figure dropped. An empty startDate means "no start date on
+  // record", which is how every habit created before this behaves.
+  const start = parseDateKey(habit.startDate);
+  if (
+    start &&
+    daysBetweenDates(start.year, start.month, start.day, year, month, day) < 0
+  ) {
+    return false;
+  }
+
   const mode = getHabitScheduleMode(habit);
   if (mode === "fixed") return true;
 
@@ -83,6 +99,38 @@ export function isHabitTrackedOnDate(habit, year, month, day) {
   }
 
   return true;
+}
+
+// The first day this habit is actually tracked on, at or after `from`.
+//
+// A start date is not the same as a first day: start a Mondays-and-Fridays
+// habit on a Tuesday and nothing happens until Friday. The add sheet shows the
+// answer so that gap is stated up front rather than looking like the habit
+// failed to save.
+//
+// Returns {year, month, day}, or null if nothing falls inside the window --
+// which a schedule genuinely can do (the 31st of a month, in a February).
+export function firstScheduledOnOrAfter(habit, from, windowDays = 400) {
+  if (!habit || !from) return null;
+
+  const start = parseDateKey(habit.startDate);
+  // Whichever is later: the habit's start date, or the day we are asking from.
+  let cursor = new Date(from.year, from.month, from.day);
+  if (start) {
+    const startAt = new Date(start.year, start.month, start.day);
+    if (startAt > cursor) cursor = startAt;
+  }
+
+  for (let i = 0; i < windowDays; i += 1) {
+    const year = cursor.getFullYear();
+    const month = cursor.getMonth();
+    const day = cursor.getDate();
+    if (isHabitTrackedOnDate(habit, year, month, day)) {
+      return { year, month, day };
+    }
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return null;
 }
 
 /* ====================================================================== */

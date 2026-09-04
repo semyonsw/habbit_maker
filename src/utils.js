@@ -93,6 +93,18 @@ export function parseDateKey(value) {
   return { year, month, day };
 }
 
+// "Friday 6 September", for telling someone when a habit will first appear.
+export function formatFriendlyDate(year, month, day, monthNames, weekdayNames) {
+  const weekday = new Date(year, month, day).getDay();
+  return `${weekdayNames[weekday]} ${day} ${monthNames[month]}`;
+}
+
+// Today as a "YYYY-MM-DD" key.
+export function todayDateKey() {
+  const now = new Date();
+  return formatDateKey(now.getFullYear(), now.getMonth(), now.getDate());
+}
+
 // "HH:MM" or null.
 export function parseTimeString(value) {
   const match = /^(\d{1,2}):(\d{2})$/.exec(String(value || "").trim());

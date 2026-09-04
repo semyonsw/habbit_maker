@@ -8,12 +8,31 @@
 // screen is the opposite -- it writes through immediately -- which is why the
 // two are separate surfaces rather than one shared form.
 
-import { DEFAULT_CATEGORIES, REMINDER_REPEATS, WEEKDAY_LABELS } from "./constants.js";
+import {
+  DEFAULT_CATEGORIES,
+  FULL_WEEKDAYS,
+  MONTH_NAMES,
+  REMINDER_REPEATS,
+  WEEKDAY_LABELS,
+} from "./constants.js";
 import { state, globals } from "./state.js";
-import { uid, sanitize } from "./utils.js";
+import {
+  uid,
+  sanitize,
+  todayDateKey,
+  parseDateKey,
+  formatFriendlyDate,
+} from "./utils.js";
 import { deriveHabitMark, saveState } from "./persistence.js";
-import { deleteHabit, getHabitTarget, updateHabitOrder } from "./habits.js";
+import {
+  deleteHabit,
+  getHabitTarget,
+  todayParts,
+  updateHabitOrder,
+} from "./habits.js";
+import { firstScheduledOnOrAfter } from "./scoring.js";
 import { callRenderer, registerRenderer } from "./render-registry.js";
+import { showToast } from "./toast.js";
 import { getWeekStart } from "./ui-prefs.js";
 import {
   lockBodyScroll,
@@ -132,6 +151,10 @@ function draftFromHabit(habit) {
       id: null,
       name: "",
       cue: "",
+      // Today, not "always". A habit you add on the 20th was not being missed
+      // on the 1st, and dating it from the start of history is what made a new
+      // habit appear already broken.
+      startDate: todayDateKey(),
       categoryId: (state.categories[0] || DEFAULT_CATEGORIES[0]).id,
       trackType: "check",
       countTarget: 3,
@@ -153,6 +176,7 @@ function draftFromHabit(habit) {
     id: habit.id,
     name: habit.name,
     cue: habit.cue || "",
+    startDate: habit.startDate || "",
     categoryId: habit.categoryId,
     trackType: habit.trackType === "count" ? "count" : "check",
     countTarget: getHabitTarget(habit) > 1 ? getHabitTarget(habit) : 3,
@@ -203,6 +227,64 @@ function restoreTrap() {
   releaseTrap();
   const remaining = topOpenOverlay();
   if (remaining) trapWithin(remaining);
+}
+
+// The stored schedule a draft describes. Shared by the save and by the preview
+// below, so what you are shown is computed from exactly what will be written.
+function scheduleFromDraft(d) {
+  const activeWeekdays =
+    d.schedule === "daily"
+      ? [0, 1, 2, 3, 4, 5, 6]
+      : d.schedule === "weekdays"
+        ? [1, 2, 3, 4, 5]
+        : d.days.slice().sort((a, b) => a - b);
+
+  const weekdays = activeWeekdays.length
+    ? activeWeekdays
+    : [0, 1, 2, 3, 4, 5, 6];
+
+  return {
+    scheduleMode: weekdays.length === 7 ? "fixed" : "specific_weekdays",
+    activeWeekdays: weekdays,
+    activeMonthDays: [],
+  };
+}
+
+// "Starts Tuesday 2 September, first tracked Friday 5 September."
+//
+// A start date is not the same as a first day: start a Mondays-and-Fridays
+// habit on a Tuesday and nothing happens until Friday. Saying so here is what
+// stops the habit looking like it failed to save when it does not appear on
+// Today.
+function startPreview(d) {
+  const start = parseDateKey(d.startDate);
+  if (!start) return "Tracked from the beginning of your history.";
+
+  const probe = Object.assign({ startDate: d.startDate }, scheduleFromDraft(d));
+  const first = firstScheduledOnOrAfter(probe, start);
+  if (!first) {
+    return "This schedule never comes round. Pick at least one day.";
+  }
+
+  const startLabel = formatFriendlyDate(
+    start.year,
+    start.month,
+    start.day,
+    MONTH_NAMES,
+    FULL_WEEKDAYS,
+  );
+  const firstLabel = formatFriendlyDate(
+    first.year,
+    first.month,
+    first.day,
+    MONTH_NAMES,
+    FULL_WEEKDAYS,
+  );
+
+  if (firstLabel === startLabel) {
+    return `First tracked on ${firstLabel}. Nothing before it counts as missed.`;
+  }
+  return `Starts ${startLabel}, but the schedule means the first tracked day is ${firstLabel}.`;
 }
 
 /* ----------------------------------------------------------------- markup */
@@ -284,6 +366,16 @@ export function renderHabitSheet() {
       "</div>";
   }
 
+  // Start date. Placed under Schedule because the two together decide the
+  // habit's first real day, which the line below spells out.
+  html +=
+    '<div class="section-label field-label">Starts</div>' +
+    '<div class="boxed-row">' +
+    '<div class="boxed-row-label">First day</div>' +
+    `<input type="date" id="draftStart" value="${sanitize(d.startDate)}" aria-label="Start date" />` +
+    "</div>" +
+    `<div class="field-hint">${sanitize(startPreview(d))}</div>`;
+
   html +=
     '<div class="row-split" style="margin-top:20px">' +
     '<div class="section-label">Reminder</div>' +
@@ -357,12 +449,7 @@ function saveDraft() {
   const name = d.name.trim();
   if (!name) return;
 
-  const activeWeekdays =
-    d.schedule === "daily"
-      ? [0, 1, 2, 3, 4, 5, 6]
-      : d.schedule === "weekdays"
-        ? [1, 2, 3, 4, 5]
-        : d.days.slice().sort((a, b) => a - b);
+  const start = parseDateKey(d.startDate);
 
   const fields = {
     name,
@@ -371,9 +458,8 @@ function saveDraft() {
     trackType: d.trackType,
     countTarget: d.trackType === "count" ? d.countTarget : 1,
     monthGoal: d.monthGoal,
-    scheduleMode: activeWeekdays.length === 7 ? "fixed" : "specific_weekdays",
-    activeWeekdays: activeWeekdays.length ? activeWeekdays : [0, 1, 2, 3, 4, 5, 6],
-    activeMonthDays: [],
+    startDate: start ? d.startDate : "",
+    ...scheduleFromDraft(d),
     reminder: {
       enabled: !!d.reminder.enabled,
       repeat: d.reminder.repeat,
@@ -394,6 +480,30 @@ function saveDraft() {
   }
 
   saveState();
+
+  // A habit whose first tracked day is not today will not be on the Today list
+  // when the sheet closes. Say where it went, or it reads as a failed save.
+  if (!d.id) {
+    const first = firstScheduledOnOrAfter(fields, todayParts());
+    if (first) {
+      const t = todayParts();
+      const isToday =
+        first.year === t.year && first.month === t.month && first.day === t.day;
+      if (!isToday) {
+        showToast(
+          `${name} starts ${formatFriendlyDate(
+            first.year,
+            first.month,
+            first.day,
+            MONTH_NAMES,
+            FULL_WEEKDAYS,
+          )}.`,
+          { duration: 5000 },
+        );
+      }
+    }
+  }
+
   // The habit's reminder may have been added, changed or removed by this save,
   // and the notification text is built from its name and cue.
   callRenderer("rescheduleReminders");
@@ -535,10 +645,28 @@ export function bindOverlayEvents() {
       if (event.target.id === "draftCue") {
         d.cue = event.target.value;
       }
+      if (event.target.id === "draftStart") {
+        d.startDate = event.target.value;
+        const hint = sheet.querySelector(".field-hint:last-of-type");
+        if (hint) hint.textContent = startPreview(d);
+      }
       if (event.target.id === "draftReminderTime") {
         d.reminder.time = event.target.value;
         const preview = sheet.querySelector(".sheet-preview");
         if (preview) preview.textContent = reminderPreview(d);
+      }
+    });
+  }
+
+  if (sheet) {
+    // A date picker commits on `change`, not `input`, in several engines --
+    // including the Android WebView's native date dialog.
+    sheet.addEventListener("change", (event) => {
+      const d = globals.habitDraft;
+      if (!d) return;
+      if (event.target.id === "draftStart") {
+        d.startDate = event.target.value;
+        renderHabitSheet();
       }
     });
   }

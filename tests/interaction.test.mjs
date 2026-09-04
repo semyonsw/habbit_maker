@@ -139,6 +139,62 @@ test("a habit can be created end to end", () => {
   );
 });
 
+test("a new habit starts today and is not added to previous days", () => {
+  click($("#btnAddHabit"), "#btnAddHabit");
+
+  const startField = $("#draftStart");
+  assert.ok(startField, "the sheet offers a start date");
+  const t = new Date();
+  const todayKey = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
+  assert.equal(startField.value, todayKey, "defaulting to today");
+
+  setValue($("#draftName"), "Brand new", "input", "name");
+  click($("[data-sheet-save]"), "Save");
+
+  const created = getSortedDailyHabits().find((h) => h.name === "Brand new");
+  assert.equal(created.startDate, todayKey);
+
+  // On today it is listed; on a day before it existed it is not.
+  assert.ok($("#todayList").innerHTML.includes("Brand new"), "listed today");
+
+  if (TODAY_DAY > 1) {
+    globals.dayFocusDay = 1;
+    renderAll();
+    assert.equal(
+      $("#todayList").innerHTML.includes("Brand new"),
+      false,
+      "and absent from the 1st, which it did not exist for",
+    );
+    assert.equal(
+      $$('#todayList [data-open]').length,
+      getSortedDailyHabits().length - 1,
+      "the older habits are still there",
+    );
+  }
+});
+
+test("the sheet says which day the habit will really start on", () => {
+  click($("#btnAddHabit"), "#btnAddHabit");
+  setValue($("#draftName"), "Gym", "input", "name");
+
+  // Mondays and Fridays only.
+  click($('[data-draft-schedule="custom"]'), "Custom schedule");
+  const wanted = new Set([1, 5]);
+  $$("[data-draft-day]").forEach((btn) => {
+    const day = parseInt(btn.dataset.draftDay, 10);
+    const on = globals.habitDraft.days.includes(day);
+    if (on !== wanted.has(day)) click(btn, `weekday ${day}`);
+  });
+  assert.deepEqual(globals.habitDraft.days.slice().sort(), [1, 5]);
+
+  const hint = $$(".field-hint").pop().textContent;
+  assert.match(
+    hint,
+    /first tracked day is|First tracked on/i,
+    `expected a first-day line, got: ${hint}`,
+  );
+});
+
 test("Cancel closes the sheet and writes nothing", () => {
   const before = getSortedDailyHabits().length;
   click($("#btnAddHabit"), "#btnAddHabit");

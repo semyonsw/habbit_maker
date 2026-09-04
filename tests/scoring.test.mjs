@@ -19,6 +19,7 @@ import {
   computeYearGrid,
   creditForValue,
   historyRange,
+  firstScheduledOnOrAfter,
   isHabitTrackedOnDate,
   monthHasRecords,
   readDayValue,
@@ -393,6 +394,175 @@ test("a sequence's phase is DST-proof", () => {
   // Whatever the local zone, a whole-day difference has to stay whole.
   assert.equal(daysBetweenDates(2026, 2, 1, 2026, 2, 31), 30);
   assert.equal(daysBetweenDates(2026, 9, 1, 2026, 10, 1), 31);
+});
+
+/* ====================================================================== */
+/* Start date                                                             */
+/* ====================================================================== */
+
+test("a habit is not tracked before its start date", () => {
+  // 2026-03-10 is a Tuesday.
+  const h = { ...DAILY, startDate: "2026-03-10" };
+  assert.equal(isHabitTrackedOnDate(h, 2026, 2, 9), false, "the day before");
+  assert.equal(isHabitTrackedOnDate(h, 2026, 2, 10), true, "the start day");
+  assert.equal(isHabitTrackedOnDate(h, 2026, 2, 11), true, "after");
+  assert.equal(isHabitTrackedOnDate(h, 2026, 1, 28), false, "a month earlier");
+});
+
+test("an empty start date means no restriction", () => {
+  assert.equal(isHabitTrackedOnDate({ ...DAILY, startDate: "" }, 2020, 0, 1), true);
+  assert.equal(isHabitTrackedOnDate(DAILY, 2020, 0, 1), true, "absent field");
+  assert.equal(
+    isHabitTrackedOnDate({ ...DAILY, startDate: "nonsense" }, 2020, 0, 1),
+    true,
+    "an unparseable value is not a silent block",
+  );
+});
+
+test("a habit added today is not retroactively missed", () => {
+  // The complaint this exists for. Added on the 10th, the days before it must
+  // not count as misses -- so the score is the score of one good day, not of
+  // nine failures followed by one.
+  const today = { year: 2026, month: 2, day: 10 };
+  const fresh = { ...DAILY, startDate: "2026-03-10" };
+  const months = { "2026-03": monthWith("h1", { 10: true }) };
+
+  const { current } = computeStreak(fresh, months, today);
+  assert.equal(current, 1, "one day, one streak");
+
+  const score = computeScore(fresh, months, today, 21);
+  const oneGoodDay = computeScore(
+    { ...DAILY, startDate: "" },
+    { "2026-03": monthWith("h1", { 1: true }) },
+    { year: 2026, month: 2, day: 1 },
+    21,
+  );
+  assert.ok(
+    Math.abs(score - oneGoodDay) < 1e-9,
+    "identical to that habit having existed for exactly one day",
+  );
+});
+
+test("what a start date actually changes is the counts, not the score", () => {
+  // Worth being precise about. Misses BEFORE the first completion cannot move
+  // the strength score at all: the average starts at zero and a miss multiplies
+  // it, so 0 * k is still 0. Scoping the habit to its start date therefore
+  // leaves the score identical...
+  const today = { year: 2026, month: 2, day: 10 };
+  const months = { "2026-03": monthWith("h1", { 10: true }) };
+  const unscoped = computeScore({ ...DAILY, startDate: "" }, months, today, 21);
+  const scoped = computeScore(
+    { ...DAILY, startDate: "2026-03-10" },
+    months,
+    today,
+    21,
+  );
+  assert.equal(scoped, unscoped, "leading misses were never in the score");
+
+  // ...and changes everything that COUNTS scheduled days: the day totals, the
+  // month figure, the weekday breakdown. That is where a habit added today
+  // showed up as nine days of failure.
+  const counts = computeMonthDayCounts(
+    [{ ...DAILY, startDate: "2026-03-10" }],
+    months["2026-03"],
+    2026,
+    2,
+  );
+  assert.equal(counts[9].total, 0, "the 9th does not schedule it at all");
+  assert.equal(counts[10].total, 1);
+
+  const before = computeMonthDayCounts(
+    [{ ...DAILY, startDate: "" }],
+    months["2026-03"],
+    2026,
+    2,
+  );
+  assert.equal(before[9].total, 1, "unscoped, the 9th counted as a miss");
+  assert.equal(before[9].done, 0);
+
+  const weekday = computeWeekdayStats(
+    [{ ...DAILY, startDate: "2026-03-10" }],
+    months,
+    today,
+  );
+  const totalRated = weekday.reduce((sum, w) => sum + w.total, 0);
+  assert.equal(totalRated, 1, "one rated day: the one the habit has existed for");
+
+  const totalUnscoped = computeWeekdayStats(
+    [{ ...DAILY, startDate: "" }],
+    months,
+    today,
+  ).reduce((sum, w) => sum + w.total, 0);
+  assert.equal(totalUnscoped, 10, "unscoped, ten days were being judged");
+});
+
+test("start on a Tuesday, scheduled Mon and Fri: the first day is Friday", () => {
+  // Exactly the case in the request. 2026-03-10 is a Tuesday; the next Friday
+  // is the 13th.
+  const monFri = {
+    ...DAILY,
+    scheduleMode: "specific_weekdays",
+    activeWeekdays: [1, 5],
+    startDate: "2026-03-10",
+  };
+  assert.equal(isHabitTrackedOnDate(monFri, 2026, 2, 10), false, "Tuesday");
+  assert.equal(isHabitTrackedOnDate(monFri, 2026, 2, 11), false, "Wednesday");
+  assert.equal(isHabitTrackedOnDate(monFri, 2026, 2, 12), false, "Thursday");
+  assert.equal(isHabitTrackedOnDate(monFri, 2026, 2, 13), true, "Friday");
+
+  assert.deepEqual(
+    firstScheduledOnOrAfter(monFri, { year: 2026, month: 2, day: 10 }),
+    { year: 2026, month: 2, day: 13 },
+  );
+  // And the Monday BEFORE the start date is still excluded.
+  assert.equal(isHabitTrackedOnDate(monFri, 2026, 2, 9), false, "prior Monday");
+});
+
+test("firstScheduledOnOrAfter never returns a day before the start date", () => {
+  const monFri = {
+    ...DAILY,
+    scheduleMode: "specific_weekdays",
+    activeWeekdays: [1, 5],
+    startDate: "2026-03-10",
+  };
+  // Asked from a month earlier, it still starts at the start date.
+  assert.deepEqual(
+    firstScheduledOnOrAfter(monFri, { year: 2026, month: 1, day: 1 }),
+    { year: 2026, month: 2, day: 13 },
+  );
+});
+
+test("firstScheduledOnOrAfter handles a start date that is itself active", () => {
+  const daily = { ...DAILY, startDate: "2026-03-10" };
+  assert.deepEqual(
+    firstScheduledOnOrAfter(daily, { year: 2026, month: 2, day: 10 }),
+    { year: 2026, month: 2, day: 10 },
+  );
+});
+
+test("firstScheduledOnOrAfter gives up rather than looping for ever", () => {
+  // A schedule with no active days at all.
+  const never = {
+    ...DAILY,
+    scheduleMode: "specific_month_days",
+    activeMonthDays: [],
+    startDate: "2026-03-10",
+  };
+  assert.equal(
+    firstScheduledOnOrAfter(never, { year: 2026, month: 2, day: 10 }),
+    null,
+  );
+  assert.equal(firstScheduledOnOrAfter(null, { year: 2026, month: 2, day: 1 }), null);
+});
+
+test("a start date keeps a new habit out of the day's denominator", () => {
+  const old = { ...DAILY, id: "old", startDate: "" };
+  const fresh = { ...DAILY, id: "fresh", startDate: "2026-03-10" };
+  const monthData = { dailyCompletions: {} };
+
+  const counts = computeMonthDayCounts([old, fresh], monthData, 2026, 2);
+  assert.equal(counts[9].total, 1, "only the old habit was scheduled on the 9th");
+  assert.equal(counts[10].total, 2, "both from the 10th");
 });
 
 /* ====================================================================== */

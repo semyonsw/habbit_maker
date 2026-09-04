@@ -38,8 +38,9 @@ const THEME_LABELS = { light: "Light", dark: "Dark", auto: "Auto" };
 // Say where the file will end up, since it differs by platform and "Export"
 // alone gives no clue whether you get to choose.
 function exportHint() {
-  if (canChooseExportFolder()) return "Choose the folder to save it in";
-  if (isNative()) return "Save it anywhere via the share sheet";
+  if (canChooseExportFolder() || isNative()) {
+    return "Choose the folder to save it in";
+  }
   return "Saves to your downloads folder";
 }
 

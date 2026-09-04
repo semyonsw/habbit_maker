@@ -78,6 +78,7 @@ src/notifications.js reminders: native alarms, or web timers
 src/render-*.js     one file per screen, each registering named renderers
 src/sheet.js        overlay mechanics: scroll lock, focus trap, drag, keyboard
 src/reorder.js      hold-and-drag to reorder habits on Today
+android/.../FileSaverPlugin.java   local plugin: Android's file-save browser
 tests/              node --test; see the testing notes below
 ```
 
@@ -100,6 +101,13 @@ tests/              node --test; see the testing notes below
   not replace it with a `textContent`/`innerHTML` round-trip, which does not.
 - **`server.hostname` in `capacitor.config.json` is the IndexedDB origin.**
   Changing it orphans every phone install's data. Treat it as permanent.
+- **A local Capacitor plugin must be registered by hand.** `cap sync` only wires
+  up npm plugins, so `MainActivity.onCreate()` calls
+  `registerPlugin(FileSaverPlugin.class)` **before** `super.onCreate()` — that is
+  where the bridge is built, and a later call is silently too late.
+- **`habit.startDate` empty means "no start date on record".** Never backfill one
+  onto an existing habit: it would either erase the history before it or invent
+  one. Only the add sheet sets it, to today.
 - **Never put `--` inside a comment in `AndroidManifest.xml`.** XML forbids it
   and the manifest merger's error names no line.
 - **Two press-and-hold gestures share the habit row.** Holding the *checkbox*

@@ -253,6 +253,18 @@ export function migrateState() {
       ? habit.reminder.time
       : "08:00";
 
+    // --- schema 8: start date ---------------------------------------------
+    // Empty means "no start date on record", which is how every habit created
+    // before this behaves -- and it MUST stay empty for them. Backfilling a
+    // start date onto an existing habit would either erase the history before
+    // it or invent one we do not have; the app does not know when a habit you
+    // created six months ago actually began. New habits get today's date, set
+    // by the add sheet rather than here.
+    const startDate = parseDateKey(habit.startDate);
+    habit.startDate = startDate
+      ? formatDateKey(startDate.year, startDate.month, startDate.day)
+      : "";
+
     // --- schema 7: implementation intention -------------------------------
     // The "when-where-then" sentence: *After I pour my coffee, I will read for
     // ten minutes in the kitchen.* Naming the cue and the place is the single

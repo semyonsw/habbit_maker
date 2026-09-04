@@ -10,9 +10,11 @@
 //      for next time. Chromium desktop, including the local Python build, since
 //      127.0.0.1 counts as a secure context.
 //
-//   2. The Android share sheet, which is that platform's own "choose where to
-//      put this": Files, Drive, anywhere. The WebView has no download manager,
-//      so an <a download> there is a silent no-op.
+//   2. On Android, the Storage Access Framework file browser, via the local
+//      FileSaverPlugin -- the same "pick a folder, name the file" dialog every
+//      other Android app uses. The share sheet is the fallback below it: it can
+//      SEND a file but is not a place to put one, which is why exports kept
+//      ending up somewhere nobody could find.
 //
 //   3. A plain anchor download, for Firefox and Safari. Straight to the
 //      browser's download folder with nothing to choose -- the old behaviour,
@@ -26,7 +28,11 @@ import { isPlainObject, formatDateKey } from "./utils.js";
 import { appendLogEntry } from "./logging.js";
 import { migrateState, ensureMonthData, saveState } from "./persistence.js";
 import { callRenderer } from "./render-registry.js";
-import { saveBlobNatively, isNative } from "./native.js";
+import {
+  saveBlobWithPicker,
+  shareBlobNatively,
+  isNative,
+} from "./native.js";
 import { showToast } from "./toast.js";
 
 // Shared between the save and open dialogs on purpose: Chromium remembers the
@@ -187,21 +193,55 @@ export async function exportData() {
     }
   }
 
-  // 2. Android: the system share sheet.
-  try {
+  // 2. Android: the system file browser, then the share sheet.
+  if (isNative()) {
     const blob = new Blob([json], { type: "application/json" });
-    if (await saveBlobNatively(blob, filename)) {
-      setBackupStatus(`Exported as ${filename}.`, "success");
+
+    setBackupStatus("Choose where to save it...", "pending");
+    const picked = await saveBlobWithPicker(blob, filename, "application/json");
+    if (picked.status === "saved") {
+      setBackupStatus(`Saved as ${picked.name}.`, "success");
       return;
     }
-  } catch (error) {
-    appendLogEntry({
-      level: "warn",
-      component: "backup",
-      operation: "exportData.native",
-      message: "Native share failed; falling back to a download.",
-      error,
-    });
+    if (picked.status === "cancelled") {
+      setBackupStatus("Export cancelled. Nothing was saved.", "warn");
+      return;
+    }
+    if (picked.status === "failed") {
+      appendLogEntry({
+        level: "warn",
+        component: "backup",
+        operation: "exportData.picker.native",
+        message: "The file picker failed; falling back to the share sheet.",
+        error: picked.error,
+      });
+    }
+
+    // Only reached on an APK built before FileSaverPlugin existed, or if the
+    // picker itself failed.
+    const shared = await shareBlobNatively(blob, filename);
+    if (shared.status === "saved") {
+      setBackupStatus(`Sent ${filename} to the share sheet.`, "success");
+      return;
+    }
+    if (shared.status === "cancelled") {
+      // Reported honestly. This used to claim success, so Export said the file
+      // had been written whether or not anything happened.
+      setBackupStatus("Export cancelled. Nothing was saved.", "warn");
+      return;
+    }
+    if (shared.status === "failed") {
+      appendLogEntry({
+        level: "error",
+        component: "backup",
+        operation: "exportData.share",
+        message: "Native share failed.",
+        error: shared.error,
+      });
+      setBackupStatus("Export failed. See the logs for details.", "error");
+      showToast("Export failed. See the logs for details.");
+      return;
+    }
   }
 
   // 3. Plain download.

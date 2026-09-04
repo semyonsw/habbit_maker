@@ -89,13 +89,62 @@ function blobToBase64(blob) {
 // sheet, which lets it be saved to Files/Drive/anywhere without needing a
 // storage permission.
 //
-// Returns true if it handled the save, false if the caller should fall back to
-// the normal browser anchor-download path.
-export async function saveBlobNatively(blob, filename) {
-  if (!isNative()) return false;
+/* --------------------------------------------------------- save with a picker
+
+   The real thing: Android's Storage Access Framework file browser, via the
+   local FileSaverPlugin. You choose the folder and the filename and the file
+   lands there, visible to every other app.
+
+   This is what Export should have been doing all along. The share sheet below
+   is a way to SEND a file, not a place to put one -- there is no folder to
+   pick, some targets copy it somewhere private, and dismissing it writes
+   nothing. "I exported and cannot find the file" is the expected outcome.
+
+   Returns one of:
+     { status: "saved", name }   the file is on disk where the user put it
+     { status: "cancelled" }     the picker was dismissed; nothing was written
+     { status: "unavailable" }   no plugin (web, or an APK predating it)
+     { status: "failed", error } the picker ran but the write did not
+   -------------------------------------------------------------------------- */
+export async function saveBlobWithPicker(blob, filename, mimeType) {
+  if (!isNative()) return { status: "unavailable" };
+  const FileSaver = plugin("FileSaver");
+  if (!FileSaver || typeof FileSaver.save !== "function") {
+    return { status: "unavailable" };
+  }
+
+  try {
+    const data = await blobToBase64(blob);
+    const result = await FileSaver.save({
+      filename,
+      mimeType: mimeType || "application/json",
+      data,
+    });
+    if (result && result.saved) {
+      return { status: "saved", name: result.name || filename };
+    }
+    return { status: "cancelled" };
+  } catch (error) {
+    return { status: "failed", error };
+  }
+}
+
+/* ------------------------------------------------------------- share sheet */
+
+// Android's WebView has no download manager wired up: Capacitor registers no
+// DownloadListener, so `<a download>` with a blob: URL silently does nothing.
+// This writes the file into the app cache and hands it to the system share
+// sheet, which can send it anywhere without needing a storage permission.
+//
+// Kept as the fallback for when the picker is unavailable. Same result shape as
+// saveBlobWithPicker, deliberately: a dismissed share sheet is "cancelled", NOT
+// success. It used to be reported as success, so Export said "Exported as
+// habit-maker-backup.json" whether or not a single byte had been written.
+export async function shareBlobNatively(blob, filename) {
+  if (!isNative()) return { status: "unavailable" };
   const Filesystem = plugin("Filesystem");
   const Share = plugin("Share");
-  if (!Filesystem || !Share) return false;
+  if (!Filesystem || !Share) return { status: "unavailable" };
 
   try {
     const data = await blobToBase64(blob);
@@ -111,12 +160,10 @@ export async function saveBlobNatively(blob, filename) {
       directory: "CACHE",
     });
     await Share.share({ title: filename, files: [uri] });
-    return true;
-  } catch (err) {
-    // A user dismissing the share sheet also lands here. Returning true keeps
-    // the caller from firing a second, broken anchor download on top of it.
-    const message = String((err && err.message) || err || "");
-    if (/cancel/i.test(message)) return true;
-    return false;
+    return { status: "saved", name: filename };
+  } catch (error) {
+    const message = String((error && error.message) || error || "");
+    if (/cancel/i.test(message)) return { status: "cancelled" };
+    return { status: "failed", error };
   }
 }

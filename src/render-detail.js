@@ -9,13 +9,20 @@
 // edits are staged, and it is reached from the "Edit habit" button here.
 
 import {
+  FULL_WEEKDAYS,
   MONTH_NAMES,
   REMINDER_REPEATS,
   SKIPPED,
   WEEKDAY_LABELS,
 } from "./constants.js";
 import { state, globals } from "./state.js";
-import { sanitize, daysInMonth, formatTimeString } from "./utils.js";
+import {
+  sanitize,
+  daysInMonth,
+  formatTimeString,
+  parseDateKey,
+  formatFriendlyDate,
+} from "./utils.js";
 import {
   getCurrentMonthData,
   getViewedMonthData,
@@ -31,12 +38,14 @@ import {
   getHabitUsualTime,
   getHabitWeekdayStats,
   isFutureDate,
+  todayParts,
   isHabitTrackedOnDate,
   isHabitDoneOn,
   isHabitSkippedOn,
   isSkippedValue,
   setHabitDayValue,
 } from "./habits.js";
+import { firstScheduledOnOrAfter } from "./scoring.js";
 import { monthNavHtml, handleMonthNavClick } from "./month-nav.js";
 import { registerRenderer, callRenderer } from "./render-registry.js";
 import { navigateTo } from "./router.js";
@@ -316,8 +325,53 @@ function trackingHtml(habit) {
       "</div></div>";
   }
 
-  html += reminderHtml(habit) + "</div>";
+  html += startHtml(habit) + reminderHtml(habit) + "</div>";
   return html;
+}
+
+// The start date, editable. Clearing it means "tracked from the beginning of
+// your history", which is what every habit created before start dates existed
+// already does -- so the field must be clearable, not just settable.
+function startHtml(habit) {
+  const start = parseDateKey(habit.startDate);
+  const first = firstScheduledOnOrAfter(habit, start || todayParts());
+
+  let summary;
+  if (!start) {
+    summary = "Tracked from the beginning of your history";
+  } else if (first) {
+    const startLabel = formatFriendlyDate(
+      start.year,
+      start.month,
+      start.day,
+      MONTH_NAMES,
+      FULL_WEEKDAYS,
+    );
+    const firstLabel = formatFriendlyDate(
+      first.year,
+      first.month,
+      first.day,
+      MONTH_NAMES,
+      FULL_WEEKDAYS,
+    );
+    summary =
+      firstLabel === startLabel
+        ? `From ${startLabel}`
+        : `From ${startLabel} · first tracked ${firstLabel}`;
+  } else {
+    summary = "This schedule never comes round";
+  }
+
+  return (
+    '<div class="hr"></div>' +
+    '<div class="row-split">' +
+    "<div>" +
+    '<div class="row-title">Starts</div>' +
+    `<div class="row-sub">${sanitize(summary)}</div>` +
+    "</div>" +
+    `<input type="date" id="detailStart" value="${sanitize(habit.startDate || "")}" aria-label="Start date" />` +
+    "</div>"
+  );
 }
 
 function reminderHtml(habit) {
@@ -510,6 +564,11 @@ export function bindDetailEvents() {
     if (!habit) return;
     if (event.target.id === "detailReminderTime") {
       patchReminder(habit, { time: event.target.value });
+      return;
+    }
+    if (event.target.id === "detailStart") {
+      const value = parseDateKey(event.target.value) ? event.target.value : "";
+      patch(habit, { startDate: value });
       return;
     }
     if (event.target.id === "detailNote") {
