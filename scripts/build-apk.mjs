@@ -11,9 +11,20 @@
 // may be several edits old. Either way you get a BUILD SUCCESSFUL and an APK
 // that does not contain your changes, which is a genuinely confusing failure
 // on a device. So this runs all three, every time, and prints what came out.
+//
+// Finally it copies the result to habit-maker.apk in the repo root. Gradle's
+// own output path is six directories down and named app-debug.apk, which is
+// neither memorable nor obviously this app; the root copy is the one to put on
+// the phone. It is gitignored -- see the note next to ROOT_APK below.
 
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+} from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { platform } from "node:process";
@@ -23,6 +34,15 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const WWW = join(ROOT, "www");
 const ANDROID = join(ROOT, "android");
 const APK = join(ANDROID, "app/build/outputs/apk/debug/app-debug.apk");
+
+// The copy you actually install. Deliberately a STABLE filename, not one with
+// the version in it: the point is to overwrite the same file on the phone every
+// time, and a name that changes each release defeats that.
+//
+// Gitignored on purpose. It is ~10MB, git keeps every version of it for ever,
+// and committing one per release turns a 2MB source repo into a slow clone
+// within a year. Publish a GitHub Release if it ever needs to be downloadable.
+const ROOT_APK = join(ROOT, "habit-maker.apk");
 const IS_WINDOWS = platform === "win32";
 
 function fail(message) {
@@ -75,6 +95,20 @@ function resolveJavaHome() {
 
 function formatSize(bytes) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+// The filename is stable, so the summary has to say which build it is --
+// otherwise there is no way to tell the file on the phone from the new one.
+function readVersion() {
+  try {
+    const gradle = readFileSync(join(ANDROID, "app/build.gradle"), "utf8");
+    const name = gradle.match(/versionName\s+"([^"]+)"/)?.[1];
+    const code = gradle.match(/versionCode\s+(\d+)/)?.[1];
+    if (!name || !code) return "";
+    return ` v${name} (versionCode ${code})`;
+  } catch {
+    return "";
+  }
 }
 
 /* ------------------------------------------------------ freshness assertion */
@@ -184,10 +218,20 @@ if (!existsSync(APK)) {
 
 const fileCount = verifyApkMatchesStagedAssets(APK);
 const { size } = statSync(APK);
+
+// Copied only after the CRC check has passed, so the file in the root is never
+// a stale build that merely looks current.
+try {
+  copyFileSync(APK, ROOT_APK);
+} catch (error) {
+  fail(`built the APK but could not copy it to the root: ${error.message}`);
+}
+
 console.log(
-  `\nbuild-apk: ${verifyOnly ? "up to date" : "done"} -> ${APK}\n` +
+  `\nbuild-apk: ${verifyOnly ? "up to date" : "done"}${readVersion()}\n` +
     `           ${formatSize(size)}, and all ${fileCount} web files in it ` +
     `match www/ (CRC-checked)\n\n` +
-    `Install with:  adb install -r "${APK}"\n` +
-    `(or copy it to the phone and open it from a file manager)`,
+    `  ->  habit-maker.apk  (repo root -- this is the one to put on the phone)\n\n` +
+    `Install with:  adb install -r "${ROOT_APK}"\n` +
+    `(or copy habit-maker.apk to the phone and open it from a file manager)`,
 );

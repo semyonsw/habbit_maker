@@ -50,6 +50,13 @@ android/app/src/main/assets/public/
 android/app/src/main/assets/capacitor.config.json
 android/app/src/main/assets/capacitor.plugins.json
 
+# The installable APK, copied to the repo root by scripts/build-apk.mjs.
+# Not committed: it is ~10MB, git keeps every version for ever, and one per
+# release would turn a small source repo into a slow clone. Build it with
+# `npm run android:build`, or publish a GitHub Release if it needs to be
+# downloadable.
+habit-maker.apk
+
 # Installer output
 install.log
 install.log.old

@@ -13,10 +13,18 @@ this one source tree.
 npm run android:build
 ```
 
-APK: `android/app/build/outputs/apk/debug/app-debug.apk`
+**APK: `habit-maker.apk`, in the repo root.** That is the copy to put on the
+phone -- gradle's own output stays at
+`android/app/build/outputs/apk/debug/app-debug.apk`, six directories down and
+named after nothing in particular.
+
+The filename is stable on purpose, so it overwrites the previous one on the
+phone cleanly; the build prints the version it just made (`v1.1.1 (versionCode
+3)`) so two builds can be told apart. It is gitignored: ~10MB, and git would
+keep every release of it for ever.
 
 That is the whole thing. It finds a JDK 21 itself (`JAVA_HOME` wins if set) and
-prints the size and timestamp of what it produced.
+prints the size and version of what it produced.
 
 **Use it rather than the steps by hand.** The build is three stages and the APK
 holds a *copy* of the web assets, not a reference to them:
@@ -67,10 +75,11 @@ Exits non-zero and names the stale files if anything does not match.
 
 ## Install
 
-`adb install -r android/app/build/outputs/apk/debug/app-debug.apk`
+`adb install -r habit-maker.apk`
 
 The APK is on the Windows drive, so it can also be copied over and opened from a
-file manager. Nothing here uses Accessibility or Notification Listener, so the
+file manager -- which is the usual route here: replace the previous
+`habit-maker.apk` on the phone and open it. Nothing here uses Accessibility or Notification Listener, so the
 "restricted settings" flag that file-manager installs set does not matter.
 
 To install an update over an existing install, `versionCode` in

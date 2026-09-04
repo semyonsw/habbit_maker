@@ -378,8 +378,13 @@ See [ANDROID.md](ANDROID.md) for the full setup. In short:
 
 ```bash
 npm install
-npm run android:build      # stage www/ → cap sync → gradlew assembleDebug
+npm run android:build      # stage www/ → cap sync → gradlew → copy to root
 ```
+
+The installable APK lands in the repo root as **`habit-maker.apk`**. Stable
+filename, so it replaces the previous one on the phone cleanly; the build prints
+the version it just made. Gitignored — build it rather than committing 10MB per
+release.
 
 The build script does all three steps every time and then **CRC-checks every
 file inside the APK against `www/`**, because gradle will happily report
@@ -387,7 +392,7 @@ file inside the APK against `www/`**, because gradle will happily report
 
 ```bash
 npm run android:build -- --verify-only   # is the APK I have current?
-adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+adb install -r habit-maker.apk
 ```
 
 ---
