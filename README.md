@@ -164,6 +164,12 @@ selected day, its patterns, and its tracking and reminder settings.
 **Analytics** rolls everything up. **Settings** holds the theme, the global
 reminder and Export / Import.
 
+The back button (and Escape) closes an open sheet or dialog rather than leaving
+the screen, so a half-written habit is never lost to a stray back press. Month
+navigation stops a year before your first record — far enough to back-fill,
+close enough that you cannot walk into an endless empty past. Simply *looking*
+at a month records nothing; only entering something does.
+
 ---
 
 ## Reminders
@@ -402,6 +408,12 @@ Tests are in two halves:
 - [tests/render.test.mjs](tests/render.test.mjs) — every screen rendered against
   the **real** `index.html` under [linkedom](https://github.com/WebReflection/linkedom),
   so a renamed mount point or a throwing render fails here instead of on a phone.
+- [tests/interaction.test.mjs](tests/interaction.test.mjs) — the app's real
+  handlers, driven by real clicks. `click()` in `tests/dom.mjs` refuses to
+  dispatch on anything a browser would not route a pointer event to (`inert`,
+  `disabled`), and the harness models `inert`, `history` and `location.hash`.
+  Asserting that markup *exists* says nothing about whether it *works*: the
+  render tests were green while the Add-habit sheet could not be touched.
 
 [CI](.github/workflows/ci.yml) runs both on every push and pull request.
 
@@ -411,6 +423,13 @@ Tests are in two halves:
   what keeps it testable.
 - Every write to `state` goes through `saveState()`, which bumps the revision
   counter that invalidates the memo cache in `habits.js`.
+- Reading a month uses `getViewedMonthData()` (returns `null` if there is no
+  record); only code that is about to store something uses
+  `getCurrentMonthData()`, which creates. Rendering a month must never record
+  that the month happened.
+- The overlays live inside `#app`, not `<body>`. Anything that walks the DOM to
+  disable "everything else" has to walk the ancestor chain — inerting `<body>`'s
+  children inerts `#app`, and that contains the dialog you just opened.
 - Bump `CACHE_VERSION` in [sw.js](sw.js) and add any new module to its
   `PRECACHE` list when you add a file to `src/`.
 

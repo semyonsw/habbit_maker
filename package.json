@@ -1,6 +1,6 @@
 {
   "name": "habbit_maker",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Local-first habit tracker that does not punish you for missing a day.",
   "scripts": {
     "test": "node --test \"tests/*.test.mjs\"",

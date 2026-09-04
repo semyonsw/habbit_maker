@@ -15,7 +15,13 @@ import { deriveHabitMark, saveState } from "./persistence.js";
 import { deleteHabit, getHabitTarget, updateHabitOrder } from "./habits.js";
 import { callRenderer, registerRenderer } from "./render-registry.js";
 import { getWeekStart } from "./ui-prefs.js";
-import { lockBodyScroll, unlockBodyScroll, trapWithin, releaseTrap } from "./sheet.js";
+import {
+  lockBodyScroll,
+  unlockBodyScroll,
+  trapWithin,
+  releaseTrap,
+  topOpenOverlay,
+} from "./sheet.js";
 
 const SCHEDULES = [
   ["daily", "Every day"],
@@ -27,6 +33,95 @@ function weekdayOrder() {
   return getWeekStart() === "sunday"
     ? [0, 1, 2, 3, 4, 5, 6]
     : [1, 2, 3, 4, 5, 6, 0];
+}
+
+/* ---------------------------------------------------------- back button ---
+
+   An open sheet has to be dismissed by the Android back button, not carried
+   out of the app by it.
+
+   The router puts exactly one history entry in place with replaceState, so on
+   Today there is nothing behind it: pressing back while the add-habit sheet was
+   open closed the whole app -- draft and all -- and the popstate handler never
+   even ran, because a back press with no entry to pop is an app exit.
+
+   So opening an overlay pushes an entry of its own. Back then pops that,
+   popstate fires, the overlay closes, and the screen underneath is exactly
+   where it was. Closing by hand pops the same entry so back does not have to be
+   pressed twice afterwards to leave.
+
+   Only ever ONE entry, however many overlays are stacked: a confirm dialog
+   opened over the sheet reuses it, and back closes the dialog and re-arms for
+   the sheet still underneath.
+   ---------------------------------------------------------------------- */
+
+const OPEN_OVERLAY = ".sheet-overlay.open, .dialog-overlay.open";
+
+let entryPushed = false;
+// history.back() is asynchronous, and the popstate it produces is ours, not the
+// user's. A counter rather than a flag because a single close path can issue
+// more than one.
+let popsToSwallow = 0;
+
+function anyOverlayOpen() {
+  return !!document.querySelector(OPEN_OVERLAY);
+}
+
+function pushOverlayEntry() {
+  if (entryPushed) return;
+  const history = typeof window !== "undefined" ? window.history : null;
+  if (!history || typeof history.pushState !== "function") return;
+  try {
+    history.pushState(
+      { hmOverlay: true },
+      "",
+      window.location.hash || "#/today",
+    );
+    entryPushed = true;
+  } catch (_) {
+    // No history access: back behaves as it did before, which is survivable.
+  }
+}
+
+function dropOverlayEntry() {
+  if (!entryPushed || anyOverlayOpen()) return;
+  entryPushed = false;
+  const history = typeof window !== "undefined" ? window.history : null;
+  if (!history || typeof history.back !== "function") return;
+  popsToSwallow += 1;
+  try {
+    history.back();
+  } catch (_) {
+    popsToSwallow = Math.max(0, popsToSwallow - 1);
+  }
+}
+
+// The overlay is closing as part of a navigation, and that navigation
+// supersedes our entry. Clear the bookkeeping WITHOUT calling history.back():
+// back() is asynchronous in a real browser, so issuing one in the same tick as
+// a hash change means the back lands AFTER the navigation and undoes it -- you
+// delete a habit, get sent to Today, and are then silently bounced back to the
+// detail screen of the habit that no longer exists.
+export function forgetOverlayEntry() {
+  entryPushed = false;
+}
+
+// Called from the popstate listener in events.js. Returns true if the back
+// press was consumed here and should not also be treated as navigation.
+export function handleBackNavigation() {
+  if (popsToSwallow > 0) {
+    popsToSwallow -= 1;
+    return true;
+  }
+  if (!entryPushed) return false;
+
+  // Back consumed our entry.
+  entryPushed = false;
+  const closed = closeTopOverlay({ keepHistory: true });
+  // A confirm dismissed off the top of a sheet that is still open: put an entry
+  // back so the next press closes the sheet rather than leaving the app.
+  if (closed && anyOverlayOpen()) pushOverlayEntry();
+  return closed;
 }
 
 /* ------------------------------------------------------------------- open */
@@ -82,6 +177,7 @@ export function openHabitSheet(habitId) {
   if (title) title.textContent = habit ? "Edit habit" : "New habit";
   if (!overlay) return;
   overlay.classList.add("open");
+  pushOverlayEntry();
   lockBodyScroll();
   renderHabitSheet();
   trapWithin(overlay);
@@ -89,13 +185,24 @@ export function openHabitSheet(habitId) {
   if (nameInput && !habit) nameInput.focus();
 }
 
-export function closeHabitSheet() {
+export function closeHabitSheet(options = {}) {
   const overlay = document.getElementById("habitSheet");
   if (!overlay) return;
   overlay.classList.remove("open");
-  releaseTrap();
+  restoreTrap();
   unlockBodyScroll();
   globals.habitDraft = null;
+  if (!options.keepHistory) dropOverlayEntry();
+}
+
+// Release the focus trap, then re-apply it to whatever overlay is still on
+// screen. Without the second half, dismissing a confirm dialog that was opened
+// over the habit sheet left the sheet visible but untrapped -- Tab and screen
+// readers wandered off into the screen behind it.
+function restoreTrap() {
+  releaseTrap();
+  const remaining = topOpenOverlay();
+  if (remaining) trapWithin(remaining);
 }
 
 /* ----------------------------------------------------------------- markup */
@@ -307,34 +414,40 @@ export function openConfirm(title, message, onConfirm) {
   document.getElementById("confirmMessage").textContent = message;
   globals.confirmCallback = onConfirm;
   overlay.classList.add("open");
+  pushOverlayEntry();
   lockBodyScroll();
   trapWithin(overlay);
 }
 
-export function closeConfirm() {
+export function closeConfirm(options = {}) {
   const overlay = document.getElementById("confirmDialog");
   if (!overlay) return;
   overlay.classList.remove("open");
-  releaseTrap();
+  restoreTrap();
   unlockBodyScroll();
   globals.confirmCallback = null;
+  if (!options.keepHistory) dropOverlayEntry();
 }
 
 /** True if an overlay was open and has now been closed. Drives Escape and the
- *  Android back button. */
-export function closeTopOverlay() {
+ *  Android back button.
+ *
+ *  `keepHistory` is set when the caller IS the back press: the history entry
+ *  has already been consumed by the browser, so trying to drop it again would
+ *  navigate a second time. */
+export function closeTopOverlay(options = {}) {
   const confirmOpen = document
     .getElementById("confirmDialog")
     ?.classList.contains("open");
   if (confirmOpen) {
-    closeConfirm();
+    closeConfirm(options);
     return true;
   }
   const sheetOpen = document
     .getElementById("habitSheet")
     ?.classList.contains("open");
   if (sheetOpen) {
-    closeHabitSheet();
+    closeHabitSheet(options);
     return true;
   }
   return false;
@@ -450,3 +563,4 @@ export function bindOverlayEvents() {
 registerRenderer("openConfirm", openConfirm);
 registerRenderer("openHabitSheet", openHabitSheet);
 registerRenderer("closeHabitSheet", closeHabitSheet);
+registerRenderer("forgetOverlayEntry", forgetOverlayEntry);

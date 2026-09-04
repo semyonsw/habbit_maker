@@ -12,6 +12,7 @@ import { sanitize, daysInMonth } from "./utils.js";
 import {
   computeHabitScore,
   countHabitMonthDone,
+  earliestRecordedYear,
   getAllWeekdayStats,
   getDayCounts,
   getSortedDailyHabits,
@@ -175,13 +176,14 @@ function heatmapHtml() {
     .join("");
 
   const canForward = year < t.year;
+  const canBack = year > earliestRecordedYear();
 
   return (
     '<div class="chart-card">' +
     '<div class="chart-head">' +
     '<div class="chart-title">Year at a glance</div>' +
     '<div class="year-nav">' +
-    '<button type="button" data-year-step="-1" aria-label="Previous year">‹</button>' +
+    `<button type="button" data-year-step="-1"${canBack ? "" : " disabled"} aria-label="Previous year">‹</button>` +
     `<span class="year-nav-label">${year}</span>` +
     `<button type="button" data-year-step="1"${canForward ? "" : " disabled"} aria-label="Next year">›</button>` +
     "</div>" +

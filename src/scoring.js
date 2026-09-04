@@ -135,6 +135,33 @@ function parseMonthKey(key) {
   return { year, month };
 }
 
+// Does this month hold anything a user actually entered?
+//
+// A month object exists as soon as a month is rendered, so "the month exists"
+// is not the same as "something happened that month". Merely paging back
+// through the calendar used to create records, which pushed the start of
+// history back a month at a time -- and since the navigation floor is derived
+// from the start of history, the floor receded exactly as fast as you walked
+// towards it. (getViewedMonthData() in persistence.js is the other half of that
+// fix: reads no longer create.)
+export function monthHasRecords(monthData) {
+  if (!monthData) return false;
+
+  const anyRow = (bag) =>
+    !!bag &&
+    Object.values(bag).some(
+      (row) => row && typeof row === "object" && Object.keys(row).length > 0,
+    );
+
+  if (anyRow(monthData.dailyCompletions)) return true;
+  if (anyRow(monthData.dailyNotes)) return true;
+
+  const review = monthData.monthlyReview;
+  if (review && (review.wins || review.blockers || review.focus)) return true;
+
+  return false;
+}
+
 // The calendar span the app should reason over: from the earliest month that
 // has any record, to `today`.
 //
@@ -149,6 +176,7 @@ export function historyRange(months, today) {
   Object.keys(months || {}).forEach((key) => {
     const parsed = parseMonthKey(key);
     if (!parsed) return;
+    if (!monthHasRecords(months[key])) return;
     if (
       parsed.year < earliest.year ||
       (parsed.year === earliest.year && parsed.month < earliest.month)

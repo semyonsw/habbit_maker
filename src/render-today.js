@@ -11,7 +11,7 @@
 import { FULL_WEEKDAYS, MONTH_NAMES, WEEKDAY_LABELS } from "./constants.js";
 import { state, globals } from "./state.js";
 import { sanitize, daysInMonth } from "./utils.js";
-import { getCurrentMonthData, getCategoryById } from "./persistence.js";
+import { getViewedMonthData, getCategoryById } from "./persistence.js";
 import {
   advanceHabitDay,
   computeHabitScore,
@@ -29,6 +29,7 @@ import {
 import { monthNavHtml, handleMonthNavClick } from "./month-nav.js";
 import { showToast } from "./toast.js";
 import { registerRenderer, callRenderer } from "./render-registry.js";
+import { navigateTo } from "./router.js";
 
 /* ------------------------------------------------------------------ state */
 
@@ -197,7 +198,7 @@ export function renderToday(options = {}) {
   if (!section) return;
 
   const day = getSelectedDay();
-  const monthData = getCurrentMonthData();
+  const monthData = getViewedMonthData();
   const habits = getScheduledHabits(state.currentYear, state.currentMonth, day);
   const counts = getDayCounts(day);
   const pct = counts.total ? Math.round((counts.done / counts.total) * 100) : 0;
@@ -350,13 +351,19 @@ export function bindTodayEvents() {
   };
 
   section.addEventListener("pointerdown", (event) => {
+    // Cleared on EVERY press, not only on presses that land on a habit
+    // control. It used to be reset after the early return below, so a long
+    // press that produced no click (the finger drifted off the button, so
+    // pointerup fired somewhere else) left holdFired stuck true -- and the
+    // click handler then swallowed the next unrelated tap anywhere on Today.
+    holdFired = false;
+
     const control = event.target.closest("[data-advance]");
     if (!control) return;
     const habitId = control.dataset.advance;
     const day = parseInt(control.dataset.day, 10);
     if (isFutureDate(state.currentYear, state.currentMonth, day)) return;
 
-    holdFired = false;
     holdTarget = control;
     holdStart = { x: event.clientX, y: event.clientY };
     control.classList.add("is-holding");
@@ -409,15 +416,25 @@ export function bindTodayEvents() {
 
     const advance = event.target.closest("[data-advance]");
     if (advance) {
-      advanceWithUndo(advance.dataset.advance, parseInt(advance.dataset.day, 10));
+      const day = parseInt(advance.dataset.day, 10);
+      // The habit calendar disables future days; Today did not, so the same
+      // habit could be ticked off for next Tuesday from one screen and not the
+      // other -- and a completion dated in the future is not a completion.
+      if (isFutureDate(state.currentYear, state.currentMonth, day)) {
+        showToast("That day has not happened yet.");
+        return;
+      }
+      advanceWithUndo(advance.dataset.advance, day);
       return;
     }
 
     const open = event.target.closest("[data-open]");
     if (open) {
       globals.detailHabitId = open.dataset.open;
-      // Through the router so the Android back button returns to Today.
-      window.location.hash = "#/detail";
+      // Through the router so the Android back button returns to Today -- and
+      // via navigateTo rather than a raw hash assignment, because assigning the
+      // hash it already has fires no hashchange and the view would never switch.
+      navigateTo("detail");
     }
   });
 

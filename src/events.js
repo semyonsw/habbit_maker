@@ -11,7 +11,11 @@ import { bindTodayEvents } from "./render-today.js";
 import { bindDetailEvents } from "./render-detail.js";
 import { bindAnalyticsEvents } from "./render-analytics.js";
 import { bindSettingsEvents } from "./render-settings.js";
-import { bindOverlayEvents, closeTopOverlay, openHabitSheet } from "./modals.js";
+import {
+  bindOverlayEvents,
+  handleBackNavigation,
+  openHabitSheet,
+} from "./modals.js";
 import { appendLogEntry } from "./logging.js";
 
 export function bindEvents() {
@@ -28,11 +32,12 @@ export function bindEvents() {
   bindSettingsEvents();
   bindOverlayEvents();
 
-  // An open sheet or dialog should swallow the first back press rather than
-  // leaving the screen. popstate is what the Android back button produces once
-  // the router has put a hash entry into history.
+  // An open sheet or dialog swallows the first back press rather than letting
+  // it leave the screen -- or, on Today, the app. See the back-button notes in
+  // modals.js: opening an overlay pushes a history entry precisely so that
+  // there is something for this to pop.
   window.addEventListener("popstate", () => {
-    closeTopOverlay();
+    handleBackNavigation();
   });
 
   window.addEventListener("error", (event) => {

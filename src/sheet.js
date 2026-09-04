@@ -16,12 +16,27 @@
 
 /* -------------------------------------------------------------- scroll lock */
 
-let lockCount = 0;
+// Selector for "an overlay is on screen right now". The lock is derived from
+// this rather than from a counter.
+//
+// A counter is the obvious implementation and it was the wrong one: it holds a
+// number that is only correct if every open is matched by exactly one close,
+// forever. One unbalanced call -- a close on an overlay that was not open, an
+// open that throws before its close is wired, a dialog opened over a sheet and
+// dismissed in an order nobody tested -- and the count never returns to zero.
+// The body then stays `position: fixed` with the overlays gone: the app looks
+// completely dead and only a reload fixes it. Reading the DOM instead makes the
+// lock self-correcting, because the DOM is the thing the user can actually see.
+const OPEN_OVERLAY = ".sheet-overlay.open, .dialog-overlay.open";
+
 let savedScrollY = 0;
 
+function isLocked() {
+  return document.body.classList.contains("is-modal-open");
+}
+
 export function lockBodyScroll() {
-  lockCount += 1;
-  if (lockCount > 1) return;
+  if (isLocked()) return; // already held by another overlay
 
   savedScrollY = window.scrollY || window.pageYOffset || 0;
   document.body.classList.add("is-modal-open");
@@ -31,15 +46,25 @@ export function lockBodyScroll() {
   document.body.classList.add("is-modal-open-fixed");
 }
 
+// Callers must remove the overlay's `.open` class BEFORE calling this, so the
+// query below sees the world as it now is.
 export function unlockBodyScroll() {
-  if (lockCount === 0) return;
-  lockCount -= 1;
-  if (lockCount > 0) return;
+  if (!isLocked()) return;
+  // Something else is still open (a confirm dismissed over the habit sheet).
+  if (document.querySelector(OPEN_OVERLAY)) return;
 
   const wasFixed = document.body.classList.contains("is-modal-open-fixed");
   document.body.classList.remove("is-modal-open", "is-modal-open-fixed");
   document.body.style.top = "";
   if (wasFixed) window.scrollTo(0, savedScrollY);
+}
+
+// The topmost overlay still open, or null. Used to hand the focus trap back
+// when a dialog closes over a sheet that is still up.
+export function topOpenOverlay() {
+  const dialog = document.querySelector(".dialog-overlay.open");
+  if (dialog) return dialog;
+  return document.querySelector(".sheet-overlay.open");
 }
 
 /* -------------------------------------------------------------- focus trap */
@@ -55,19 +80,35 @@ const FOCUSABLE =
 
 // Make everything except `overlay` unreachable by Tab, screen readers and
 // pointer. Cheaper and more correct than a hand-rolled Tab cycle.
+//
+// This walks the overlay's ANCESTOR CHAIN and inerts the siblings at each
+// level. It must not simply inert every child of <body>, because the overlays
+// are not children of <body> -- index.html nests both #habitSheet and
+// #confirmDialog inside #app, alongside <main> and the bottom nav. Inerting
+// body's children therefore inerted #app, and #app *contains* the dialog being
+// opened, so `inert` inherits straight down into it: the sheet rendered, the
+// scrim was up, body scroll was locked, and not one control inside it could be
+// clicked, focused or typed into. That is the "Add habit freezes the screen"
+// bug -- the sheet was disabling itself, and the only way out was a reload.
 export function trapWithin(overlay) {
   releaseTrap();
   if (!overlay) return;
 
   if (SUPPORTS_INERT) {
-    Array.from(document.body.children).forEach((child) => {
-      if (child === overlay) return;
-      // The global loader must stay visible/announced if it is showing.
-      if (child.id === "globalLoadingOverlay") return;
-      if (child.inert) return;
-      child.inert = true;
-      inertedNodes.push(child);
-    });
+    let node = overlay;
+    while (node && node !== document.body && node.parentElement) {
+      const parent = node.parentElement;
+      Array.from(parent.children).forEach((sibling) => {
+        // Never the branch the dialog is on.
+        if (sibling === node) return;
+        // The global loader must stay visible/announced if it is showing.
+        if (sibling.id === "globalLoadingOverlay") return;
+        if (sibling.inert) return;
+        sibling.inert = true;
+        inertedNodes.push(sibling);
+      });
+      node = parent;
+    }
     return;
   }
 

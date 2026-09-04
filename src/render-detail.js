@@ -18,6 +18,7 @@ import { state, globals } from "./state.js";
 import { sanitize, daysInMonth, formatTimeString } from "./utils.js";
 import {
   getCurrentMonthData,
+  getViewedMonthData,
   getCategoryById,
   saveState,
 } from "./persistence.js";
@@ -38,6 +39,7 @@ import {
 } from "./habits.js";
 import { monthNavHtml, handleMonthNavClick } from "./month-nav.js";
 import { registerRenderer, callRenderer } from "./render-registry.js";
+import { navigateTo } from "./router.js";
 import { getWeekStart } from "./ui-prefs.js";
 import { describeEffectiveReminder } from "./notifications.js";
 import { openHabitSheet } from "./modals.js";
@@ -85,7 +87,7 @@ function calendarHtml(habit) {
   const year = state.currentYear;
   const month = state.currentMonth;
   const total = daysInMonth(year, month);
-  const monthData = getCurrentMonthData();
+  const monthData = getViewedMonthData();
   const order = weekdayOrder();
 
   const firstDow = new Date(year, month, 1).getDay();
@@ -155,7 +157,7 @@ function calendarHtml(habit) {
 // habit in. It now cycles the day in place -- and the third state is skip, so
 // the forgiving option is reachable without knowing about hold-to-skip.
 function cycleCalendarDay(habit, day) {
-  const monthData = getCurrentMonthData();
+  const monthData = getViewedMonthData();
   const value = getDayValue(monthData, habit.id, day);
   const target = getHabitTarget(habit);
 
@@ -170,8 +172,9 @@ function cycleCalendarDay(habit, day) {
 /* ------------------------------------------------------------------- notes */
 
 function noteFor(habit, day) {
-  const monthData = getCurrentMonthData();
-  const row = monthData.dailyNotes ? monthData.dailyNotes[habit.id] : null;
+  const monthData = getViewedMonthData();
+  const row =
+    monthData && monthData.dailyNotes ? monthData.dailyNotes[habit.id] : null;
   return row && row[day] ? String(row[day]) : "";
 }
 
@@ -193,7 +196,7 @@ function setNote(habit, day, text) {
 // way?" is the question that turns tracking into something you learn from.
 function notesHtml(habit) {
   const day = selectedDetailDay();
-  const monthData = getCurrentMonthData();
+  const monthData = getViewedMonthData();
   const done = isHabitDoneOn(habit, monthData, day);
   const skipped = isHabitSkippedOn(habit, monthData, day);
   const future = isFutureDate(state.currentYear, state.currentMonth, day);
@@ -431,7 +434,7 @@ export function bindDetailEvents() {
     const habit = getDetailHabit();
 
     if (event.target.closest("[data-detail-back]")) {
-      window.location.hash = "#/today";
+      navigateTo("today");
       return;
     }
     if (event.target.closest("[data-detail-edit]")) {
@@ -444,9 +447,16 @@ export function bindDetailEvents() {
     const track = event.target.closest("[data-track]");
     if (track) {
       const next = track.dataset.track;
+      // `getHabitTarget(habit) || 3` never reached the 3: getHabitTarget
+      // returns 1 for a checkbox habit, which is truthy, so switching to Count
+      // stored countTarget: 1 -- below the minimum of 2. getHabitTarget then
+      // clamped it back up to 2 on read, so the tile said "0/2" while the
+      // record said 1, and the first tap of + jumped the target from 1 to 3.
+      const stored = parseInt(habit.countTarget, 10);
       patch(habit, {
         trackType: next,
-        countTarget: next === "count" ? getHabitTarget(habit) || 3 : 1,
+        countTarget:
+          next === "count" ? Math.min(50, Math.max(2, stored >= 2 ? stored : 3)) : 1,
       });
       return;
     }

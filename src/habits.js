@@ -10,9 +10,15 @@
 import { SKIPPED, SCORE_HALF_LIFE_DAYS } from "./constants.js";
 import { state, globals, getStateRevision } from "./state.js";
 import { monthKey, daysInMonth, formatTimeString } from "./utils.js";
-import { saveState, getCurrentMonthData } from "./persistence.js";
-import { callRenderer } from "./render-registry.js";
 import {
+  saveState,
+  getCurrentMonthData,
+  getViewedMonthData,
+} from "./persistence.js";
+import { callRenderer } from "./render-registry.js";
+import { navigateTo } from "./router.js";
+import {
+  historyRange,
   computeMonthDayCounts,
   computeScore,
   computeStreak,
@@ -126,8 +132,12 @@ export function deleteHabit(id) {
         if (monthData.dailyTimes) delete monthData.dailyTimes[id];
       });
       saveState();
-      callRenderer("closeHabitSheet");
-      window.location.hash = "#/today";
+      // keepHistory + forgetOverlayEntry, because navigateTo() below is
+      // itself a history change: letting the sheet issue its own back() here
+      // would race the navigation. See the back-button notes in modals.js.
+      callRenderer("closeHabitSheet", { keepHistory: true });
+      callRenderer("forgetOverlayEntry");
+      navigateTo("today");
       callRenderer("renderAll");
     },
   );
@@ -220,7 +230,7 @@ export function setHabitDayValue(habitId, day, value, options = {}) {
 export function advanceHabitDay(habitId, day) {
   const habit = findHabit(habitId);
   if (!habit) return null;
-  const monthData = getCurrentMonthData();
+  const monthData = getViewedMonthData();
   const previous = readDayValue(monthData, habitId, day);
   const target = getHabitTarget(habit);
 
@@ -240,7 +250,7 @@ export function advanceHabitDay(habitId, day) {
 export function toggleHabitDaySkip(habitId, day) {
   const habit = findHabit(habitId);
   if (!habit) return null;
-  const monthData = getCurrentMonthData();
+  const monthData = getViewedMonthData();
   const previous = readDayValue(monthData, habitId, day);
   const next = isSkippedValue(previous) ? 0 : SKIPPED;
   setHabitDayValue(habitId, day, next);
@@ -359,6 +369,41 @@ export function shiftViewedMonth(delta) {
   globals.dayFocusDay = null;
   saveState();
   callRenderer("renderAll");
+}
+
+// The oldest month the app will let you navigate to.
+//
+// Both the month bar and the year stepper were unbounded, so holding the back
+// chevron walked you into 1997 through a thousand identical empty calendars
+// with no indication that there was nothing there and no quick way back.
+//
+// The floor is a year before your first record rather than the record itself,
+// because back-filling a month you did not have the app open for is a real
+// thing people do -- and on a fresh install the earliest record IS this month,
+// so bounding to it exactly would forbid entering anything for last week.
+const BACKFILL_MONTHS = 12;
+
+export function earliestNavigableMonth() {
+  const { from } = historyRange(state.months, todayParts());
+  let year = from.year;
+  let month = from.month - BACKFILL_MONTHS;
+  while (month < 0) {
+    month += 12;
+    year -= 1;
+  }
+  return { year, month };
+}
+
+export function canViewEarlierMonth() {
+  const floor = earliestNavigableMonth();
+  if (state.currentYear !== floor.year) return state.currentYear > floor.year;
+  return state.currentMonth > floor.month;
+}
+
+// Oldest year with any record, for the Analytics heatmap. Read-only, so there
+// is no back-fill allowance here: an empty year is just noise.
+export function earliestRecordedYear() {
+  return historyRange(state.months, todayParts()).from.year;
 }
 
 export function isViewingCurrentMonth() {

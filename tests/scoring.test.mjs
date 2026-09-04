@@ -20,6 +20,7 @@ import {
   creditForValue,
   historyRange,
   isHabitTrackedOnDate,
+  monthHasRecords,
   readDayValue,
 } from "../src/scoring.js";
 import { sanitize, parseTimeString, daysBetweenDates } from "../src/utils.js";
@@ -71,11 +72,65 @@ test("a month with no record breaks the streak instead of being skipped over", (
 
 test("historyRange spans from the earliest recorded month to today", () => {
   const range = historyRange(
-    { "2025-11": {}, "2026-03": {} },
+    {
+      "2025-11": monthWith("h1", { 4: true }),
+      "2026-03": monthWith("h1", { 9: true }),
+    },
     { year: 2026, month: 4, day: 9 },
   );
   assert.deepEqual(range.from, { year: 2025, month: 10 });
   assert.deepEqual(range.to, { year: 2026, month: 4 });
+});
+
+test("an EMPTY month does not count as the start of history", () => {
+  // Paging back through the calendar used to create a month record for every
+  // month merely looked at. History then started wherever you had browsed to,
+  // and since the navigation floor is derived from it, the floor ran away from
+  // you as you walked towards it.
+  const range = historyRange(
+    {
+      "2020-01": { dailyCompletions: {}, dailyNotes: {} },
+      "2024-06": { dailyCompletions: { h1: {} }, dailyNotes: {} },
+      "2026-05": monthWith("h1", { 2: true }),
+    },
+    { year: 2026, month: 4, day: 9 },
+  );
+  assert.deepEqual(
+    range.from,
+    { year: 2026, month: 4 },
+    "only the month with a real completion counts",
+  );
+});
+
+test("monthHasRecords recognises every kind of real record", () => {
+  assert.equal(monthHasRecords(null), false);
+  assert.equal(monthHasRecords({}), false);
+  assert.equal(
+    monthHasRecords({ dailyCompletions: {}, dailyNotes: {} }),
+    false,
+    "an empty month is empty",
+  );
+  assert.equal(
+    monthHasRecords({ dailyCompletions: { h1: {} } }),
+    false,
+    "a habit key with no days is still empty",
+  );
+  assert.equal(monthHasRecords(monthWith("h1", { 1: false })), true);
+  assert.equal(
+    monthHasRecords({ dailyNotes: { h1: { 3: "travelling" } } }),
+    true,
+    "a note alone is a record",
+  );
+  assert.equal(
+    monthHasRecords({ monthlyReview: { wins: "shipped it" } }),
+    true,
+    "a monthly review alone is a record",
+  );
+  assert.equal(
+    monthHasRecords({ monthlyReview: { wins: "", blockers: "", focus: "" } }),
+    false,
+    "a blank review is not",
+  );
 });
 
 test("history with no months at all is just the current month", () => {

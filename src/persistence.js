@@ -297,9 +297,22 @@ export function ensureMonthData() {
   ensureMonthDataShape(state.months[key]);
 }
 
+// Create-on-write. Use this only where something is about to be stored.
 export function getCurrentMonthData() {
   ensureMonthData();
   return state.months[monthKey(state.currentYear, state.currentMonth)];
+}
+
+// Create-on-READ is what getCurrentMonthData() does, and rendering a month is
+// not a reason to record that the month happened. Every renderer goes through
+// this instead and copes with null -- readDayValue() and friends already treat
+// an absent month as "nothing done", which is precisely what it means.
+//
+// Without this, paging back through the calendar wrote an empty month record
+// for every month you glanced at: they persisted for ever, rode along in every
+// export, and moved the start of recorded history backwards.
+export function getViewedMonthData() {
+  return state.months[monthKey(state.currentYear, state.currentMonth)] || null;
 }
 
 export async function loadState() {

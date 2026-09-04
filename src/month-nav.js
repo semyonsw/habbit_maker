@@ -12,6 +12,7 @@ import { MONTH_NAMES } from "./constants.js";
 import { state } from "./state.js";
 import { sanitize } from "./utils.js";
 import {
+  canViewEarlierMonth,
   goToCurrentMonth,
   isViewingCurrentMonth,
   shiftViewedMonth,
@@ -39,11 +40,13 @@ export function canGoForward() {
 export function monthNavHtml() {
   const label = `${MONTH_NAMES[state.currentMonth]} ${state.currentYear}`;
   const forward = canGoForward();
+  const back = canViewEarlierMonth();
   const current = isViewingCurrentMonth();
 
   return (
     '<div class="month-nav">' +
     '<button type="button" class="month-nav-step" data-month-step="-1"' +
+    (back ? "" : " disabled") +
     ' aria-label="Previous month">' +
     CHEVRON_LEFT +
     "</button>" +
