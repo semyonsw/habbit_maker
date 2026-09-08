@@ -3,7 +3,7 @@
 export const STORAGE_KEY = "habitTracker_v1";
 export const LOGS_STORAGE_KEY = "habitTracker_logs_v1";
 export const SIDEBAR_COLLAPSE_KEY = "habitTracker_sidebarCollapsed_v1";
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 9;
 export const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 // Monday-first, matching the design's day-toggle row and "Week starts on".
 export const FULL_WEEKDAYS = [
@@ -97,7 +97,7 @@ export const HOLD_TO_DRAG_MS = 550;
 // Movement beyond this before a hold fires means the finger is scrolling.
 export const DRAG_SLOP_PX = 10;
 
-export const APP_VERSION = "1.4.2";
+export const APP_VERSION = "1.5.0";
 
 export const DEFAULT_CATEGORIES = [
   { id: "cat_health", name: "Health", emoji: "\u2764\uFE0F", color: "#3E85B5" },

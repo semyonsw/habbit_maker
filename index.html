@@ -120,9 +120,22 @@
           <div class="habit-list" id="todayList"></div>
           <div class="list-hint" id="todayListHint"></div>
 
-          <button type="button" class="add-habit-btn" id="btnAddHabit">
-            Add habit
-          </button>
+          <!-- One-off tasks for the selected day. Its own section, and its own
+               count: a task is deliberately absent from the completion figure
+               and the strength maths above it. See src/task-core.js. Rendered
+               as one block so that "no tasks" is simply an empty container,
+               and .task-row can never be picked up by the habit drag in
+               src/reorder.js, which walks .habit-row inside its own list. -->
+          <div id="todayTasks"></div>
+
+          <div class="add-row">
+            <button type="button" class="add-habit-btn" id="btnAddHabit">
+              Add habit
+            </button>
+            <button type="button" class="add-habit-btn" id="btnAddTask">
+              Add task
+            </button>
+          </div>
         </section>
 
         <!-- 2. Habit detail ------------------------------------------------ -->
@@ -220,6 +233,27 @@
           <div class="sheet-handle" aria-hidden="true"></div>
           <div class="sheet-title" id="habitSheetTitle">New habit</div>
           <div id="habitSheetBody"></div>
+        </div>
+      </div>
+
+      <!-- Add / edit one-off task sheet ----------------------------------- -->
+      <div
+        class="sheet-overlay"
+        id="taskSheet"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="taskSheetTitle"
+      >
+        <button
+          type="button"
+          class="sheet-scrim"
+          id="taskSheetScrim"
+          aria-label="Close"
+        ></button>
+        <div class="sheet" id="taskSheetPanel">
+          <div class="sheet-handle" aria-hidden="true"></div>
+          <div class="sheet-title" id="taskSheetTitle">New task</div>
+          <div id="taskSheetBody"></div>
         </div>
       </div>
 

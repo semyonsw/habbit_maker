@@ -311,6 +311,13 @@ export function validateImportedState(imported) {
     errors.push("months must be an object.");
   }
 
+  // Optional: every backup taken before schema 9 has no tasks at all, and
+  // rejecting those would make the feature retroactively break every existing
+  // file. Only a `tasks` that is present AND the wrong shape is an error.
+  if (imported.tasks !== undefined && !Array.isArray(imported.tasks)) {
+    errors.push("tasks must be an array.");
+  }
+
   // `books` and `pdfBlobs` from an older backup are not validated: they are
   // dropped on import rather than read, so a malformed one cannot hurt us and
   // rejecting the whole file over it would lose the habits alongside it.

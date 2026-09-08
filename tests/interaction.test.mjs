@@ -30,7 +30,12 @@ const { getSortedDailyHabits, getDayCounts, isHabitSkippedOn } = await import(
 );
 const { getCurrentMonthData } = await import("../src/persistence.js");
 const { SKIPPED } = await import("../src/constants.js");
-const { closeConfirm, closeHabitSheet } = await import("../src/modals.js");
+const { closeConfirm, closeHabitSheet, closeTaskSheet } = await import(
+  "../src/modals.js"
+);
+const { addTask, findTask, getAllTasks } = await import("../src/tasks.js");
+const { formatDateKey } = await import("../src/utils.js");
+const { dismissToast } = await import("../src/toast.js");
 const { getTheme, getWeekStart, getDailyReminder, getFadeReminders } =
   await import("../src/ui-prefs.js");
 
@@ -54,11 +59,16 @@ function reset() {
   globals.dayFocusDay = null;
   globals.detailHabitId = null;
   globals.habitDraft = null;
+  globals.taskDraft = null;
   globals.analyticsYear = null;
   // Close anything a previous test left open, through the app's own close
   // paths, so the scroll lock and focus trap unwind exactly as they do in use.
   closeConfirm();
   closeHabitSheet();
+  closeTaskSheet();
+  // A toast is a single reused node on <body>; an undo button left armed by
+  // one test must not be clickable by the next.
+  dismissToast();
   window.history.exited = false;
   window.location.hash = "#/today";
   switchView("today");
@@ -829,4 +839,346 @@ test("a skipped habit still shows a usable control", () => {
   assert.equal(whyNotInteractive(control), null, "and it can be tapped back");
   click(control, "skipped control");
   assert.equal(isHabitSkippedOn(habit, getCurrentMonthData(), TODAY_DAY), false);
+});
+
+/* ====================================================================== */
+/* One-off tasks                                                          */
+/* ====================================================================== */
+
+// A day of THIS month that is definitely not today, so nothing below depends
+// on the date it happens to run on.
+const OTHER_DAY = TODAY_DAY === 1 ? 2 : 1;
+
+function dayKey(offset) {
+  const d = new Date(TODAY.getFullYear(), TODAY.getMonth(), TODAY_DAY + offset);
+  return formatDateKey(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+test("Add task opens a sheet whose controls can actually be used", () => {
+  click($("#btnAddTask"), "#btnAddTask");
+
+  const overlay = $("#taskSheet");
+  assert.ok(overlay.classList.contains("open"), "the task sheet opened");
+  assert.equal(
+    isInert(overlay),
+    false,
+    `the sheet must not be inert -- ${whyNotInteractive(overlay)}`,
+  );
+
+  assert.equal(whyNotInteractive($("#taskTitle")), null, "the title is reachable");
+  assert.equal(whyNotInteractive($("#taskDate")), null, "the day is reachable");
+  assert.equal(whyNotInteractive($("#taskNote")), null, "details are reachable");
+  assert.equal(whyNotInteractive($("[data-task-cancel]")), null, "Cancel works");
+  assert.ok($("[data-task-save]").disabled, "Save starts disabled with no title");
+});
+
+test("both add buttons are usable, and neither shadows the other", () => {
+  assert.equal(whyNotInteractive($("#btnAddHabit")), null);
+  assert.equal(whyNotInteractive($("#btnAddTask")), null);
+
+  click($("#btnAddTask"), "#btnAddTask");
+  assert.ok($("#taskSheet").classList.contains("open"));
+  assert.equal(
+    $("#habitSheet").classList.contains("open"),
+    false,
+    "Add task does not also open the habit sheet",
+  );
+  click($("[data-task-cancel]"), "Cancel");
+
+  click($("#btnAddHabit"), "#btnAddHabit");
+  assert.ok($("#habitSheet").classList.contains("open"));
+  assert.equal($("#taskSheet").classList.contains("open"), false);
+});
+
+test("a task can be created end to end", () => {
+  click($("#btnAddTask"), "#btnAddTask");
+  setValue($("#taskTitle"), "Renew passport", "input", "title");
+  setValue($("#taskNote"), "Take two photos", "input", "details");
+
+  const save = $("[data-task-save]");
+  assert.equal(save.disabled, false, "Save enables once there is a title");
+  click(save, "Save task");
+
+  assert.equal($("#taskSheet").classList.contains("open"), false, "sheet closed");
+  const tasks = getAllTasks();
+  assert.equal(tasks.length, 1);
+  assert.equal(tasks[0].title, "Renew passport");
+  assert.equal(tasks[0].note, "Take two photos");
+  assert.equal(tasks[0].done, false);
+  assert.equal(tasks[0].date, dayKey(0), "dated the day that was on screen");
+
+  assert.ok(
+    $("#todayTasks").innerHTML.includes("Renew passport"),
+    "and it is on Today",
+  );
+  assert.equal(isInert($(".app-main")), false, "the screen is live again");
+});
+
+test("the task sheet dates a task for the day you were looking at", () => {
+  // This is the reported use: it is the 9th, and the task is for the 10th.
+  click($(`.day-chip[data-day="${OTHER_DAY}"]`), "day chip");
+  click($("#btnAddTask"), "#btnAddTask");
+  assert.equal(
+    $("#taskDate").getAttribute("value"),
+    formatDateKey(TODAY.getFullYear(), TODAY.getMonth(), OTHER_DAY),
+  );
+});
+
+test("a task saved for another day says where it went", () => {
+  click($("#btnAddTask"), "#btnAddTask");
+  setValue($("#taskTitle"), "Dentist", "input", "title");
+  setValue($("#taskDate"), dayKey(2), "change", "day");
+  click($("[data-task-save]"), "Save task");
+
+  // Otherwise a task that is not on the list you are looking at reads as a
+  // save that did not happen.
+  const toast = $(".toast");
+  assert.ok(toast, "a toast was shown");
+  assert.ok(
+    toast.textContent.includes("Dentist"),
+    `it names the task -- got "${toast.textContent}"`,
+  );
+  assert.equal(getAllTasks()[0].date, dayKey(2));
+});
+
+test("a task with no readable day cannot be saved", () => {
+  click($("#btnAddTask"), "#btnAddTask");
+  setValue($("#taskTitle"), "Something", "input", "title");
+  setValue($("#taskDate"), "", "change", "day");
+  assert.ok(
+    $("[data-task-save]").disabled,
+    "Save is disabled rather than writing a task with nowhere to live",
+  );
+  assert.ok($("#taskDayHint").textContent.includes("Pick the day"));
+});
+
+test("ticking a task off marks it done, and leaves the habit figure alone", () => {
+  addTask({ title: "Post letter", date: dayKey(0) });
+  renderAll();
+
+  const before = $("#todayCount").textContent;
+  const id = getAllTasks()[0].id;
+
+  click($(`[data-task-toggle="${id}"]`), "task check");
+  assert.equal(findTask(id).done, true, "the task is done");
+  assert.equal(
+    $("#todayCount").textContent,
+    before,
+    "and the habit completion figure did not move",
+  );
+  assert.ok($("#todayTasks").innerHTML.includes("1 of 1 done"));
+
+  click($(`[data-task-toggle="${id}"]`), "task check again");
+  assert.equal(findTask(id).done, false, "tapping again clears it");
+});
+
+test("an overdue task is shown on today and can be ticked off there", () => {
+  addTask({ title: "Chase the invoice", date: dayKey(-2) });
+  renderAll();
+
+  const html = $("#todayTasks").innerHTML;
+  assert.ok(html.includes("Carried over"), "it surfaced rather than vanishing");
+  assert.ok(html.includes("2 days late"));
+
+  const id = getAllTasks()[0].id;
+  click($(`[data-task-toggle="${id}"]`), "overdue task check");
+  assert.equal(findTask(id).done, true);
+
+  renderAll();
+  assert.equal(
+    $("#todayTasks").innerHTML.includes("Carried over"),
+    false,
+    "and once done it stops being carried over",
+  );
+});
+
+test("a task dated in the future can still be ticked off early", () => {
+  // Unlike a habit, whose future completion would corrupt the strength
+  // average. A task feeds no maths, and doing an errand a day early is normal.
+  addTask({ title: "Buy a present", date: formatDateKey(TODAY.getFullYear(), TODAY.getMonth(), OTHER_DAY) });
+  click($(`.day-chip[data-day="${OTHER_DAY}"]`), "day chip");
+
+  const id = getAllTasks()[0].id;
+  const check = $(`[data-task-toggle="${id}"]`);
+  assert.equal(whyNotInteractive(check), null, "the control is reachable");
+  click(check, "task check");
+  assert.equal(findTask(id).done, true);
+});
+
+test("tapping a task opens its edit sheet and saves back", () => {
+  addTask({ title: "Call the bank", date: dayKey(0), note: "" });
+  renderAll();
+  const id = getAllTasks()[0].id;
+
+  click($(`[data-task-open="${id}"]`), "task row");
+  assert.ok($("#taskSheet").classList.contains("open"), "the edit sheet opened");
+  assert.equal($("#taskTitle").getAttribute("value"), "Call the bank");
+
+  setValue($("#taskTitle"), "Call the bank back", "input", "title");
+  click($("[data-task-save]"), "Save changes");
+
+  assert.equal(findTask(id).title, "Call the bank back");
+  assert.equal(getAllTasks().length, 1, "edited, not duplicated");
+  assert.ok($("#todayTasks").innerHTML.includes("Call the bank back"));
+});
+
+test("a task's category can be chosen and cleared again", () => {
+  click($("#btnAddTask"), "#btnAddTask");
+  setValue($("#taskTitle"), "Blood test", "input", "title");
+
+  const chips = $$("[data-task-cat]");
+  assert.ok(chips.length > 1, "None plus the categories");
+  assert.equal(chips[0].dataset.taskCat, "", "None comes first");
+  assert.ok(chips[0].classList.contains("is-on"), "and is the default");
+
+  click(chips[1], "a category chip");
+  assert.equal(globals.taskDraft.categoryId, chips[1].dataset.taskCat);
+
+  // Back to None -- an empty string is a real choice, not a missing one.
+  click($$("[data-task-cat]")[0], "None");
+  assert.equal(globals.taskDraft.categoryId, "");
+
+  click($("[data-task-save]"), "Save task");
+  assert.equal(getAllTasks()[0].categoryId, "");
+});
+
+test("a task reminder can be switched on and given a time", () => {
+  click($("#btnAddTask"), "#btnAddTask");
+  setValue($("#taskTitle"), "Ring the vet", "input", "title");
+
+  assert.equal($("#taskReminderTime"), null, "no time field while it is off");
+  click($("[data-task-reminder]"), "reminder toggle");
+  const time = $("#taskReminderTime");
+  assert.ok(time, "the time field appears");
+  assert.equal(whyNotInteractive(time), null);
+
+  setValue(time, "07:45", "change", "reminder time");
+  assert.ok(
+    $("#taskReminderPreview").textContent.includes("07:45"),
+    "the preview says what will actually happen",
+  );
+
+  click($("[data-task-save]"), "Save task");
+  const saved = getAllTasks()[0];
+  assert.equal(saved.reminder.enabled, true);
+  assert.equal(saved.reminder.time, "07:45");
+});
+
+test("the sheet is honest about a reminder time that has already passed", () => {
+  click($("#btnAddTask"), "#btnAddTask");
+  setValue($("#taskTitle"), "Too late", "input", "title");
+  setValue($("#taskDate"), dayKey(-1), "change", "day");
+  click($("[data-task-reminder]"), "reminder toggle");
+  assert.ok(
+    $("#taskReminderPreview").textContent.includes("already passed"),
+    `a switch that looks on and does nothing is the failure to avoid -- got "${$("#taskReminderPreview").textContent}"`,
+  );
+});
+
+test("deleting a task removes it and hands it straight back", () => {
+  addTask({ title: "Cancel the trial", date: dayKey(0) });
+  renderAll();
+  const id = getAllTasks()[0].id;
+
+  click($(`[data-task-open="${id}"]`), "task row");
+  const del = $("[data-task-delete]");
+  assert.equal(whyNotInteractive(del), null, "Delete is reachable");
+  click(del, "Delete task");
+
+  assert.equal(getAllTasks().length, 0, "gone");
+  assert.equal($("#taskSheet").classList.contains("open"), false, "sheet closed");
+
+  // No confirm dialog -- the undo IS the safety net, which is the difference
+  // from deleting a habit and its whole history.
+  const undo = $(".toast .toast-action");
+  assert.equal(undo.hidden, false, "an undo is offered");
+  click(undo, "Undo");
+  assert.equal(getAllTasks().length, 1, "and it came back");
+  assert.equal(getAllTasks()[0].title, "Cancel the trial");
+});
+
+test("Cancel on the task sheet writes nothing", () => {
+  click($("#btnAddTask"), "#btnAddTask");
+  setValue($("#taskTitle"), "Never saved", "input", "title");
+  click($("[data-task-cancel]"), "Cancel");
+  assert.equal(getAllTasks().length, 0);
+  assert.equal(globals.taskDraft, null, "the draft is dropped");
+});
+
+test("the scrim dismisses the task sheet", () => {
+  click($("#btnAddTask"), "#btnAddTask");
+  click($("#taskSheetScrim"), "scrim");
+  assert.equal($("#taskSheet").classList.contains("open"), false);
+  assert.equal(document.body.classList.contains("is-modal-open"), false);
+});
+
+test("back closes the task sheet instead of closing the app", () => {
+  const at = window.history.index;
+  click($("#btnAddTask"), "#btnAddTask");
+  assert.equal(window.history.index, at + 1, "opening pushed one entry");
+
+  window.history.back();
+  assert.equal($("#taskSheet").classList.contains("open"), false, "back closed it");
+  assert.equal(window.history.exited, false, "and did not leave the app");
+  assert.equal(window.history.index, at);
+  assert.equal(isInert($(".app-main")), false, "the screen behind is live again");
+});
+
+test("Escape closes the task sheet and unwinds history too", () => {
+  const at = window.history.index;
+  click($("#btnAddTask"), "#btnAddTask");
+  document.dispatchEvent(
+    Object.assign(new Event("keydown", { bubbles: true }), { key: "Escape" }),
+  );
+  assert.equal($("#taskSheet").classList.contains("open"), false);
+  assert.equal(window.history.index, at);
+});
+
+test("opening and closing the task sheet many times leaves nothing trapped", () => {
+  for (let i = 0; i < 5; i += 1) {
+    click($("#btnAddTask"), "#btnAddTask");
+    assert.equal(isInert($("#taskSheet")), false, `open #${i + 1} is usable`);
+    click($("[data-task-cancel]"), "Cancel");
+    assert.equal(isInert($(".app-main")), false, `close #${i + 1} released`);
+    assert.equal(
+      document.body.classList.contains("is-modal-open"),
+      false,
+      `close #${i + 1} unlocked scrolling`,
+    );
+  }
+  // And the habits still work afterwards.
+  const habit = getSortedDailyHabits()[0];
+  click($(`[data-advance="${habit.id}"]`), "habit check");
+  assert.equal(getDayCounts(TODAY_DAY).done, 1);
+});
+
+test("a task survives an export/import round trip", () => {
+  addTask({
+    title: "Renew insurance",
+    date: dayKey(3),
+    note: "policy number is on the fridge",
+    reminder: { enabled: true, time: "10:15" },
+  });
+
+  // The same serialise/restore path data-io.js uses.
+  const round = JSON.parse(JSON.stringify(S.state));
+  setState(round);
+  migrateState();
+
+  const tasks = getAllTasks();
+  assert.equal(tasks.length, 1);
+  assert.equal(tasks[0].title, "Renew insurance");
+  assert.equal(tasks[0].date, dayKey(3));
+  assert.equal(tasks[0].note, "policy number is on the fridge");
+  assert.equal(tasks[0].reminder.time, "10:15");
+});
+
+test("a backup taken before tasks existed still opens", () => {
+  const legacy = JSON.parse(JSON.stringify(getDefaultState()));
+  delete legacy.tasks;
+  setState(legacy);
+  migrateState();
+  assert.deepEqual(getAllTasks(), [], "no tasks, and no crash");
+  renderAll();
+  assert.equal($("#todayTasks").innerHTML, "");
 });

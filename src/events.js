@@ -4,7 +4,7 @@
 //
 // Each screen binds a delegated listener on its own <section>, so a re-render
 // never has to rebind anything. This module wires the shell only: the bottom
-// nav, the "Add habit" button, and the Android back button.
+// nav, the two add buttons, and the Android back button.
 
 import { navigateTo } from "./router.js";
 import { bindTodayEvents } from "./render-today.js";
@@ -15,6 +15,7 @@ import {
   bindOverlayEvents,
   handleBackNavigation,
   openHabitSheet,
+  openTaskSheet,
 } from "./modals.js";
 import { appendLogEntry } from "./logging.js";
 
@@ -25,6 +26,11 @@ export function bindEvents() {
 
   const addBtn = document.getElementById("btnAddHabit");
   if (addBtn) addBtn.addEventListener("click", () => openHabitSheet(null));
+
+  // The one-off task sheet. null = a new task; it prefills the day currently
+  // shown on Today.
+  const addTaskBtn = document.getElementById("btnAddTask");
+  if (addTaskBtn) addTaskBtn.addEventListener("click", () => openTaskSheet(null));
 
   bindTodayEvents();
   bindDetailEvents();

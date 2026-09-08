@@ -12,7 +12,10 @@ import { installDom } from "./dom.mjs";
 installDom();
 
 // Imported after the DOM exists: several modules touch window at evaluation.
-const { setState } = await import("../src/state.js");
+// The namespace, not a destructure: `state` is reassigned by setState() and a
+// destructured copy would freeze at its import-time value.
+const S = await import("../src/state.js");
+const { setState } = S;
 const { migrateState, getDefaultMonthData } = await import(
   "../src/persistence.js"
 );
@@ -26,11 +29,31 @@ const { collectReminders, fadeWeekdays } = await import(
   "../src/notifications.js"
 );
 const { SKIPPED } = await import("../src/constants.js");
+const { renderTaskSheet, openTaskSheet, closeTaskSheet } = await import(
+  "../src/modals.js"
+);
+const { formatDateKey } = await import("../src/utils.js");
 
 const now = new Date();
 const YEAR = now.getFullYear();
 const MONTH = now.getMonth();
 const KEY = `${YEAR}-${String(MONTH + 1).padStart(2, "0")}`;
+
+// Task dates are absolute keys, so they are computed from the real clock the
+// same way the app does -- a hard-coded date would make these tests pass only
+// during the month they were written.
+function dayKey(offset) {
+  const d = new Date(YEAR, MONTH, now.getDate() + offset);
+  return formatDateKey(d.getFullYear(), d.getMonth(), d.getDate());
+}
+const TODAY_KEY = dayKey(0);
+const YESTERDAY_KEY = dayKey(-1);
+const TOMORROW_KEY = dayKey(1);
+// A day of THIS month that is definitely not today. Selecting "tomorrow" by
+// day-of-month would land on the 1st when run on the 31st, and the tests that
+// need "some other day of the month I am looking at" would then pass or fail
+// depending on the date they happened to run on.
+const OTHER_DAY = now.getDate() === 1 ? 2 : 1;
 
 function seed() {
   setState({
@@ -75,6 +98,50 @@ function seed() {
         },
       ],
     },
+    tasks: [
+      {
+        id: "t1",
+        title: "Renew passport",
+        date: TODAY_KEY,
+        note: "Take the old one and two photos",
+        categoryId: "c1",
+        done: false,
+        reminder: { enabled: true, time: "09:00" },
+        createdAt: TODAY_KEY,
+      },
+      {
+        id: "t2",
+        title: "Post letter",
+        date: TOMORROW_KEY,
+        note: "",
+        categoryId: "",
+        done: false,
+        reminder: { enabled: false, time: "09:00" },
+        createdAt: TODAY_KEY,
+      },
+      {
+        id: "t4",
+        // Hostile, for the same reason h2's name is: import accepts arbitrary
+        // JSON, so a task title is reachable from a shared backup file.
+        title: 'Buy milk" onfocus="alert(1)',
+        date: TODAY_KEY,
+        note: "",
+        categoryId: "",
+        done: false,
+        reminder: { enabled: false, time: "09:00" },
+        createdAt: TODAY_KEY,
+      },
+      {
+        id: "t3",
+        title: "Chase the invoice",
+        date: YESTERDAY_KEY,
+        note: "",
+        categoryId: "",
+        done: false,
+        reminder: { enabled: false, time: "09:00" },
+        createdAt: YESTERDAY_KEY,
+      },
+    ],
     months: {
       [KEY]: Object.assign(getDefaultMonthData(), {
         dailyCompletions: {
@@ -88,7 +155,9 @@ function seed() {
   migrateState();
   globals.dayFocusDay = null;
   globals.detailHabitId = null;
+  globals.taskDraft = null;
   globals.analyticsYear = null;
+  closeTaskSheet();
 }
 
 // Per test, not once: these render the same singleton `state` and set
@@ -142,6 +211,131 @@ test("a skipped habit renders as skipped rather than as missed", () => {
   renderToday();
   const html = document.getElementById("todayList").innerHTML;
   assert.ok(html.includes("is-skipped"), "the skip state reaches the markup");
+});
+
+/* ---------------------------------------------------------------- Tasks */
+
+test("Today renders the tasks for the selected day", () => {
+  renderToday();
+  const html = document.getElementById("todayTasks").innerHTML;
+
+  assert.ok(html.includes("Renew passport"), "today's task is listed");
+  assert.ok(html.includes("Take the old one"), "its details show on the row");
+  assert.ok(html.includes("09:00"), "a task with a reminder shows the time");
+  assert.ok(html.includes("0 of 2 done"), "tasks get their own count");
+  assert.equal(
+    html.includes("Post letter"),
+    false,
+    "tomorrow's task is not on today",
+  );
+});
+
+test("an undone task from a past day is carried over onto today", () => {
+  renderToday();
+  const html = document.getElementById("todayTasks").innerHTML;
+  assert.ok(html.includes("Carried over"), "the overdue block is drawn");
+  assert.ok(html.includes("Chase the invoice"));
+  assert.ok(html.includes("1 day late"), "and says how late it is, in words");
+  assert.ok(html.includes("is-overdue"), "the state reaches the markup");
+});
+
+test("carried-over tasks do NOT follow you into another day", () => {
+  // Looking at another day must show what that day actually held, not a
+  // backlog that only accrued afterwards.
+  globals.dayFocusDay = OTHER_DAY;
+  renderToday();
+  assert.equal(
+    document.getElementById("todayTasks").innerHTML.includes("Carried over"),
+    false,
+    "the overdue block belongs to today only",
+  );
+});
+
+test("a day with no tasks renders no task section at all", () => {
+  S.state.tasks = [];
+  renderToday();
+  assert.equal(
+    document.getElementById("todayTasks").innerHTML,
+    "",
+    "an empty container rather than an empty heading",
+  );
+});
+
+test("a task is absent from the habit completion figure", () => {
+  // The whole reason tasks are a separate model: an errand must not move the
+  // number that measures habits.
+  S.state.tasks = [];
+  renderToday();
+  const withoutTasks = document.getElementById("todayCount").textContent;
+  const pctWithout = document.getElementById("todayPct").textContent;
+
+  seed();
+  renderToday();
+  assert.equal(document.getElementById("todayCount").textContent, withoutTasks);
+  assert.equal(document.getElementById("todayPct").textContent, pctWithout);
+});
+
+test("a hostile task title cannot escape its attribute", () => {
+  renderToday();
+  const html = document.getElementById("todayTasks").innerHTML;
+  assert.ok(html.includes("Buy milk"), "the title is still shown");
+  assert.equal(
+    html.includes('onfocus="alert(1)"'),
+    false,
+    "the quote is escaped, so no attribute is created",
+  );
+  assert.ok(html.includes("&quot;"), "escaped rather than stripped");
+});
+
+test("the task sheet renders its fields and says what a task is", () => {
+  openTaskSheet(null);
+  const body = document.getElementById("taskSheetBody");
+  const html = body.innerHTML;
+
+  assert.ok(body.querySelector("#taskTitle"), "the title field is rendered");
+  assert.ok(body.querySelector("#taskDate"), "the day field is rendered");
+  assert.ok(body.querySelector("#taskNote"), "the details field is rendered");
+  assert.ok(
+    html.includes("never repeats"),
+    "the sheet states the difference from a habit",
+  );
+  assert.ok(
+    html.includes("Save task"),
+    "the primary action names what it creates",
+  );
+  assert.equal(
+    html.includes("data-task-delete"),
+    false,
+    "Add mode has no delete",
+  );
+});
+
+test("the task sheet prefills the day you were looking at", () => {
+  globals.dayFocusDay = 4;
+  openTaskSheet(null);
+  assert.equal(
+    document.getElementById("taskDate").getAttribute("value"),
+    `${KEY}-04`,
+  );
+});
+
+test("editing a task loads its values and offers a delete", () => {
+  openTaskSheet("t1");
+  assert.equal(document.getElementById("taskTitle").getAttribute("value"), "Renew passport");
+  const html = document.getElementById("taskSheetBody").innerHTML;
+  assert.ok(html.includes("data-task-delete"), "edit mode can delete");
+  assert.ok(html.includes("Save changes"));
+  assert.ok(html.includes("taskReminderPreview"), "the reminder is on, so it previews");
+});
+
+test("the sheet says when a chosen day has already gone by", () => {
+  openTaskSheet("t3");
+  renderTaskSheet();
+  const hint = document.getElementById("taskDayHint").textContent;
+  assert.ok(
+    hint.includes("already gone by"),
+    `a past day is explained rather than silently accepted -- got "${hint}"`,
+  );
 });
 
 /* --------------------------------------------------------------- Detail */
@@ -250,6 +444,46 @@ test("collectReminders turns an enabled habit reminder into seven weekly alarms"
     false,
     "a disabled reminder schedules nothing",
   );
+});
+
+test("a task reminder is one exact alarm, not a weekly repeat", () => {
+  const forTask = collectReminders().filter((r) => r.title === "Renew passport");
+  assert.equal(forTask.length, 1, "one alarm, not seven");
+  assert.ok(forTask[0].at instanceof Date, "described by an exact moment");
+  assert.equal(forTask[0].weekday, undefined, "and by no weekday");
+  assert.ok(
+    forTask[0].body.includes("Take the old one"),
+    "the details become the notification text",
+  );
+});
+
+test("a done task, and a task whose moment has passed, schedule nothing", () => {
+  S.state.tasks = [
+    {
+      id: "d1",
+      title: "Already done",
+      date: TOMORROW_KEY,
+      note: "",
+      categoryId: "",
+      done: true,
+      reminder: { enabled: true, time: "09:00" },
+      createdAt: TODAY_KEY,
+    },
+    {
+      id: "d2",
+      title: "Long gone",
+      date: YESTERDAY_KEY,
+      note: "",
+      categoryId: "",
+      done: false,
+      // In the past, so the OS would fire it the instant it was scheduled.
+      reminder: { enabled: true, time: "09:00" },
+      createdAt: YESTERDAY_KEY,
+    },
+  ];
+  const titles = collectReminders().map((r) => r.title);
+  assert.equal(titles.includes("Already done"), false);
+  assert.equal(titles.includes("Long gone"), false);
 });
 
 test("fading thins reminders out as strength rises, but never to nothing", () => {

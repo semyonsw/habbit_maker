@@ -26,6 +26,8 @@ const {
 const { setDailyReminderEnabled, setDailyReminderTime } = await import(
   "../src/ui-prefs.js"
 );
+const { addTask } = await import("../src/tasks.js");
+const { formatDateKey } = await import("../src/utils.js");
 const { renderSettings, bindSettingsEvents } = await import(
   "../src/render-settings.js"
 );
@@ -236,6 +238,83 @@ test("nothing is said about exact alarms when they are already granted", async (
   renderSettings();
 
   assert.equal($("[data-exact-alarms]"), null);
+});
+
+test("a task reminder reaches Android as one exact alarm, not a repeat", async () => {
+  // A task happens once. Scheduling it as a weekly recurrence would nag every
+  // Thursday for ever about an errand that was done the first time.
+  const soon = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+  addTask({
+    title: "Renew passport",
+    date: formatDateKey(soon.getFullYear(), soon.getMonth(), soon.getDate()),
+    note: "Take two photos",
+    reminder: { enabled: true, time: "09:15" },
+  });
+  const { calls } = stubNative({ display: "granted" });
+
+  rescheduleReminders();
+  await settle();
+
+  assert.equal(calls.scheduled.length, 1, "one schedule call");
+  const forTask = calls.scheduled[0].notifications.filter(
+    (n) => n.title === "Renew passport",
+  );
+  assert.equal(forTask.length, 1, "one alarm, not seven");
+
+  const schedule = forTask[0].schedule;
+  assert.ok(schedule.at instanceof Date, "described by an exact moment");
+  assert.equal(schedule.at.getHours(), 9);
+  assert.equal(schedule.at.getMinutes(), 15);
+  assert.equal(schedule.at.getSeconds(), 0);
+  assert.equal(schedule.repeats, undefined, "and it does not repeat");
+  assert.equal(schedule.on, undefined, "no weekday recurrence either");
+  assert.equal(schedule.allowWhileIdle, true, "so Doze cannot swallow it");
+  assert.equal(forTask[0].body, "Take two photos", "the details are the text");
+});
+
+test("a task alarm already in the past is never laid down", async () => {
+  // An `at` in the past fires the instant it is registered, so a task you
+  // missed would greet you with a notification storm on next launch.
+  const gone = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+  addTask({
+    title: "Long gone",
+    date: formatDateKey(gone.getFullYear(), gone.getMonth(), gone.getDate()),
+    reminder: { enabled: true, time: "09:15" },
+  });
+  const { calls } = stubNative({ display: "granted" });
+
+  rescheduleReminders();
+  await settle();
+
+  const titles = (calls.scheduled[0]?.notifications || []).map((n) => n.title);
+  assert.equal(titles.includes("Long gone"), false);
+});
+
+test("habit and task alarms coexist with ids that cannot collide", async () => {
+  setDailyReminderEnabled(true);
+  const soon = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
+  addTask({
+    title: "Post letter",
+    date: formatDateKey(soon.getFullYear(), soon.getMonth(), soon.getDate()),
+    reminder: { enabled: true, time: "12:00" },
+  });
+  const { calls } = stubNative({ display: "granted" });
+
+  rescheduleReminders();
+  await settle();
+
+  const notifications = calls.scheduled[0].notifications;
+  const ids = notifications.map((n) => n.id);
+  assert.equal(new Set(ids).size, ids.length, "every id is distinct");
+  assert.ok(
+    notifications.some((n) => n.title === "Post letter"),
+    "the task is scheduled alongside the global daily nudge",
+  );
+  assert.equal(
+    notifications.filter((n) => n.schedule.repeats === true).length,
+    7,
+    "the recurring alarms are untouched by the one-shot",
+  );
 });
 
 /* ====================================================================== */

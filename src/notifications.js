@@ -35,6 +35,8 @@ import { parseTimeString } from "./utils.js";
 import { appendLogEntry } from "./logging.js";
 import { isNative, plugin } from "./native.js";
 import { getSortedDailyHabits, computeHabitScore } from "./habits.js";
+import { getAllTasks } from "./tasks.js";
+import { taskReminderAt } from "./task-core.js";
 import { getDailyReminder, getFadeReminders } from "./ui-prefs.js";
 import { registerRenderer } from "./render-registry.js";
 import { showToast } from "./toast.js";
@@ -44,6 +46,10 @@ const GLOBAL_ID_BASE = 100;
 const HABIT_ID_BASE = 1000;
 // Room for one notification per weekday per habit.
 const IDS_PER_HABIT = 10;
+// Tasks get one id each, far above the habit block: habit N occupies
+// 1000 + N*10 + 0..9, so this leaves room for ~49,900 habits before the two
+// ranges could ever meet.
+const TASK_ID_BASE = 500000;
 
 /* ====================================================================== */
 /* Capability                                                             */
@@ -278,6 +284,24 @@ export function collectReminders() {
     });
   });
 
+  // One-off tasks. A single alarm at a single moment, described by `at` rather
+  // than a weekday -- the one place this app schedules something that does not
+  // repeat. Nothing is laid down for a task already ticked off, or for one
+  // whose moment has gone: the OS would fire it immediately on Android, which
+  // is how a missed reminder turns into a notification storm on next launch.
+  const now = Date.now();
+  getAllTasks().forEach((task, index) => {
+    if (task.done) return;
+    const at = taskReminderAt(task);
+    if (!at || at.getTime() <= now) return;
+    out.push({
+      id: TASK_ID_BASE + index,
+      title: task.title,
+      body: task.note ? task.note : "Due today.",
+      at,
+    });
+  });
+
   return out;
 }
 
@@ -313,21 +337,25 @@ async function scheduleNative(reminders) {
         id: r.id,
         title: r.title,
         body: r.body,
-        schedule: {
-          on: {
-            weekday: toCapacitorWeekday(r.weekday),
-            hour: r.hour,
-            minute: r.minute,
-            // Pinned, because the plugin builds the trigger from "now" and
-            // only overwrites the fields it is given -- so without this an
-            // 08:00 reminder fires at 08:00 plus whatever second the app
-            // happened to reschedule on.
-            second: 0,
-          },
-          repeats: true,
-          // Survive Doze. Without it a 21:00 reminder can arrive at 23:40.
-          allowWhileIdle: true,
-        },
+        // A one-off task carries `at`: an exact moment, fired once, never
+        // repeated. Everything else is a weekly recurrence.
+        schedule: r.at
+          ? { at: r.at, allowWhileIdle: true }
+          : {
+              on: {
+                weekday: toCapacitorWeekday(r.weekday),
+                hour: r.hour,
+                minute: r.minute,
+                // Pinned, because the plugin builds the trigger from "now" and
+                // only overwrites the fields it is given -- so without this an
+                // 08:00 reminder fires at 08:00 plus whatever second the app
+                // happened to reschedule on.
+                second: 0,
+              },
+              repeats: true,
+              // Survive Doze. Without it a 21:00 reminder can arrive at 23:40.
+              allowWhileIdle: true,
+            },
       })),
     });
     return true;
@@ -364,6 +392,8 @@ function clearWebTimers() {
 }
 
 function nextOccurrence(reminder, from) {
+  // A one-off task already knows exactly when it wants to fire.
+  if (reminder.at) return new Date(reminder.at);
   const candidate = new Date(from);
   candidate.setSeconds(0, 0);
   candidate.setHours(reminder.hour, reminder.minute, 0, 0);

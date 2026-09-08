@@ -1,7 +1,7 @@
 "use strict";
 
-// The two overlays in the app: the add/edit habit bottom sheet, and a confirm
-// dialog.
+// The overlays in the app: the add/edit habit bottom sheet, the add/edit
+// one-off task sheet, and a confirm dialog.
 //
 // The sheet edits a draft (globals.habitDraft) and only writes on Save, so
 // backing out with the scrim or Cancel leaves the habit untouched. The detail
@@ -27,9 +27,25 @@ import { deriveHabitMark, saveState } from "./persistence.js";
 import {
   deleteHabit,
   getHabitTarget,
+  selectedDateKey,
   todayParts,
   updateHabitOrder,
 } from "./habits.js";
+import {
+  addTask,
+  findTask,
+  removeTask,
+  restoreTask,
+  updateTask,
+} from "./tasks.js";
+import {
+  TASK_NOTE_MAX,
+  TASK_REMINDER_DEFAULT_TIME,
+  TASK_TITLE_MAX,
+  daysLate,
+  taskDateLabel,
+  taskReminderAt,
+} from "./task-core.js";
 import { firstScheduledOnOrAfter } from "./scoring.js";
 import { callRenderer, registerRenderer } from "./render-registry.js";
 import { showToast } from "./toast.js";
@@ -512,6 +528,245 @@ function saveDraft() {
   callRenderer("renderAll");
 }
 
+/* ====================================================================== */
+/* One-off task sheet                                                     */
+/* ====================================================================== */
+
+// A separate sheet rather than a mode of the habit one. The two have almost
+// nothing in common: a task has no schedule, no tracking type, no monthly goal
+// and no streak -- it has a day. Folding them together would mean a form where
+// most of the fields are hidden most of the time, and a draft whose meaning
+// depends on a flag.
+
+function draftFromTask(task) {
+  if (!task) {
+    return {
+      id: null,
+      title: "",
+      // The day you were looking at on Today. Tapping "Add task" while
+      // browsing Thursday means you meant Thursday, not necessarily today.
+      date: selectedDateKey(),
+      note: "",
+      categoryId: "",
+      reminder: { enabled: false, time: TASK_REMINDER_DEFAULT_TIME },
+    };
+  }
+  return {
+    id: task.id,
+    title: task.title,
+    date: task.date,
+    note: task.note || "",
+    categoryId: task.categoryId || "",
+    reminder: Object.assign(
+      { enabled: false, time: TASK_REMINDER_DEFAULT_TIME },
+      task.reminder,
+    ),
+  };
+}
+
+export function openTaskSheet(taskId) {
+  const task = taskId ? findTask(taskId) : null;
+  globals.taskDraft = draftFromTask(task);
+
+  const overlay = document.getElementById("taskSheet");
+  const title = document.getElementById("taskSheetTitle");
+  if (title) title.textContent = task ? "Edit task" : "New task";
+  if (!overlay) return;
+  overlay.classList.add("open");
+  pushOverlayEntry();
+  lockBodyScroll();
+  renderTaskSheet();
+  trapWithin(overlay);
+  const input = document.getElementById("taskTitle");
+  if (input && !task) input.focus();
+}
+
+export function closeTaskSheet(options = {}) {
+  const overlay = document.getElementById("taskSheet");
+  if (!overlay) return;
+  overlay.classList.remove("open");
+  restoreTrap();
+  unlockBodyScroll();
+  globals.taskDraft = null;
+  if (!options.keepHistory) dropOverlayEntry();
+}
+
+function canSaveTask(d) {
+  return !!d && d.title.trim().length > 0 && !!parseDateKey(d.date);
+}
+
+// What picking this day actually means, spelled out. A task dated in the past
+// is legal -- back-filling something you forgot to write down is the point of
+// having a date field -- but it lands on Today as overdue, and saying so here
+// is what stops that reading as a bug.
+function taskDayPreview(d) {
+  if (!parseDateKey(d.date)) return "Pick the day you want to do this.";
+  const todayKey = todayDateKey();
+  const late = daysLate(d.date, todayKey);
+  const label = taskDateLabel(d.date, todayKey);
+  if (late > 0) {
+    return `${label} has already gone by, so this will show as overdue until you tick it off.`;
+  }
+  if (late === 0) return "Today. It appears on your list straight away.";
+  return `${label}. It appears on your list on the day, and not before.`;
+}
+
+function taskReminderPreview(d) {
+  if (!d.reminder.enabled) return "";
+  const at = taskReminderAt({ date: d.date, reminder: d.reminder });
+  if (!at) return "Pick a day and a time first.";
+  const label = taskDateLabel(d.date, todayDateKey());
+  if (at.getTime() <= Date.now()) {
+    return `${label} at ${d.reminder.time} has already passed, so nothing will fire.`;
+  }
+  return `${label} · ${d.reminder.time} · once, then it is finished.`;
+}
+
+/* ----------------------------------------------------------------- markup */
+
+export function renderTaskSheet() {
+  const body = document.getElementById("taskSheetBody");
+  const d = globals.taskDraft;
+  if (!body || !d) return;
+
+  const cats = state.categories.length ? state.categories : DEFAULT_CATEGORIES;
+
+  let html =
+    '<div class="sheet-note">One thing, on one day. It never repeats, and it ' +
+    "is kept out of your habit streaks and strength.</div>" +
+    '<div class="section-label field-label">Task</div>' +
+    // maxlength from the same constant normalizeTask() enforces: without it the
+    // field accepts more than can be stored and the tail vanishes on save.
+    `<input id="taskTitle" class="text-input" type="text" maxlength="${TASK_TITLE_MAX}" value="${sanitize(d.title)}" placeholder="e.g. Renew my passport" />` +
+    '<div class="section-label field-label">Day</div>' +
+    '<div class="boxed-row">' +
+    '<div class="boxed-row-label">Do it on</div>' +
+    `<input type="date" id="taskDate" value="${sanitize(d.date)}" aria-label="Day to do this on" />` +
+    "</div>" +
+    `<div class="field-hint" id="taskDayHint">${sanitize(taskDayPreview(d))}</div>` +
+    '<div class="section-label field-label">Details <span class="field-optional">optional</span></div>' +
+    `<textarea id="taskNote" class="text-input note-input" rows="2" maxlength="${TASK_NOTE_MAX}" placeholder="Anything you need to remember about it">${sanitize(d.note)}</textarea>` +
+    '<div class="section-label field-label">Category <span class="field-optional">optional</span></div>' +
+    '<div class="chip-row">' +
+    // "None" first, and the default: most errands do not belong to any of the
+    // habit categories, and being made to pick one would be noise.
+    `<button type="button" class="chip${d.categoryId ? "" : " is-on"}" data-task-cat="">None</button>` +
+    cats
+      .map(
+        (c) =>
+          `<button type="button" class="chip${c.id === d.categoryId ? " is-on" : ""}" data-task-cat="${sanitize(c.id)}">${sanitize(c.name)}</button>`,
+      )
+      .join("") +
+    "</div>";
+
+  html +=
+    '<div class="row-split" style="margin-top:20px">' +
+    '<div class="section-label">Reminder</div>' +
+    `<button type="button" class="toggle${d.reminder.enabled ? " is-on" : ""}" data-task-reminder` +
+    ` role="switch" aria-checked="${d.reminder.enabled}" aria-label="Reminder"><span></span></button>` +
+    "</div>";
+
+  if (d.reminder.enabled) {
+    html +=
+      '<div class="boxed-row">' +
+      '<div class="boxed-row-label">Time</div>' +
+      `<input type="time" id="taskReminderTime" value="${sanitize(d.reminder.time)}" aria-label="Reminder time" />` +
+      "</div>" +
+      `<div class="sheet-preview" id="taskReminderPreview">${sanitize(taskReminderPreview(d))}</div>`;
+  }
+
+  // No confirm dialog behind this, unlike a habit's Delete: a habit takes its
+  // whole history with it, whereas a task is one line and the toast hands it
+  // straight back.
+  if (d.id) {
+    html +=
+      '<button type="button" class="btn btn-danger" style="width:100%;margin-top:14px"' +
+      " data-task-delete>Delete task</button>";
+  }
+
+  html +=
+    '<div class="sheet-actions">' +
+    '<button type="button" class="btn btn-ghost" data-task-cancel>Cancel</button>' +
+    `<button type="button" class="btn btn-primary" data-task-save${canSaveTask(d) ? "" : " disabled"}>` +
+    `${d.id ? "Save changes" : "Save task"}</button>` +
+    "</div>";
+
+  body.innerHTML = html;
+}
+
+// Update everything that depends on a typed value, WITHOUT re-rendering.
+//
+// A full re-render on `input` replaces the field being typed into and takes the
+// caret with it. Only the category chips and the reminder toggle change the
+// shape of the form, so only those re-render.
+function syncTaskSheet(sheet) {
+  const d = globals.taskDraft;
+  if (!d) return;
+  const hint = sheet.querySelector("#taskDayHint");
+  if (hint) hint.textContent = taskDayPreview(d);
+  const preview = sheet.querySelector("#taskReminderPreview");
+  if (preview) preview.textContent = taskReminderPreview(d);
+  const save = sheet.querySelector("[data-task-save]");
+  if (save) save.disabled = !canSaveTask(d);
+}
+
+/* ------------------------------------------------------------------- save */
+
+function saveTaskDraft() {
+  const d = globals.taskDraft;
+  if (!canSaveTask(d)) return;
+
+  const fields = {
+    title: d.title.trim(),
+    date: d.date,
+    note: String(d.note || "").trim(),
+    categoryId: d.categoryId,
+    reminder: {
+      enabled: !!d.reminder.enabled,
+      time: d.reminder.time,
+    },
+  };
+
+  const saved = d.id ? updateTask(d.id, fields) : addTask(fields);
+
+  // A task dated for a day other than the one on screen will not be in the
+  // list the sheet closes over. Say where it went, or it reads as a failed save
+  // -- the same trap a habit whose schedule starts later falls into.
+  if (saved && saved.date !== selectedDateKey()) {
+    showToast(
+      `${saved.title} is on your list for ${taskDateLabel(
+        saved.date,
+        todayDateKey(),
+      ).toLowerCase()}.`,
+      { duration: 5000 },
+    );
+  }
+
+  callRenderer("rescheduleReminders");
+  if (fields.reminder.enabled) callRenderer("requestReminderPermission");
+  closeTaskSheet();
+  callRenderer("renderAll");
+}
+
+function deleteTaskFromSheet() {
+  const d = globals.taskDraft;
+  if (!d || !d.id) return;
+  const removed = removeTask(d.id);
+  closeTaskSheet();
+  // The task may have had a reminder pending against it.
+  callRenderer("rescheduleReminders");
+  callRenderer("renderAll");
+  if (!removed) return;
+
+  showToast(`${removed.title} deleted`, {
+    onAction: () => {
+      restoreTask(removed);
+      callRenderer("rescheduleReminders");
+      callRenderer("renderAll");
+    },
+  });
+}
+
 /* ---------------------------------------------------------------- confirm */
 
 export function openConfirm(title, message, onConfirm) {
@@ -551,6 +806,13 @@ export function closeTopOverlay(options = {}) {
     ?.classList.contains("open");
   if (confirmOpen) {
     closeConfirm(options);
+    return true;
+  }
+  const taskOpen = document
+    .getElementById("taskSheet")
+    ?.classList.contains("open");
+  if (taskOpen) {
+    closeTaskSheet(options);
     return true;
   }
   const sheetOpen = document
@@ -671,6 +933,56 @@ export function bindOverlayEvents() {
     });
   }
 
+  const taskSheet = document.getElementById("taskSheet");
+  if (taskSheet) {
+    taskSheet.addEventListener("click", (event) => {
+      const d = globals.taskDraft;
+      if (event.target.closest("#taskSheetScrim")) return closeTaskSheet();
+      if (event.target.closest("[data-task-cancel]")) return closeTaskSheet();
+      if (event.target.closest("[data-task-save]")) return saveTaskDraft();
+      if (event.target.closest("[data-task-delete]")) {
+        return deleteTaskFromSheet();
+      }
+      if (!d) return;
+
+      // dataset.taskCat is "" for the None chip, which is a real choice --
+      // hence closest() on the attribute rather than a truthiness test.
+      const cat = event.target.closest("[data-task-cat]");
+      if (cat) {
+        d.categoryId = cat.dataset.taskCat || "";
+        return renderTaskSheet();
+      }
+      if (event.target.closest("[data-task-reminder]")) {
+        d.reminder.enabled = !d.reminder.enabled;
+        return renderTaskSheet();
+      }
+    });
+
+    taskSheet.addEventListener("input", (event) => {
+      const d = globals.taskDraft;
+      if (!d) return;
+      if (event.target.id === "taskTitle") d.title = event.target.value;
+      else if (event.target.id === "taskNote") d.note = event.target.value;
+      else if (event.target.id === "taskDate") d.date = event.target.value;
+      else if (event.target.id === "taskReminderTime") {
+        d.reminder.time = event.target.value;
+      } else return;
+      syncTaskSheet(taskSheet);
+    });
+
+    // A date or time picker commits on `change`, not `input`, in several
+    // engines -- including the Android WebView's native dialogs.
+    taskSheet.addEventListener("change", (event) => {
+      const d = globals.taskDraft;
+      if (!d) return;
+      if (event.target.id === "taskDate") d.date = event.target.value;
+      else if (event.target.id === "taskReminderTime") {
+        d.reminder.time = event.target.value;
+      } else return;
+      syncTaskSheet(taskSheet);
+    });
+  }
+
   const confirm = document.getElementById("confirmDialog");
   if (confirm) {
     confirm.addEventListener("click", (event) => {
@@ -691,4 +1003,6 @@ export function bindOverlayEvents() {
 registerRenderer("openConfirm", openConfirm);
 registerRenderer("openHabitSheet", openHabitSheet);
 registerRenderer("closeHabitSheet", closeHabitSheet);
+registerRenderer("openTaskSheet", openTaskSheet);
+registerRenderer("closeTaskSheet", closeTaskSheet);
 registerRenderer("forgetOverlayEntry", forgetOverlayEntry);

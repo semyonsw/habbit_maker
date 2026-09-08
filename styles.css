@@ -546,6 +546,167 @@ p {
   color: var(--accent);
 }
 
+/* Two add buttons side by side: habits and one-off tasks are peers, and
+   stacking them would push the second one below the fold on a short phone. */
+.add-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.add-row .add-habit-btn {
+  flex: 1;
+  min-width: 0;
+  margin-top: 0;
+}
+
+/* ------------------------------------------------------------ tasks ---
+   One-off tasks. Visually a quieter sibling of .habit-row: no two-letter
+   mark tile (a task is not a thing you build up over time, so there is no
+   identity to badge) and a slightly tighter row.
+   ---------------------------------------------------------------------- */
+
+.task-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.task-row {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 11px 14px;
+  border-radius: 15px;
+  background: var(--surface);
+  border: 1px solid var(--divider);
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.task-row:hover {
+  background: var(--row-hover);
+  border-color: var(--border-strong);
+}
+
+.task-open {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: left;
+}
+
+.task-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.task-title {
+  display: block;
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: -0.012em;
+  line-height: 1.25;
+  color: var(--text);
+}
+
+.task-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 11.5px;
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.task-meta .sep {
+  color: var(--disabled);
+}
+
+.task-meta .mono {
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+.task-meta .mono.is-late {
+  color: var(--late);
+}
+
+.task-note {
+  display: block;
+  margin-top: 5px;
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--muted);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.task-check {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border-radius: 11px;
+  border: 1.5px solid var(--outline);
+  background: transparent;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.task-check:hover {
+  border-color: var(--accent);
+}
+
+.task-check.is-done {
+  border: none;
+  background: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: pop 0.4s cubic-bezier(0.2, 1.5, 0.4, 1);
+}
+
+.task-check.is-done svg {
+  stroke: var(--on-accent);
+}
+
+/* Done, and staying in place. The strike-through is what says "finished"
+   without the row having to move -- see sortTasks() in src/task-core.js for
+   why a ticked task must not jump down the list. */
+.task-row.is-done .task-title {
+  text-decoration: line-through;
+  color: var(--faint);
+}
+
+.task-row.is-done .task-note,
+.task-row.is-done .task-meta {
+  opacity: 0.6;
+}
+
+/* Carried over from a day that has gone by. */
+.task-row.is-overdue {
+  border-color: var(--late);
+  background: var(--late-soft);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .task-check.is-done {
+    animation: none;
+  }
+}
+
 /* ========================================================================
    Habit detail
    ======================================================================== */
@@ -1543,6 +1704,11 @@ body.is-modal-open-fixed {
 :root {
   --skip: #67708c;
   --skip-soft: rgba(103, 112, 140, 0.22);
+  /* An overdue task is not an error and not a failure -- it is still waiting.
+     Amber rather than --danger, which is reserved for destructive actions, and
+     never the only signal: the row also carries the words "N days late". */
+  --late: #d9a03a;
+  --late-soft: rgba(217, 160, 58, 0.16);
   --heat-0: #1a1d27;
   --heat-1: rgba(46, 196, 166, 0.26);
   --heat-2: rgba(46, 196, 166, 0.45);
@@ -1553,6 +1719,8 @@ body.is-modal-open-fixed {
 html[data-theme="light"] {
   --skip: #8a90a6;
   --skip-soft: rgba(138, 144, 166, 0.24);
+  --late: #a1691a;
+  --late-soft: rgba(161, 105, 26, 0.13);
   --heat-0: #e4e8f0;
   --heat-1: rgba(18, 161, 132, 0.22);
   --heat-2: rgba(18, 161, 132, 0.42);
@@ -2008,6 +2176,20 @@ html[data-theme="light"] {
   font-size: 11px;
   line-height: 1.45;
   color: var(--dim);
+}
+
+/* One line at the top of a sheet saying what the sheet is for. The task sheet
+   needs it: "task" and "habit" are close enough in ordinary use that the
+   difference has to be stated rather than inferred from the fields. */
+.sheet-note {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--sunken);
+  border: 1px solid var(--divider);
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
 }
 
 .note-input {

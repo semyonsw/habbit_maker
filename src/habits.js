@@ -9,7 +9,12 @@
 
 import { SKIPPED, SCORE_HALF_LIFE_DAYS } from "./constants.js";
 import { state, globals, getStateRevision } from "./state.js";
-import { monthKey, daysInMonth, formatTimeString } from "./utils.js";
+import {
+  monthKey,
+  daysInMonth,
+  formatTimeString,
+  formatDateKey,
+} from "./utils.js";
 import {
   saveState,
   getCurrentMonthData,
@@ -162,6 +167,17 @@ function currentSelectedDay() {
     return viewingCurrent ? t.day : 1;
   }
   return Math.min(total, Math.max(1, globals.dayFocusDay));
+}
+
+// The day Today is showing, as a "YYYY-MM-DD" key. Exported for the task sheet,
+// which prefills its date field with the day you were looking at when you
+// tapped Add task -- and which must not import a render module to find out.
+export function selectedDateKey() {
+  return formatDateKey(
+    state.currentYear,
+    state.currentMonth,
+    currentSelectedDay(),
+  );
 }
 
 export function findHabit(id) {

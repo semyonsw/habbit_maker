@@ -1,7 +1,7 @@
 "use strict";
 
 // The Today screen: the date and completion figure, a month bar, a day picker,
-// and the habit list you check off.
+// the habit list you check off, and below it the one-off tasks for that day.
 //
 // The design shows a single day. This app has always let you fill in an earlier
 // day, so the day strip stays -- restyled as the design's capsule row.
@@ -15,8 +15,15 @@ import {
   WEEKDAY_LABELS,
 } from "./constants.js";
 import { state, globals } from "./state.js";
-import { sanitize, daysInMonth } from "./utils.js";
+import { sanitize, daysInMonth, formatDateKey, todayDateKey } from "./utils.js";
 import { getViewedMonthData, getCategoryById } from "./persistence.js";
+import { getTasksForDate, getOverdueTasks, toggleTaskDone } from "./tasks.js";
+import {
+  daysLate,
+  overdueLabel,
+  taskCounts,
+  taskDateLabel,
+} from "./task-core.js";
 import {
   advanceHabitDay,
   computeHabitScore,
@@ -203,6 +210,96 @@ function rowHtml(habit, monthData, day) {
   );
 }
 
+/* -------------------------------------------------------------- tasks ---
+   One-off tasks for the selected day.
+
+   Kept visually and structurally apart from the habit list above: a task has
+   no strength, no streak and no schedule, and it is absent from the completion
+   figure at the top of the screen. Its own count is shown here instead, so
+   "2 of 3 done" on a habit day never silently means "and one errand".
+   ---------------------------------------------------------------------- */
+
+function taskRowHtml(task, todayKey, options = {}) {
+  const classes = ["task-row"];
+  if (task.done) classes.push("is-done");
+  if (options.overdue) classes.push("is-overdue");
+
+  const cat = task.categoryId ? getCategoryById(task.categoryId) : null;
+  const parts = [];
+  if (options.overdue) {
+    const late = daysLate(task.date, todayKey);
+    parts.push(
+      `<span class="mono is-late">${sanitize(overdueLabel(late))}</span>`,
+      `<span>${sanitize(taskDateLabel(task.date, todayKey))}</span>`,
+    );
+  }
+  if (cat) parts.push(`<span>${sanitize(cat.name)}</span>`);
+  if (task.reminder && task.reminder.enabled) {
+    parts.push(`<span class="mono">${sanitize(task.reminder.time)}</span>`);
+  }
+
+  const meta = parts.length
+    ? `<span class="task-meta">${parts.join('<span class="sep">·</span>')}</span>`
+    : "";
+  const note = task.note
+    ? `<span class="task-note">${sanitize(task.note)}</span>`
+    : "";
+
+  return (
+    `<div class="${classes.join(" ")}">` +
+    '<button type="button" class="task-open" title="Edit this task"' +
+    ` data-task-open="${sanitize(task.id)}">` +
+    '<span class="task-text">' +
+    `<span class="task-title">${sanitize(task.title)}</span>` +
+    meta +
+    note +
+    "</span></button>" +
+    `<button type="button" class="task-check${task.done ? " is-done" : ""}"` +
+    ` data-task-toggle="${sanitize(task.id)}"` +
+    ` aria-pressed="${task.done}"` +
+    ` aria-label="${sanitize(task.title)}">${task.done ? CHECK_SVG : ""}</button>` +
+    "</div>"
+  );
+}
+
+function tasksSectionHtml(dateKey, todayKey) {
+  const forDay = getTasksForDate(dateKey);
+  // Overdue tasks appear ONLY while Today is showing today. Looking back at
+  // last Tuesday should show what last Tuesday actually held, not a pile of
+  // things that have fallen behind since.
+  const overdue = dateKey === todayKey ? getOverdueTasks() : [];
+  if (!forDay.length && !overdue.length) return "";
+
+  const counts = taskCounts(forDay);
+  let html = "";
+
+  if (forDay.length) {
+    html +=
+      '<div class="today-listhead">' +
+      '<div class="eyebrow">Tasks</div>' +
+      `<div class="today-scheduled">${counts.done} of ${counts.total} done</div>` +
+      "</div>" +
+      '<div class="task-list">' +
+      forDay.map((task) => taskRowHtml(task, todayKey)).join("") +
+      "</div>";
+  }
+
+  // Its own block rather than mixed into the list above, so the day's count
+  // means the day and nothing else.
+  if (overdue.length) {
+    html +=
+      '<div class="today-listhead">' +
+      '<div class="eyebrow">Carried over</div>' +
+      `<div class="today-scheduled">${overdue.length} still waiting</div>` +
+      "</div>" +
+      '<div class="task-list">' +
+      overdue.map((task) => taskRowHtml(task, todayKey, { overdue: true })).join("") +
+      "</div>";
+  }
+
+  return html;
+}
+
 /* ------------------------------------------------------------------ render */
 
 export function renderToday(options = {}) {
@@ -301,6 +398,14 @@ export function renderToday(options = {}) {
   if (hint) {
     hint.textContent =
       habits.length > 1 ? "Hold a habit to drag it up or down" : "";
+  }
+
+  const tasks = document.getElementById("todayTasks");
+  if (tasks) {
+    tasks.innerHTML = tasksSectionHtml(
+      formatDateKey(state.currentYear, state.currentMonth, day),
+      todayDateKey(),
+    );
   }
 }
 
@@ -451,6 +556,27 @@ export function bindTodayEvents() {
         return;
       }
       advanceWithUndo(advance.dataset.advance, day);
+      return;
+    }
+
+    const taskToggle = event.target.closest("[data-task-toggle]");
+    if (taskToggle) {
+      // No future-day guard here, unlike a habit's.
+      //
+      // A habit completion dated tomorrow would corrupt the strength average,
+      // which is why Today refuses one. A task feeds no maths at all, and
+      // finishing an errand a day early is an ordinary thing to do -- so
+      // ticking it off is allowed on whatever day it is showing.
+      toggleTaskDone(taskToggle.dataset.taskToggle);
+      callRenderer("renderAll");
+      return;
+    }
+
+    const taskOpen = event.target.closest("[data-task-open]");
+    if (taskOpen) {
+      // Straight to the edit sheet: a task has no detail screen, because there
+      // is no history, no streak and no calendar to show for a single day.
+      callRenderer("openTaskSheet", taskOpen.dataset.taskOpen);
       return;
     }
 

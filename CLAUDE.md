@@ -72,6 +72,8 @@ Needs JDK 21+ (Capacitor's Android library is compiled at 21; a 17 first on
 ```
 src/scoring.js      PURE maths: schedules, streaks, strength, roll-ups
 src/habits.js       stateful reads/writes + the memo cache
+src/task-core.js    PURE rules for one-off tasks (no state, no DOM)
+src/tasks.js        stateful task reads/writes
 src/persistence.js  schema migration, load/save, defaults
 src/db.js           picks db-rest.js (desktop/SQLite) or db-idb.js (phone)
 src/notifications.js reminders: native alarms, or web timers
@@ -86,7 +88,22 @@ tests/              node --test; see the testing notes below
 
 - **`src/scoring.js` imports no DOM, no database and no `state`.** That is what
   makes it testable, and it is the part that fails quietly and wrongly rather
-  than loudly.
+  than loudly. `src/task-core.js` holds the same line for the same reason.
+- **A one-off task is not a habit, and must never enter the habit maths.** No
+  schedule, no streak, no strength, and absent from the day's completion figure
+  — that is the whole reason `state.tasks` is its own array rather than a habit
+  with a one-day schedule. `scoring.js` knows nothing about tasks; keep it that
+  way. A task's `date` IS the record, so there is no "undated" state to render,
+  and `.task-row`/`.task-open` are named apart from `.habit-row`/`.habit-open`
+  precisely so the drag in `reorder.js` cannot pick one up.
+- **`persistence.js` may import `task-core.js` but never `tasks.js`.**
+  `tasks.js` imports `saveState` from `persistence.js`, so the reverse is a
+  cycle — and a load-order-sensitive cycle here is exactly what moving the
+  revision counter into `state.js` was done to avoid.
+- **A task reminder is one alarm at one moment, and is never scheduled into the
+  past.** Habit reminders carry a `weekday` and repeat; a task's carries `at`
+  and does not. An `at` already gone fires the instant it is registered, so
+  `collectReminders()` drops those — and tasks already done.
 - **Every write to `state` goes through `saveState()`**, which bumps the
   revision counter that invalidates the memo cache in `habits.js`. A write that
   skips it leaves stale streaks and strengths on screen.
@@ -134,7 +151,7 @@ tests/              node --test; see the testing notes below
 
 ## Testing
 
-Six suites, all under plain `node --test`:
+Seven suites, all under plain `node --test`:
 
 - `tests/scoring.test.mjs` — the pure maths.
 - `tests/render.test.mjs` — every screen rendered against the real
@@ -144,11 +161,16 @@ Six suites, all under plain `node --test`:
   stubbed rather than mocked away, asserting on what reached the file.
 - `tests/reorder.test.mjs` — the drag, with real rectangles fed to the rows so
   the midpoint arithmetic is actually exercised.
+- `tests/tasks.test.mjs` — the pure one-off-task rules. No DOM needed.
 - `tests/notifications.test.mjs` — reminders: the permission negotiation, what
   reaches Android's scheduler, and how a web notification is delivered. The
   Capacitor bridge and `Notification` are stubbed the way the real platforms
   behave — Android's fourth permission state, and a page `Notification`
   constructor that throws the way Chrome-on-Android's does.
+
+Anything date-relative must be computed from the real clock rather than
+hard-coded: two of the task render tests were first written against "tomorrow,
+by day-of-month" and would have failed only when run on the 31st.
 
 `tests/dom.mjs` models `inert`, `history`, `location.hash` and a **deferred**
 `requestAnimationFrame` (a synchronous one turns any self-scheduling animation

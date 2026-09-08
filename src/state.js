@@ -34,6 +34,10 @@ export const globals = {
   detailHabitId: null,
   // Staged edits in the add/edit sheet; null while the sheet is closed.
   habitDraft: null,
+  // The same, for the one-off task sheet. A separate slot rather than a shared
+  // one: the two sheets edit different shapes, and a stale draft of the wrong
+  // kind would be read field-by-field as if it were the right one.
+  taskDraft: null,
   // Year drawn by the Analytics heatmap. Independent of the viewed month so
   // scrolling the year does not move the rest of the app.
   analyticsYear: null,

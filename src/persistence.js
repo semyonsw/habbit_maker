@@ -20,6 +20,7 @@ import {
   parseDateKey,
   formatDateKey,
 } from "./utils.js";
+import { normalizeTaskList } from "./task-core.js";
 import { appendLogEntry } from "./logging.js";
 import * as db from "./db.js";
 
@@ -77,6 +78,9 @@ export function getDefaultState() {
     habits: {
       daily: DEFAULT_DAILY_HABITS.map((h, idx) => ({ ...h, order: idx })),
     },
+    // One-off tasks: a single thing to do on a single day. Empty by default --
+    // unlike habits, there is no sensible one to seed.
+    tasks: [],
     months: {
       [key]: getDefaultMonthData(),
     },
@@ -282,6 +286,25 @@ export function migrateState() {
   state.habits.daily.forEach((h, idx) => {
     h.order = idx;
   });
+
+  // --- schema 9: one-off tasks -------------------------------------------
+  // A task belongs to one calendar day and carries no schedule, streak or
+  // strength -- see src/task-core.js. Absent on every earlier schema, so it
+  // simply starts empty; nothing here touches a habit or a completion.
+  //
+  // normalizeTaskList() drops a record with no usable date at all, because a
+  // task has nowhere to be drawn without one. That can only come from a
+  // hand-edited backup, and it is reported rather than swallowed.
+  const rawTaskCount = Array.isArray(state.tasks) ? state.tasks.length : 0;
+  state.tasks = normalizeTaskList(state.tasks);
+  if (state.tasks.length < rawTaskCount) {
+    appendLogEntry({
+      level: "warn",
+      component: "state",
+      operation: "migrateState",
+      message: `Dropped ${rawTaskCount - state.tasks.length} task(s) with no usable date.`,
+    });
+  }
 
 
   if (!isPlainObject(state.meta)) {

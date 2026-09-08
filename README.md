@@ -76,6 +76,25 @@ it leads with a **strength score** instead:
   miss, *"Why did you skip?"* after a skip.
 - Undo on the two taps that can lose work.
 
+**One-off tasks**
+
+- **A single thing to do on a single day**, added with **Add task** next to
+  Add habit on Today. Pick the day, optionally add details, a category and a
+  reminder. Not a habit: it never repeats.
+- Deliberately **outside the habit maths** — no schedule, no streak, no
+  strength, and absent from the day's completion figure. An errand you forgot
+  cannot dent a habit you have kept for a year.
+- **A day you miss is carried over**, not lost: an unfinished task appears
+  under *Carried over* on Today, saying how late it is, until you tick it off
+  or delete it.
+- The reminder is a **single alarm at a single moment** rather than a weekly
+  repeat, and the sheet says so — including telling you when the time you
+  picked has already passed.
+- Ticking one off early is allowed, unlike a habit: a task feeds no average,
+  so there is nothing for a future completion to distort.
+- Deleting one offers it straight back from the toast, so there is no
+  confirmation dialog in the way.
+
 **Habit design**
 
 - An optional **implementation intention** per habit — the "after X, I will do Y,
@@ -170,6 +189,10 @@ undo). **Hold** any habit for half a second to mark that day skipped — the toa
 confirms it, and the streak and strength are left alone. On a keyboard, press
 `s` with the control focused.
 
+Below the habits are that day's **one-off tasks**, in their own section with
+their own count. **Add task** creates one for whichever day you are looking at.
+Tap its checkbox to finish it, tap its name to edit it.
+
 Tap a habit's name to open its **detail** screen: strength, streaks, the month
 calendar (tap a day to cycle *done → skipped → clear*), the note for the
 selected day, its patterns, and its tracking and reminder settings.
@@ -199,6 +222,11 @@ There is no cross-browser API for scheduling a notification for later
 (Notification Triggers never shipped past an origin trial), so the web ceiling
 really is "while the page is alive". Install the APK if you need reminders that
 survive a closed app.
+
+A habit's reminder is a weekly recurrence; a **task's is one exact moment**,
+fired once. Nothing is scheduled for a task already done, or for one whose
+moment has gone — an alarm set in the past fires the instant it is registered,
+which is how a missed reminder turns into a notification storm on next launch.
 
 **On Android**, the manifest declares:
 
@@ -254,6 +282,8 @@ index.html ──┬── src/app.js            boot: migrate → load → rend
              │
              ├── scoring.js            PURE maths: schedules, streaks, strength
              ├── habits.js             stateful reads/writes + a memo cache
+             ├── task-core.js          PURE rules for one-off tasks
+             ├── tasks.js              stateful task reads/writes
              ├── notifications.js      reminders (native alarms / web timers)
              │
              ├── render-shell.js       view switching, renderAll()
@@ -310,6 +340,16 @@ The client state is one JSON object:
       "order": 0
     }]
   },
+  "tasks": [{
+      "id": "tk_1",
+      "title": "Renew passport",
+      "date": "2026-09-10",          // the ONE day it belongs to
+      "note": "take two photos",
+      "categoryId": "",              // optional, unlike a habit's
+      "done": false,
+      "reminder": { "enabled": true, "time": "09:00" },
+      "createdAt": "2026-09-09"
+  }],
   "months": {
     "2026-09": {
       "dailyCompletions": { "dh_1": { "1": true, "2": 3, "3": -1 } },
@@ -318,9 +358,23 @@ The client state is one JSON object:
       "monthlyReview":    { "wins": "", "blockers": "", "focus": "" }
     }
   },
-  "meta": { "schemaVersion": 7 }
+  "meta": { "schemaVersion": 9 }
 }
 ```
+
+**Tasks are a separate array on purpose, not habits with a one-day schedule.**
+A habit has a schedule to satisfy, a streak to extend and a strength to decay;
+a task has a date. Modelling a one-off as a habit would put every errand into
+the strength average and the daily completion figure, which is precisely the
+thing the score is supposed to measure and the thing a chore should not move.
+The maths in [src/scoring.js](src/scoring.js) is therefore untouched by tasks,
+and the task rules live in their own pure module,
+[src/task-core.js](src/task-core.js).
+
+A task's `date` is the whole record: there is no "undated" state, because there
+would be nowhere to draw it. `migrateState()` drops a task whose date cannot be
+read at all — only reachable from a hand-edited backup — and logs the loss
+rather than swallowing it.
 
 A day's value is one of:
 
@@ -423,6 +477,8 @@ Tests are in two halves:
 
 - [tests/scoring.test.mjs](tests/scoring.test.mjs) — the pure maths. Streaks,
   strength, schedules, roll-ups, escaping.
+- [tests/tasks.test.mjs](tests/tasks.test.mjs) — the pure one-off-task rules:
+  normalisation, ordering, overdue, labels, one-shot reminder times.
 - [tests/render.test.mjs](tests/render.test.mjs) — every screen rendered against
   the **real** `index.html` under [linkedom](https://github.com/WebReflection/linkedom),
   so a renamed mount point or a throwing render fails here instead of on a phone.
