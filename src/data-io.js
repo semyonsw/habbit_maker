@@ -150,6 +150,16 @@ function downloadThroughAnchor(text, filename) {
   if (timer && typeof timer.unref === "function") timer.unref();
 }
 
+// Shown in the confirmation, because "Saved" on its own is exactly what an
+// empty file also says. A number the user can sanity-check is the difference
+// between a report and a claim.
+function formatBytes(bytes) {
+  const n = Number(bytes) || 0;
+  if (n < 1024) return `${n} bytes`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+
 export async function exportData() {
   setBackupStatus("Preparing backup...", "pending");
 
@@ -170,12 +180,38 @@ export async function exportData() {
     return;
   }
 
+  // A backup of nothing is not a backup.
+  //
+  // `state` is null until the store has loaded, and null serialises to the
+  // perfectly valid JSON `null` -- so an export fired before the data arrived
+  // would write a four-byte file and call it a success. Whatever the cause,
+  // the honest move is to refuse rather than to hand over a file that would
+  // restore an empty app over the user's real data.
+  if (!json || json === "null" || json === "{}") {
+    appendLogEntry({
+      level: "error",
+      component: "backup",
+      operation: "exportData.empty",
+      message: `Refused to export an empty backup (serialised to ${json}).`,
+    });
+    setBackupStatus(
+      "Export failed: there is no data loaded to save yet. Reopen the app and try again.",
+      "error",
+    );
+    showToast("Export failed: nothing to save.");
+    return;
+  }
+
+  // The real byte count, not json.length: a character is not a byte once a
+  // habit is named in anything but ASCII.
+  const size = new Blob([json]).size;
+
   // 1. Pick a folder.
   if (canPickSaveLocation()) {
     setBackupStatus("Choose where to save it...", "pending");
     try {
       const name = await writeThroughPicker(json, filename);
-      setBackupStatus(`Saved as ${name}.`, "success");
+      setBackupStatus(`Saved as ${name} (${formatBytes(size)}).`, "success");
       return;
     } catch (error) {
       if (isAbort(error)) {
@@ -202,7 +238,12 @@ export async function exportData() {
     setBackupStatus("Choose where to save it...", "pending");
     const picked = await saveBlobWithPicker(blob, filename, "application/json");
     if (picked.status === "saved") {
-      setBackupStatus(`Saved as ${picked.name}.`, "success");
+      // picked.bytes is what the document provider confirms it holds, so this
+      // is a report of the file on disk rather than of our intention.
+      setBackupStatus(
+        `Saved as ${picked.name} (${formatBytes(picked.bytes || size)}).`,
+        "success",
+      );
       return;
     }
     if (picked.status === "cancelled") {
@@ -223,7 +264,10 @@ export async function exportData() {
     // picker itself failed.
     const shared = await shareBlobNatively(blob, filename);
     if (shared.status === "saved") {
-      setBackupStatus(`Sent ${filename} to the share sheet.`, "success");
+      setBackupStatus(
+        `Sent ${filename} (${formatBytes(size)}) to the share sheet.`,
+        "success",
+      );
       return;
     }
     if (shared.status === "cancelled") {
@@ -269,7 +313,7 @@ export async function exportData() {
   try {
     downloadThroughAnchor(json, filename);
     setBackupStatus(
-      `Saved to your downloads as ${filename}.`,
+      `Saved to your downloads as ${filename} (${formatBytes(size)}).`,
       "success",
     );
   } catch (error) {

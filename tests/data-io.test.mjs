@@ -24,6 +24,7 @@ const {
   canChooseExportFolder,
 } = await import("../src/data-io.js");
 const { getSortedDailyHabits } = await import("../src/habits.js");
+const { saveBlobWithPicker } = await import("../src/native.js");
 const { renderSettings } = await import("../src/render-settings.js");
 await import("../src/render-today.js");
 await import("../src/render-analytics.js");
@@ -178,6 +179,55 @@ test("the backup is named for today, not for the month being viewed", async () =
 });
 
 /* ====================================================================== */
+/* An export that would be empty                                          */
+/* ====================================================================== */
+
+test("an export with no data loaded is refused rather than written", async () => {
+  // `state` is null until the store has loaded, and null serialises to the
+  // perfectly valid JSON `null` -- so this used to write a four-byte file and
+  // report it as a saved backup. Importing it back would wipe the real data.
+  const picker = stubSavePicker();
+  setState(null);
+
+  await exportData();
+
+  assert.equal(picker.options, null, "the save dialog was never opened");
+  assert.equal(picker.written, null, "and nothing was written");
+  assert.match(status(), /failed/i);
+  assert.equal(
+    document.getElementById("backupStatus").classList.contains("error"),
+    true,
+  );
+});
+
+test("an export of an empty object is refused too", async () => {
+  const picker = stubSavePicker();
+  setState({});
+
+  await exportData();
+
+  assert.equal(picker.written, null, "nothing was written");
+  assert.match(status(), /failed/i);
+});
+
+test("an empty payload never reaches the file browser", async () => {
+  // The guard sits in front of the picker on purpose: the Android file browser
+  // CREATES the file the moment the user taps Save, so a write that cannot
+  // succeed must not be allowed to get that far -- otherwise the failure leaves
+  // a 0-byte file exactly where the user expects a backup.
+  const calls = stubFileSaver({ saved: true, name: "nothing.json" });
+
+  const result = await saveBlobWithPicker(
+    new Blob([]),
+    "nothing.json",
+    "application/json",
+  );
+
+  assert.equal(result.status, "failed", "reported as a failure");
+  assert.equal(calls.length, 0, "and the picker was never opened");
+});
+
+/* ====================================================================== */
 /* Export on Android                                                      */
 /* ====================================================================== */
 
@@ -227,6 +277,18 @@ test("on Android the export goes through the system file browser", async () => {
   assert.equal(parsed.habits.daily.length, getSortedDailyHabits().length);
 
   assert.match(status(), /Saved as habits\.json/);
+});
+
+test("the confirmation reports the size the file actually holds", async () => {
+  // "Saved" on its own is exactly what an empty file also says. The size comes
+  // from the native side, which reads it back from the document provider after
+  // writing -- so this is a report about the file on disk, not about our
+  // intention to write one.
+  stubFileSaver({ saved: true, name: "habits.json", bytes: 4096 });
+
+  await exportData();
+
+  assert.match(status(), /Saved as habits\.json \(4\.0 KB\)/);
 });
 
 test("dismissing Android's file browser is reported as cancelled", async () => {

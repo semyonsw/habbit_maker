@@ -135,6 +135,24 @@ tests/              node --test; see the testing notes below
   wires up no `DownloadListener`, so an anchor download does nothing whatsoever
   and reports nothing. Every native route ends the export — with the truth if
   no file was written.
+- **Android's file browser creates the file BEFORE you write to it.**
+  `ACTION_CREATE_DOCUMENT` returns its `content://` URI only after the user has
+  tapped Save and the (empty) document exists, so *every* failure past that
+  point — a payload lost to an activity recreation, a provider that rejects the
+  `"wt"` write mode, a throw halfway — leaves a 0-byte file sitting exactly
+  where the user expects their backup. That is worse than no export: it looks
+  like one and would restore nothing. So
+  [FileSaverPlugin](android/app/src/main/java/com/semyonsw/habitmaker/FileSaverPlugin.java)
+  decodes and checks the payload *before* opening the picker, stages the bytes
+  (in memory and in the cache dir) so they survive the picker, verifies the
+  write against the size the provider reports, and **deletes the document**
+  rather than resolve `saved: true` over a file it could not fill.
+- **An empty backup is refused, never written.** `state` is `null` until the
+  store has loaded and `null` serialises to valid JSON, so an export can
+  produce a four-byte file that imports as "no habits". `exportData()` refuses
+  `""`, `"null"` and `"{}"`, `blobToBase64()` rejects an empty payload instead
+  of resolving it, and the confirmation quotes the byte count — "Saved" alone
+  is exactly what an empty file also says.
 - **`habit.startDate` empty means "no start date on record".** Never backfill one
   onto an existing habit: it would either erase the history before it or invent
   one. Only the add sheet sets it, to today.

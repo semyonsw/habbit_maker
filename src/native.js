@@ -104,11 +104,21 @@ function blobToBase64(blob) {
     const reader = new FileReader();
     reader.onerror = () => reject(reader.error || new Error("read failed"));
     reader.onload = () => {
-      // readAsDataURL gives "data:<mime>;base64,<payload>" -- Filesystem wants
-      // only the payload.
+      // readAsDataURL gives "data:<mime>;base64,<payload>" -- the native side
+      // wants only the payload.
       const out = String(reader.result || "");
       const comma = out.indexOf(",");
-      resolve(comma === -1 ? "" : out.slice(comma + 1));
+      const payload = comma === -1 ? "" : out.slice(comma + 1);
+
+      // An empty payload used to be resolved as though it were fine, and it
+      // travelled all the way to a file: the picker wrote nothing, the share
+      // sheet sent nothing, and both reported success over a 0-byte file.
+      // There is no such thing as an empty save here -- say so instead.
+      if (!payload) {
+        reject(new Error("the file encoded to nothing"));
+        return;
+      }
+      resolve(payload);
     };
     reader.readAsDataURL(blob);
   });
@@ -126,7 +136,9 @@ function blobToBase64(blob) {
    nothing. "I exported and cannot find the file" is the expected outcome.
 
    Returns one of:
-     { status: "saved", name }   the file is on disk where the user put it
+     { status: "saved", name, bytes }  the file is on disk where the user put
+                                       it, and `bytes` is what the provider
+                                       confirms it holds -- never a guess
      { status: "cancelled" }     the picker was dismissed; nothing was written
      { status: "unavailable" }   no plugin (web, or an APK predating it)
      { status: "failed", error } the picker ran but the write did not
@@ -138,6 +150,13 @@ export async function saveBlobWithPicker(blob, filename, mimeType) {
     return { status: "unavailable" };
   }
 
+  // Checked before the picker is opened, not after. The file browser creates
+  // the file the instant the user taps Save, so anything that goes wrong from
+  // then on leaves a 0-byte file where a backup should be.
+  if (!blob || !blob.size) {
+    return { status: "failed", error: new Error("there was nothing to save") };
+  }
+
   try {
     const data = await blobToBase64(blob);
     const result = await FileSaver.save({
@@ -146,7 +165,13 @@ export async function saveBlobWithPicker(blob, filename, mimeType) {
       data,
     });
     if (result && result.saved) {
-      return { status: "saved", name: result.name || filename };
+      return {
+        status: "saved",
+        name: result.name || filename,
+        // The native side verifies the write against the size the document
+        // provider reports; that number is the one worth repeating back.
+        bytes: Number(result.bytes) > 0 ? Number(result.bytes) : blob.size,
+      };
     }
     return { status: "cancelled" };
   } catch (error) {
@@ -170,6 +195,9 @@ export async function shareBlobNatively(blob, filename) {
   const Filesystem = plugin("Filesystem");
   const Share = plugin("Share");
   if (!Filesystem || !Share) return { status: "unavailable" };
+  if (!blob || !blob.size) {
+    return { status: "failed", error: new Error("there was nothing to share") };
+  }
 
   try {
     const data = await blobToBase64(blob);
