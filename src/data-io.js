@@ -16,6 +16,11 @@
 //      SEND a file but is not a place to put one, which is why exports kept
 //      ending up somewhere nobody could find.
 //
+//      The backup travels to the native side as TEXT, and the plugin reads the
+//      file back and counts the bytes before it reports success. Both of those
+//      are there because Export used to produce 0 KB files and announce them as
+//      saved backups -- see FileSaverPlugin.java.
+//
 //   3. A plain anchor download, for Firefox and Safari. Straight to the
 //      browser's download folder with nothing to choose -- the old behaviour,
 //      and now only the last resort. WEB ONLY: Capacitor wires no
@@ -31,8 +36,8 @@ import { appendLogEntry } from "./logging.js";
 import { migrateState, ensureMonthData, saveState } from "./persistence.js";
 import { callRenderer } from "./render-registry.js";
 import {
-  saveBlobWithPicker,
-  shareBlobNatively,
+  saveTextWithPicker,
+  shareTextNatively,
   isNative,
 } from "./native.js";
 import { showToast } from "./toast.js";
@@ -233,10 +238,8 @@ export async function exportData() {
 
   // 2. Android: the system file browser, then the share sheet.
   if (isNative()) {
-    const blob = new Blob([json], { type: "application/json" });
-
     setBackupStatus("Choose where to save it...", "pending");
-    const picked = await saveBlobWithPicker(blob, filename, "application/json");
+    const picked = await saveTextWithPicker(json, filename, "application/json");
     if (picked.status === "saved") {
       // picked.bytes is what the document provider confirms it holds, so this
       // is a report of the file on disk rather than of our intention.
@@ -262,7 +265,7 @@ export async function exportData() {
 
     // Only reached on an APK built before FileSaverPlugin existed, or if the
     // picker itself failed.
-    const shared = await shareBlobNatively(blob, filename);
+    const shared = await shareTextNatively(json, filename);
     if (shared.status === "saved") {
       setBackupStatus(
         `Sent ${filename} (${formatBytes(size)}) to the share sheet.`,
@@ -420,6 +423,27 @@ export async function importData(file) {
     });
     setBackupStatus("Could not read that file.", "error");
     showToast("Could not read that file.");
+    return;
+  }
+
+  // An empty file is the one import failure with a specific cause and a
+  // specific fix, so it gets its own message. Reported as "not valid JSON" it
+  // read as a broken importer, which is where the export bug hid: the file was
+  // 0 bytes because the save had written nothing, and nothing about either
+  // message said so.
+  if (!String(text || "").trim()) {
+    appendLogEntry({
+      level: "error",
+      component: "backup",
+      operation: "importData.empty",
+      message: "The chosen backup file is empty.",
+    });
+    setBackupStatus(
+      "That file is empty, so there is nothing to import. Export again — the " +
+        "confirmation now shows the size, so you can check the file is not 0 bytes.",
+      "error",
+    );
+    showToast("That backup file is empty.");
     return;
   }
 

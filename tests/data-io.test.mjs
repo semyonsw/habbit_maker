@@ -24,7 +24,7 @@ const {
   canChooseExportFolder,
 } = await import("../src/data-io.js");
 const { getSortedDailyHabits } = await import("../src/habits.js");
-const { saveBlobWithPicker } = await import("../src/native.js");
+const { saveTextWithPicker } = await import("../src/native.js");
 const { renderSettings } = await import("../src/render-settings.js");
 await import("../src/render-today.js");
 await import("../src/render-analytics.js");
@@ -215,16 +215,17 @@ test("an empty payload never reaches the file browser", async () => {
   // CREATES the file the moment the user taps Save, so a write that cannot
   // succeed must not be allowed to get that far -- otherwise the failure leaves
   // a 0-byte file exactly where the user expects a backup.
-  const calls = stubFileSaver({ saved: true, name: "nothing.json" });
+  const calls = stubFileSaver();
 
-  const result = await saveBlobWithPicker(
-    new Blob([]),
+  const result = await saveTextWithPicker(
+    "",
     "nothing.json",
     "application/json",
   );
 
   assert.equal(result.status, "failed", "reported as a failure");
-  assert.equal(calls.length, 0, "and the picker was never opened");
+  assert.equal(calls.picks.length, 0, "and the picker was never opened");
+  assert.equal(calls.writes.length, 0);
 });
 
 /* ====================================================================== */
@@ -246,57 +247,152 @@ function stubNativeBridge(plugins = {}) {
   };
 }
 
-// Records what reached FileSaver.save(), so a test can decode the payload and
-// prove the backup itself was handed over rather than just that a call happened.
-function stubFileSaver(result) {
-  const calls = [];
-  stubNativeBridge({
-    FileSaver: {
-      save: async (options) => {
-        calls.push(options);
-        return result;
+// The FileSaver plugin, modelled on the real one: TWO calls, and the write
+// computes its byte count from the text it was actually handed. A test
+// asserting on the reported size is therefore asserting on the bytes that
+// reached the file, not on a number the stub was told to return.
+function fileSaverPlugin({
+  uri = "content://docs/backup.json",
+  name = "habits.json",
+  cancelled = false,
+  bytes = null,
+  writeError = null,
+} = {}) {
+  const calls = { picks: [], writes: [] };
+  const plugin = {
+    pickSaveLocation: async (options) => {
+      calls.picks.push(options);
+      if (cancelled) return { cancelled: true };
+      return { cancelled: false, uri, name };
+    },
+    write: async (options) => {
+      calls.writes.push(options);
+      if (writeError) throw writeError;
+      const onDisk = Buffer.byteLength(String(options.text || ""), "utf8");
+      return {
+        saved: true,
+        uri: options.uri,
+        name,
+        bytes: bytes == null ? onDisk : bytes,
+        verified: true,
+      };
+    },
+  };
+  return { plugin, calls };
+}
+
+// Filesystem + Share, the fallback route.
+function sharePlugins() {
+  const calls = { written: [], shared: [] };
+  return {
+    plugins: {
+      Filesystem: {
+        writeFile: async (options) => {
+          calls.written.push(options);
+        },
+        getUri: async () => ({ uri: "file:///cache/backup.json" }),
+      },
+      Share: {
+        share: async (options) => {
+          calls.shared.push(options);
+        },
       },
     },
-  });
+    calls,
+  };
+}
+
+function stubFileSaver(options = {}) {
+  const { plugin, calls } = fileSaverPlugin(options);
+  stubNativeBridge({ FileSaver: plugin });
   return calls;
 }
 
 test("on Android the export goes through the system file browser", async () => {
-  const calls = stubFileSaver({ saved: true, name: "habits.json" });
+  const calls = stubFileSaver({ name: "habits.json" });
 
   await exportData();
 
-  assert.equal(calls.length, 1, "the file browser was opened");
-  assert.equal(calls[0].filename, TODAY_NAME, "with today's name suggested");
-  assert.equal(calls[0].mimeType, "application/json");
+  assert.equal(calls.picks.length, 1, "the file browser was opened");
+  assert.equal(calls.picks[0].filename, TODAY_NAME, "with today's name suggested");
+  assert.equal(calls.picks[0].mimeType, "application/json");
 
-  // The bridge cannot carry raw bytes, so the file arrives base64-encoded.
-  const written = Buffer.from(String(calls[0].data), "base64").toString("utf8");
-  const parsed = JSON.parse(written);
-  assert.ok(Array.isArray(parsed.habits.daily), "and the whole backup with it");
+  assert.equal(calls.writes.length, 1, "and then written to");
+  const parsed = JSON.parse(calls.writes[0].text);
+  assert.ok(Array.isArray(parsed.habits.daily), "the whole backup went over");
   assert.equal(parsed.habits.daily.length, getSortedDailyHabits().length);
 
   assert.match(status(), /Saved as habits\.json/);
 });
 
+test("the picker call carries no payload at all", async () => {
+  // THE BUG. The payload used to be handed to the picker, which then had to
+  // survive the whole time the user spent browsing folders in another activity.
+  // When it did not, the plugin wrote zero bytes and still reported success:
+  // a 0 KB file announced as a saved backup, which then failed to import as
+  // "not valid JSON". Nothing but a URI may cross that boundary now.
+  const calls = stubFileSaver();
+
+  await exportData();
+
+  const pick = calls.picks[0];
+  assert.equal(pick.data, undefined, "no base64 payload on the picker call");
+  assert.equal(pick.text, undefined, "and no text either");
+  assert.deepEqual(
+    Object.keys(pick).sort(),
+    ["filename", "mimeType"],
+    "the picker is told where to save, and nothing else",
+  );
+});
+
+test("the backup crosses the bridge as text, not as base64", async () => {
+  // Five conversions used to move a string that was already a string: Blob ->
+  // FileReader -> data: URL -> slice the prefix -> Base64.decode in Java. Two
+  // of them are where the empty exports came from.
+  const calls = stubFileSaver();
+
+  await exportData();
+
+  const written = calls.writes[0];
+  assert.equal(typeof written.text, "string");
+  assert.equal(written.data, undefined, "nothing is base64-encoded");
+  assert.ok(
+    written.text.trimStart().startsWith("{"),
+    "it is the JSON itself, readable as it goes over",
+  );
+  assert.ok(written.uri, "aimed at the URI the picker returned");
+});
+
 test("the confirmation reports the size the file actually holds", async () => {
-  // "Saved" on its own is exactly what an empty file also says. The size comes
-  // from the native side, which reads it back from the document provider after
-  // writing -- so this is a report about the file on disk, not about our
+  // "Saved" on its own is exactly what an empty file also says. The number
+  // comes from the native side, which reads the file back and counts the bytes
+  // after writing -- so this is a report about the file on disk, not about our
   // intention to write one.
-  stubFileSaver({ saved: true, name: "habits.json", bytes: 4096 });
+  stubFileSaver({ name: "habits.json", bytes: 4096 });
 
   await exportData();
 
   assert.match(status(), /Saved as habits\.json \(4\.0 KB\)/);
 });
 
+test("the reported size is the real byte count of the backup", async () => {
+  const calls = stubFileSaver({ name: "habits.json" });
+  await exportData();
+
+  const bytes = Buffer.byteLength(calls.writes[0].text, "utf8");
+  assert.ok(bytes > 100, "there is a real backup here");
+  // Whatever it is, the status line must not be able to claim 0.
+  assert.doesNotMatch(status(), /\(0 bytes\)/);
+  assert.match(status(), /\d/);
+});
+
 test("dismissing Android's file browser is reported as cancelled", async () => {
-  stubFileSaver({ saved: false, cancelled: true });
+  const calls = stubFileSaver({ cancelled: true });
 
   await exportData();
 
   assert.match(status(), /cancelled/i);
+  assert.equal(calls.writes.length, 0, "and nothing was written");
   assert.doesNotMatch(
     status(),
     /downloads/i,
@@ -304,25 +400,51 @@ test("dismissing Android's file browser is reported as cancelled", async () => {
   );
 });
 
-test("on Android an export that saved nothing never claims a download", async () => {
-  // The bug: with no plugin reachable, export fell through to `<a download>`,
-  // which the Android WebView ignores outright -- Capacitor registers no
-  // DownloadListener -- and then announced the backup as saved to Downloads.
-  // A file the user cannot find is bad; being told it is there is worse.
-  stubNativeBridge({});
+test("a write that fails is never reported as a saved backup", async () => {
+  // The native side rejects on a short or empty write rather than resolving,
+  // so this is the shape a verified-but-wrong file arrives in.
+  const { plugin } = fileSaverPlugin({
+    writeError: new Error("The file was written but holds 0 bytes instead of 8123."),
+  });
+  const share = sharePlugins();
+  stubNativeBridge({ FileSaver: plugin, ...share.plugins });
 
   await exportData();
 
-  assert.doesNotMatch(
-    status(),
-    /downloads/i,
-    "Android has no download folder route at all",
-  );
+  assert.doesNotMatch(status(), /^Saved as/, "not announced as saved");
+  // It falls through to the share sheet, which is a real route to a file.
+  assert.equal(share.calls.shared.length, 1, "the fallback was tried");
+});
+
+test("the share fallback sends the backup as UTF-8 text", async () => {
+  const share = sharePlugins();
+  stubNativeBridge(share.plugins); // no FileSaver at all
+
+  await exportData();
+
+  assert.equal(share.calls.written.length, 1);
+  const file = share.calls.written[0];
+  assert.equal(file.encoding, "utf8", "written as text, not decoded as base64");
+  assert.ok(JSON.parse(file.data).habits, "and it is the backup");
+  assert.equal(share.calls.shared.length, 1, "then handed to the share sheet");
+  assert.match(status(), /share sheet/i);
+});
+
+test("a non-ASCII habit name does not corrupt the file or its size", async () => {
+  S.state.habits.daily[0].name = "Утренняя молитва 🙏";
+  const calls = stubFileSaver({ name: "habits.json" });
+
+  await exportData();
+
+  const parsed = JSON.parse(calls.writes[0].text);
   assert.equal(
-    document.getElementById("backupStatus").classList.contains("error"),
-    true,
-    "a save that did not happen is an error, not a success",
+    parsed.habits.daily[0].name,
+    "Утренняя молитва 🙏",
+    "the name survives the trip intact",
   );
+  // A character is not a byte: the size must be measured in bytes.
+  const bytes = Buffer.byteLength(calls.writes[0].text, "utf8");
+  assert.ok(bytes > calls.writes[0].text.length, "multi-byte characters counted");
 });
 
 /* ====================================================================== */

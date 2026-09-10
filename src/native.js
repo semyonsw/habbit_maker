@@ -99,29 +99,23 @@ if (isNative()) {
 
 /* -------------------------------------------------------------- file saves */
 
-function blobToBase64(blob) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(reader.error || new Error("read failed"));
-    reader.onload = () => {
-      // readAsDataURL gives "data:<mime>;base64,<payload>" -- the native side
-      // wants only the payload.
-      const out = String(reader.result || "");
-      const comma = out.indexOf(",");
-      const payload = comma === -1 ? "" : out.slice(comma + 1);
-
-      // An empty payload used to be resolved as though it were fine, and it
-      // travelled all the way to a file: the picker wrote nothing, the share
-      // sheet sent nothing, and both reported success over a 0-byte file.
-      // There is no such thing as an empty save here -- say so instead.
-      if (!payload) {
-        reject(new Error("the file encoded to nothing"));
-        return;
-      }
-      resolve(payload);
-    };
-    reader.readAsDataURL(blob);
-  });
+// A backup is JSON, so it goes to the native side as TEXT.
+//
+// It used to be turned into a Blob, read back through FileReader as a data: URL,
+// have the "data:...;base64," prefix sliced off, cross the bridge, and be
+// Base64.decode()d in Java. Five conversions, each able to fail, to move a
+// string that was already a string -- and a payload a third larger for the
+// trip. Two of those steps are where the empty exports came from.
+//
+// The real UTF-8 byte length, which is not the character count once a habit is
+// named in anything but ASCII.
+function utf8Size(text) {
+  const payload = String(text == null ? "" : text);
+  if (typeof TextEncoder === "function") {
+    return new TextEncoder().encode(payload).length;
+  }
+  // No TextEncoder (very old WebView): a Blob still measures bytes.
+  return new Blob([payload]).size;
 }
 
 /* --------------------------------------------------------- save with a picker
@@ -135,45 +129,67 @@ function blobToBase64(blob) {
    pick, some targets copy it somewhere private, and dismissing it writes
    nothing. "I exported and cannot find the file" is the expected outcome.
 
+   TWO CALLS: pick the location, then write to it.
+
+   The picker used to be handed the payload, which then had to survive the whole
+   time the user spent browsing folders in another activity. When it did not,
+   the plugin wrote zero bytes and reported success -- so Export announced a
+   backup and left a 0 KB file, and re-importing it failed as "not valid JSON".
+   Nothing crosses the activity boundary now except a URI, and the write is a
+   fresh call. See FileSaverPlugin.java.
+
    Returns one of:
      { status: "saved", name, bytes }  the file is on disk where the user put
-                                       it, and `bytes` is what the provider
-                                       confirms it holds -- never a guess
+                                       it, and `bytes` is what the native side
+                                       read back out of it -- never a guess
      { status: "cancelled" }     the picker was dismissed; nothing was written
      { status: "unavailable" }   no plugin (web, or an APK predating it)
      { status: "failed", error } the picker ran but the write did not
    -------------------------------------------------------------------------- */
-export async function saveBlobWithPicker(blob, filename, mimeType) {
+export async function saveTextWithPicker(text, filename, mimeType) {
   if (!isNative()) return { status: "unavailable" };
   const FileSaver = plugin("FileSaver");
-  if (!FileSaver || typeof FileSaver.save !== "function") {
+  if (
+    !FileSaver ||
+    typeof FileSaver.pickSaveLocation !== "function" ||
+    typeof FileSaver.write !== "function"
+  ) {
     return { status: "unavailable" };
   }
 
   // Checked before the picker is opened, not after. The file browser creates
-  // the file the instant the user taps Save, so anything that goes wrong from
-  // then on leaves a 0-byte file where a backup should be.
-  if (!blob || !blob.size) {
+  // the file the instant the user taps Save, so anything that cannot succeed
+  // must not be allowed to get that far -- otherwise the failure leaves a
+  // 0-byte file exactly where the user expects their backup.
+  const payload = String(text == null ? "" : text);
+  if (!payload) {
     return { status: "failed", error: new Error("there was nothing to save") };
   }
 
   try {
-    const data = await blobToBase64(blob);
-    const result = await FileSaver.save({
+    const picked = await FileSaver.pickSaveLocation({
       filename,
       mimeType: mimeType || "application/json",
-      data,
     });
-    if (result && result.saved) {
+    if (!picked || picked.cancelled || !picked.uri) {
+      return { status: "cancelled" };
+    }
+
+    const written = await FileSaver.write({ uri: picked.uri, text: payload });
+    // The native side rejects rather than resolving on a short write, so
+    // reaching here without `saved` means a plugin older than this code.
+    if (!written || !written.saved) {
       return {
-        status: "saved",
-        name: result.name || filename,
-        // The native side verifies the write against the size the document
-        // provider reports; that number is the one worth repeating back.
-        bytes: Number(result.bytes) > 0 ? Number(result.bytes) : blob.size,
+        status: "failed",
+        error: new Error("the file was chosen but nothing confirmed the write"),
       };
     }
-    return { status: "cancelled" };
+
+    return {
+      status: "saved",
+      name: written.name || picked.name || filename,
+      bytes: Number(written.bytes) > 0 ? Number(written.bytes) : utf8Size(payload),
+    };
   } catch (error) {
     return { status: "failed", error };
   }
@@ -187,25 +203,28 @@ export async function saveBlobWithPicker(blob, filename, mimeType) {
 // sheet, which can send it anywhere without needing a storage permission.
 //
 // Kept as the fallback for when the picker is unavailable. Same result shape as
-// saveBlobWithPicker, deliberately: a dismissed share sheet is "cancelled", NOT
+// saveTextWithPicker, deliberately: a dismissed share sheet is "cancelled", NOT
 // success. It used to be reported as success, so Export said "Exported as
 // habit-maker-backup.json" whether or not a single byte had been written.
-export async function shareBlobNatively(blob, filename) {
+export async function shareTextNatively(text, filename) {
   if (!isNative()) return { status: "unavailable" };
   const Filesystem = plugin("Filesystem");
   const Share = plugin("Share");
   if (!Filesystem || !Share) return { status: "unavailable" };
-  if (!blob || !blob.size) {
+
+  const payload = String(text == null ? "" : text);
+  if (!payload) {
     return { status: "failed", error: new Error("there was nothing to share") };
   }
 
   try {
-    const data = await blobToBase64(blob);
-    // No `encoding` -> the payload is treated as base64 and written as binary.
+    // encoding: "utf8" writes the string as text. Without it the plugin treats
+    // `data` as base64, which is what forced the whole Blob/FileReader detour.
     await Filesystem.writeFile({
       path: filename,
-      data,
+      data: payload,
       directory: "CACHE",
+      encoding: "utf8",
       recursive: true,
     });
     const { uri } = await Filesystem.getUri({
@@ -213,7 +232,7 @@ export async function shareBlobNatively(blob, filename) {
       directory: "CACHE",
     });
     await Share.share({ title: filename, files: [uri] });
-    return { status: "saved", name: filename };
+    return { status: "saved", name: filename, bytes: utf8Size(payload) };
   } catch (error) {
     const message = String((error && error.message) || error || "");
     if (/cancel/i.test(message)) return { status: "cancelled" };
